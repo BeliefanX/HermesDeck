@@ -294,19 +294,36 @@ print(json.dumps(out, ensure_ascii=False))`;
 
 export async function getTools(): Promise<ToolSummary[]> {
   const tools: ToolSummary[] = [];
+  // Hermes `tools list` output prefixes each item with a status glyph
+  // (✓ enabled / ✗ disabled / ● etc.) followed by whitespace and the actual
+  // tool identifier. We strip that prefix here so the UI shows real names.
+  const stripStatus = (line: string): { rest: string; enabled: boolean } => {
+    const m = line.match(/^([✓✔✗✘●○•])\s*(?:enabled|disabled|on|off)?\s+(.*)$/i);
+    if (m) return { rest: m[2], enabled: !/✗|✘/.test(m[1]) && !/disabled|off/i.test(line) };
+    return { rest: line, enabled: !/disabled|off/i.test(line) };
+  };
   try {
     const { stdout } = await execFileAsync('hermes', ['tools', 'list'], { timeout: 12000 });
     for (const line of stdout.split(/\r?\n/)) {
       const t = line.trim();
-      if (!t || /^(Tool|---)/i.test(t)) continue;
-      tools.push({ name: t.split(/\s{2,}|\t| - /)[0], kind: 'toolset', enabled: !/disabled/i.test(t), description: t });
+      if (!t) continue;
+      // Skip section headers (lines ending with ':' or fully separator-like)
+      if (/:$/.test(t) || /^(Tool|Tools|---|===)/i.test(t)) continue;
+      const { rest, enabled } = stripStatus(t);
+      const name = rest.split(/\s{2,}|\t| - /)[0].trim();
+      if (!name) continue;
+      tools.push({ name, kind: 'toolset', enabled, description: rest });
     }
   } catch {}
   try {
     const { stdout } = await execFileAsync('hermes', ['skills', 'list'], { timeout: 12000 });
     for (const line of stdout.split(/\r?\n/).slice(0, 80)) {
       const t = line.trim();
-      if (t && !/^[-=]/.test(t)) tools.push({ name: t.split(/\s{2,}|\t/)[0], kind: 'skill', description: t });
+      if (!t || /^[-=]/.test(t) || /:$/.test(t)) continue;
+      const { rest } = stripStatus(t);
+      const name = rest.split(/\s{2,}|\t/)[0].trim();
+      if (!name) continue;
+      tools.push({ name, kind: 'skill', description: rest });
     }
   } catch {}
   return tools.slice(0, 200);

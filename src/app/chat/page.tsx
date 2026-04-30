@@ -1361,10 +1361,8 @@ export default function ChatPage() {
       <div className={`chat-layout ${!showSessions ? 'no-sessions' : ''} ${!showTimeline ? 'no-timeline' : ''}`}>
         {/* Sessions panel (desktop) */}
         <aside
-          className="chat-panel sessions-panel"
+          className="chat-panel thread sessions-panel"
           style={{
-            display: 'flex',
-            flexDirection: 'column',
             background: 'var(--panel)',
             border: '1px solid var(--line)',
             borderRadius: 10,
@@ -1476,8 +1474,6 @@ export default function ChatPage() {
         <section
           className="chat-panel thread"
           style={{
-            display: 'flex',
-            flexDirection: 'column',
             background: 'var(--panel)',
             border: '1px solid var(--line)',
             borderRadius: 10,
@@ -1925,10 +1921,8 @@ export default function ChatPage() {
 
         {/* Run timeline (desktop) */}
         <aside
-          className="chat-panel right-panel"
+          className="chat-panel thread right-panel"
           style={{
-            display: 'flex',
-            flexDirection: 'column',
             background: 'var(--panel)',
             border: '1px solid var(--line)',
             borderRadius: 10,
