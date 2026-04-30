@@ -19,10 +19,10 @@ function relTime(iso?: string): string {
   const ts = Date.parse(iso);
   if (!Number.isFinite(ts)) return '—';
   const diff = Date.now() - ts;
-  if (diff < 60_000) return '刚刚';
-  if (diff < 3600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3600_000)} 小时前`;
-  if (diff < 30 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`;
+  if (diff < 60_000) return 'just now';
+  if (diff < 3600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3600_000)}h ago`;
+  if (diff < 30 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
   return new Date(ts).toLocaleDateString();
 }
 
@@ -54,9 +54,9 @@ export default function ModelsPage() {
   return (
     <div className="page grid">
       <p className="page-intro">
-        当前 Hermes 接入的 Provider 与历史使用过的 Model。数据来源于
-        <span className="kbd" style={{ margin: '0 4px' }}>hermes auth list</span>、
-        <span className="kbd" style={{ margin: '0 4px' }}>~/.hermes/config.yaml</span> 与 state.db 中的 sessions 表。
+        Currently connected providers and their previously used models. Data sourced from
+        <span className="kbd" style={{ margin: '0 4px' }}>hermes auth list</span>,
+        <span className="kbd" style={{ margin: '0 4px' }}>~/.hermes/config.yaml</span> and the sessions table in state.db.
       </p>
 
       {/* Header metrics */}
@@ -64,17 +64,17 @@ export default function ModelsPage() {
         <div className="card metric-card hover-lift">
           <div className="metric-top"><span className="metric-icon"><Plug size={18} /></span><span className="metric-label">Providers</span></div>
           <div className="metric">{loading ? '—' : totals.providers}</div>
-          <div className="muted small">{loading ? '加载中…' : `${totals.withCreds} 已配置凭证`}</div>
+          <div className="muted small">{loading ? 'Loading…' : `${totals.withCreds} with credentials`}</div>
         </div>
         <div className="card metric-card hover-lift">
           <div className="metric-top"><span className="metric-icon"><Cpu size={18} /></span><span className="metric-label">Models</span></div>
           <div className="metric">{loading ? '—' : totals.models}</div>
-          <div className="muted small">已被使用或配置为默认</div>
+          <div className="muted small">used or set as default</div>
         </div>
         <div className="card metric-card hover-lift">
-          <div className="metric-top"><span className="metric-icon"><Activity size={18} /></span><span className="metric-label">累计 Tokens</span></div>
+          <div className="metric-top"><span className="metric-icon"><Activity size={18} /></span><span className="metric-label">Tokens · all time</span></div>
           <div className="metric">{loading ? '—' : fmtTokens(totals.tokens)}</div>
-          <div className="muted small">所有 provider × model 历史汇总</div>
+          <div className="muted small">across providers × models</div>
         </div>
       </div>
 
@@ -83,7 +83,7 @@ export default function ModelsPage() {
         <section className="card hero-card model-default-card">
           <div className="row" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="hero-kicker">默认 model</div>
+              <div className="hero-kicker">DEFAULT MODEL</div>
               <h2 style={{ marginTop: 6 }}>
                 <Star size={16} style={{ verticalAlign: -2, marginRight: 6, color: 'var(--accent)' }} />
                 {data.default.model}
@@ -93,7 +93,7 @@ export default function ModelsPage() {
                 {data.default.baseUrl && <> · base_url · <span className="kbd" style={{ wordBreak: 'break-all' }}>{data.default.baseUrl}</span></>}
               </div>
             </div>
-            <span className="pill ok"><Sparkles size={12} /> 当前 active</span>
+            <span className="pill ok"><Sparkles size={12} /> currently active</span>
           </div>
         </section>
       )}
@@ -101,7 +101,7 @@ export default function ModelsPage() {
       {err && (
         <div className="card" style={{ borderColor: 'var(--danger,#ff6363)' }}>
           <div className="row start" style={{ gap: 8, color: 'var(--danger,#ff6363)' }}>
-            <AlertCircle size={15} /> 加载失败：{err}
+            <AlertCircle size={15} /> Load failed: {err}
           </div>
         </div>
       )}
@@ -131,8 +131,8 @@ export default function ModelsPage() {
         <section className="card">
           <div className="section-head">
             <div className="section-title">
-              <span className="section-kicker">No provider tag</span>
-              <h2>历史会话中的孤儿 model</h2>
+              <span className="section-kicker">NO PROVIDER TAG</span>
+              <h2>Orphan models from session history</h2>
             </div>
             <span className="pill"><Database size={12} /> {data.orphanModels.length}</span>
           </div>
@@ -147,9 +147,9 @@ export default function ModelsPage() {
       {!loading && data && data.providers.length === 0 && data.orphanModels.length === 0 && (
         <div className="empty-state" style={{ padding: 24 }}>
           <Cpu size={22} />
-          <h2>暂无 provider 数据</h2>
+          <h2>No provider data</h2>
           <p className="muted small">
-            可使用 <span className="kbd">hermes auth add</span> 或 <span className="kbd">hermes login</span> 添加 provider 凭证。
+            Use <span className="kbd">hermes auth add</span> or <span className="kbd">hermes login</span> to add a provider credential.
           </p>
         </div>
       )}
@@ -175,8 +175,8 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
         </div>
         <div className="row" style={{ gap: 6, flexShrink: 0 }}>
           {provider.credentialCount != null && (
-            <span className="pill" title="hermes auth list 中的凭证数量">
-              <KeyRound size={11} /> {provider.credentialCount} 凭证
+            <span className="pill" title="Credentials from hermes auth list">
+              <KeyRound size={11} /> {provider.credentialCount} creds
             </span>
           )}
           <span className="pill"><Cpu size={11} /> {provider.models.length} models</span>
@@ -185,11 +185,11 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
       <div className="provider-stat-row">
         <div className="provider-stat">
-          <div className="label">总会话</div>
+          <div className="label">Sessions</div>
           <div className="value">{totalSessions.toLocaleString()}</div>
         </div>
         <div className="provider-stat">
-          <div className="label">累计 Tokens</div>
+          <div className="label">Tokens</div>
           <div className="value">{fmtTokens(totalTokens)}</div>
         </div>
         {provider.baseUrl && (
@@ -207,7 +207,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
           <ModelRow key={m.id} model={m} maxTokens={maxTokens} />
         ))}
         {provider.models.length === 0 && (
-          <div className="muted small" style={{ padding: '12px 4px' }}>该 provider 下尚未记录任何 model 使用情况。</div>
+          <div className="muted small" style={{ padding: '12px 4px' }}>No model usage recorded under this provider yet.</div>
         )}
       </div>
     </section>
@@ -229,9 +229,9 @@ function ModelRow({ model, maxTokens }: { model: ModelInfo; maxTokens: number })
         <div className="bar-fill" style={{ width: `${pct}%` }} />
       </div>
       <div className="model-stats">
-        <span className="model-stat" title="累计 tokens">{fmtTokens(model.tokens)}</span>
-        <span className="model-stat dim" title="使用过的会话数">{model.sessions || 0} 会话</span>
-        <span className="model-stat dim" title="最近一次使用">{relTime(model.lastUsed)}</span>
+        <span className="model-stat" title="Total tokens">{fmtTokens(model.tokens)}</span>
+        <span className="model-stat dim" title="Sessions that used this model">{model.sessions || 0} sessions</span>
+        <span className="model-stat dim" title="Last used">{relTime(model.lastUsed)}</span>
       </div>
     </div>
   );

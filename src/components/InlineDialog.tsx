@@ -10,12 +10,12 @@ interface Props {
   confirmLabel?: string;
   onConfirm: (value: string) => void;
   onCancel: () => void;
-  /** Optional helper text shown under the input (e.g. "用逗号分隔多个标签"). */
+  /** Optional helper text shown under the input (e.g. "Comma-separated tags"). */
   helper?: string;
 }
 
 export function InlineDialog({
-  title, description, initialValue, placeholder, confirmLabel = '确定', onConfirm, onCancel, helper,
+  title, description, initialValue, placeholder, confirmLabel = 'Confirm', onConfirm, onCancel, helper,
 }: Props) {
   const ref = useRef<HTMLInputElement>(null);
 
@@ -37,7 +37,7 @@ export function InlineDialog({
             <h3>{title}</h3>
             {description && <div className="muted small" style={{ marginTop: 4 }}>{description}</div>}
           </div>
-          <button className="btn icon sm" onClick={onCancel} aria-label="关闭"><X size={14} /></button>
+          <button className="btn icon sm" onClick={onCancel} aria-label="Close"><X size={14} /></button>
         </div>
         <input
           ref={ref}
@@ -53,7 +53,7 @@ export function InlineDialog({
         />
         {helper && <div className="muted tiny" style={{ marginTop: 6 }}>{helper}</div>}
         <div className="dialog-actions">
-          <button className="btn sm" onClick={onCancel}>取消</button>
+          <button className="btn sm" onClick={onCancel}>Cancel</button>
           <button
             className="btn sm primary"
             onClick={() => onConfirm(ref.current?.value ?? '')}

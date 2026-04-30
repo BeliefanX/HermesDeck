@@ -31,11 +31,11 @@ export function MessageActions({ content, canRegenerate, onRegenerate, busy }: P
         type="button"
         className="msg-action"
         onClick={onCopy}
-        aria-label="复制消息"
-        title="复制消息"
+        aria-label="Copy message"
+        title="Copy message"
       >
         {copied ? <Check size={12} /> : <Copy size={12} />}
-        <span>{copied ? '已复制' : '复制'}</span>
+        <span>{copied ? 'Copied' : 'Copy'}</span>
       </button>
       {canRegenerate && onRegenerate && (
         <button
@@ -43,11 +43,11 @@ export function MessageActions({ content, canRegenerate, onRegenerate, busy }: P
           className="msg-action"
           onClick={onRegenerate}
           disabled={busy}
-          aria-label="重新生成回复"
-          title="重新生成回复"
+          aria-label="Regenerate response"
+          title="Regenerate response"
         >
           <RefreshCw size={12} />
-          <span>重新生成</span>
+          <span>Regenerate</span>
         </button>
       )}
     </div>

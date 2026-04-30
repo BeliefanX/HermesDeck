@@ -21,8 +21,8 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
     ],
     shortcuts: [
-      { name: '新对话', short_name: '对话', url: '/chat?source=shortcut', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
-      { name: '安全终端', short_name: '终端', url: '/terminal?source=shortcut', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
+      { name: 'New chat', short_name: 'Chat', url: '/chat?source=shortcut', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
+      { name: 'Safe terminal', short_name: 'Terminal', url: '/terminal?source=shortcut', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
     ],
   };
 }

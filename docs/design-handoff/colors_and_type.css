@@ -1,0 +1,240 @@
+/* ─────────────────────────────────────────────────────────────────────
+   HermesDeck — Colors, Type, Radii, Motion
+   Lifted verbatim from src/app/globals.css. Both dark + light themes;
+   the runtime swap is driven by `data-theme="dark|light"` on <html>.
+   ───────────────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;650;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  /* ── SURFACES (dark, default) ── */
+  --bg:           #08090c;   /* page, sidebar, topbar */
+  --bg-soft:      #0b0c11;   /* inputs, code body */
+  --panel:        #13141a;   /* card */
+  --panel-2:      #1c1e26;   /* secondary surface, btn default */
+  --panel-3:      #272a35;   /* hover step, code-bar header */
+  --glass:        rgba(255,255,255,.04);   /* universal hover tint */
+  --glass-strong: rgba(255,255,255,.07);
+  --line:         rgba(255,255,255,.06);   /* hairline */
+  --line-strong:  rgba(255,255,255,.11);
+  --hairline:     rgba(255,255,255,.04);   /* internal divider */
+  --highlight-top:        rgba(255,255,255,.04);
+  --highlight-top-strong: rgba(255,255,255,.07);
+
+  /* ── TEXT ── */
+  --text:        #ededee;
+  --strong-text: #ffffff;
+  --value-text:  #d4d4d8;
+  --muted:       #8b8d99;
+  --muted-2:     #5c5e6a;   /* kickers, captions */
+  --nav-text:    #a3a4ae;
+
+  /* ── BRAND / ACCENT (sky blue, sparingly used) ── */
+  --accent:        #38bdf8;
+  --accent-2:      #0ea5e9;
+  --accent-soft:   rgba(56,189,248,.12);
+  --accent-strong: rgba(56,189,248,.20);
+  --accent-border: rgba(56,189,248,.34);
+  --accent-glow:   rgba(56,189,248,.36);
+  --grad-brand:    linear-gradient(140deg,#7dd3fc 0%,#0ea5e9 100%);
+
+  /* ── STATUS ── */
+  --green:  #22c55e;
+  --yellow: #eab308;
+  --red:    #ef4444;
+  --cyan:   #67e8f9;
+
+  /* ── SEMANTIC SURFACES ── */
+  --card-bg:        var(--panel);
+  --card-bg-strong: var(--panel-2);
+  --surface-bg:     var(--panel-2);
+  --input-bg:       var(--bg-soft);
+  --sidebar-bg:     var(--bg);
+  --topbar-bg:      var(--bg);
+
+  /* ── ELEVATION (deliberately flat — only popovers float) ── */
+  --shadow-card:   none;
+  --shadow-pop:    0 16px 40px rgba(0,0,0,.42), 0 1px 0 rgba(255,255,255,.06) inset;
+  --shadow-press:  none;
+  --shadow-accent: none;
+  --ring:          0 0 0 2px rgba(56,189,248,.55);
+
+  /* ── RADII ── */
+  --r-1:    6px;
+  --r-2:    8px;
+  --r-3:    10px;   /* card */
+  --r-4:    14px;   /* hero */
+  --r-pill: 999px;
+
+  /* ── MOTION ── */
+  --ease:     cubic-bezier(.2,.7,.2,1);
+  --ease-out: cubic-bezier(.16,1,.3,1);
+  --t-1: 120ms;
+  --t-2: 200ms;
+  --t-3: 300ms;
+
+  /* ── LAYOUT ── */
+  --side-w:           248px;
+  --topbar-h:         56px;
+  --mobile-app-bar-h: 52px;
+  --mobile-nav-h:     64px;
+
+  /* ── SAFE AREAS ── */
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-right:  env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left, 0px);
+
+  /* ── TYPE FAMILIES ── */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* ── BASE TYPE ── */
+  --fs-body:    14px;
+  --lh-body:    1.55;
+  --fs-small:   12px;
+  --fs-tiny:    11px;
+  --fs-kicker:  10px;       /* with .14em letter-spacing, uppercase */
+  --fs-label:   13px;
+  --fs-h2:      15px;
+  --fs-h3:      13px;
+  --fs-metric:  clamp(28px, 3.2vw, 34px);
+  --fs-h1:      clamp(24px, 2.8vw, 30px);
+
+  --tracking-display: -.035em;   /* H1 */
+  --tracking-tight:   -.018em;   /* brand title */
+  --tracking-snug:    -.012em;   /* H2, topbar title */
+  --tracking-kicker:  .14em;     /* uppercase kickers */
+  --tracking-mono:    .04em;     /* code-block lang label */
+
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-mid:     550;        /* nav active, list-row b */
+  --weight-semi:    600;
+  --weight-strong:  620;        /* topbar title, md strong */
+  --weight-display: 650;        /* H1, value cells in spark-summary */
+  --weight-heavy:   680;        /* metric numerals */
+}
+
+/* ── LIGHT THEME ── */
+:root[data-theme="light"] {
+  --bg:           #fafafa;
+  --bg-soft:      #f4f4f5;
+  --panel:        #ffffff;
+  --panel-2:      #f7f7f9;
+  --panel-3:      #ececef;
+  --glass:        rgba(15,23,42,.04);
+  --glass-strong: rgba(15,23,42,.06);
+  --line:         rgba(15,23,42,.08);
+  --line-strong:  rgba(15,23,42,.14);
+  --hairline:     rgba(15,23,42,.05);
+  --highlight-top:        rgba(255,255,255,.85);
+  --highlight-top-strong: rgba(255,255,255,1);
+
+  --text:        #18181b;
+  --strong-text: #0a0a0c;
+  --value-text:  #27272a;
+  --muted:       #6a6a73;
+  --muted-2:     #9a9aa3;
+  --nav-text:    #4b4b54;
+
+  --accent:        #0ea5e9;
+  --accent-2:      #0284c7;
+  --accent-soft:   rgba(14,165,233,.07);
+  --accent-strong: rgba(14,165,233,.14);
+  --accent-border: rgba(14,165,233,.26);
+  --accent-glow:   rgba(14,165,233,.22);
+  --grad-brand:    linear-gradient(140deg,#38bdf8 0%,#0284c7 100%);
+
+  --green:  #16a34a;
+  --yellow: #b45309;
+  --red:    #dc2626;
+
+  --card-bg:        #ffffff;
+  --card-bg-strong: #fbfbfc;
+  --surface-bg:     #f4f4f5;
+  --input-bg:       #ffffff;
+  --sidebar-bg:     #fafafa;
+  --topbar-bg:      #fafafa;
+
+  --shadow-card:   none;
+  --shadow-pop:    0 18px 44px rgba(15,23,42,.12), 0 1px 0 rgba(255,255,255,.6) inset;
+  --shadow-press:  none;
+  --shadow-accent: none;
+  --ring:          0 0 0 2px rgba(14,165,233,.45);
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   SEMANTIC TYPE — drop-in classes / element styles
+   ───────────────────────────────────────────────────────────────────── */
+
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: "cv01", "cv03", "ss03";
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1 { font-size: var(--fs-h1);  line-height: 1.12; letter-spacing: var(--tracking-display); font-weight: var(--weight-display); color: var(--strong-text); margin: 0; }
+h2 { font-size: var(--fs-h2);  line-height: 1.30; letter-spacing: var(--tracking-snug);    font-weight: var(--weight-semi);    color: var(--strong-text); margin: 0; }
+h3 { font-size: var(--fs-h3);  font-weight: var(--weight-semi); letter-spacing: -.005em;   color: var(--strong-text); margin: 0; }
+p  { line-height: 1.6; margin: 0; }
+
+.muted    { color: var(--muted); }
+.tiny     { font-size: var(--fs-tiny); color: var(--muted-2); letter-spacing: .005em; font-variant-numeric: tabular-nums; }
+.small    { font-size: var(--fs-small); color: var(--muted); }
+.mono     { font-family: var(--font-mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+
+/* Section kickers — the signature density move */
+.kicker, .compact-title, .section-kicker {
+  font-size: var(--fs-kicker);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-kicker);
+  color: var(--muted-2);
+  font-weight: var(--weight-medium);
+}
+
+/* Metric numerals — large, tabular, tight tracking */
+.metric-numeral {
+  font-size: var(--fs-metric);
+  line-height: 1;
+  font-weight: var(--weight-heavy);
+  letter-spacing: -.05em;
+  color: var(--strong-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Brand title (in sidebar badge row) */
+.brand-title {
+  font-size: 14.5px;
+  font-weight: var(--weight-semi);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.1;
+  color: var(--strong-text);
+}
+.brand-subtitle {
+  font-size: 9.5px;
+  color: var(--muted-2);
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  font-weight: var(--weight-medium);
+}
+
+/* Inline code, kbd */
+code, .code, .kbd {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.kbd {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  padding: 1px 6px;
+  color: var(--value-text);
+  font-size: 11px;
+  box-shadow: 0 1px 0 var(--highlight-top) inset;
+}

@@ -16,7 +16,9 @@ export default function ProfilesPage() {
 
   return (
     <div className="page grid">
-      <p className="page-intro">Profile 是 HermesDeck 的 Agent / 执行上下文切换基础，每个 profile 拥有独立的 <span className="kbd">~/.hermes/profiles/{'<id>'}</span> 状态目录。</p>
+      <p className="page-intro">
+        A profile is HermesDeck&rsquo;s agent &amp; execution-context unit. Each one keeps its own state directory at <span className="kbd">~/.hermes/profiles/&lt;id&gt;</span>.
+      </p>
 
       <div className="grid cols-3">
         {loading && Array.from({ length: 3 }).map((_, i) => (
@@ -54,8 +56,10 @@ export default function ProfilesPage() {
         {!loading && profiles.length === 0 && (
           <div className="empty-state" style={{ gridColumn: '1 / -1', padding: 24 }}>
             <Bot size={22} />
-            <h2>未发现 profile</h2>
-            <p className="muted small">HermesDeck 将以 default 上下文运行。可使用 <span className="kbd">hermes profile create</span> 添加新的执行上下文。</p>
+            <h2>No profiles found</h2>
+            <p className="muted small">
+              HermesDeck will run with a default context. Use <span className="kbd">hermes profile create</span> to add a new execution context.
+            </p>
           </div>
         )}
       </div>

@@ -1,0 +1,85 @@
+/* Shared styles for design-system preview cards.
+   Each card renders into a ~700×variable iframe. */
+@import url('../colors_and_type.css');
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.card-root {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.row { display: flex; gap: 10px; align-items: center; }
+.row-wrap { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.col { display: flex; flex-direction: column; gap: 8px; }
+.kicker {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted-2);
+  font-weight: 500;
+}
+.label {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.label-strong { color: var(--strong-text); }
+.swatch {
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  height: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 8px 10px;
+  position: relative;
+  overflow: hidden;
+}
+.swatch .name {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--strong-text);
+  font-weight: 500;
+}
+.swatch .hex {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.swatch.on-light .name, .swatch.on-light .hex { color: #0a0a0c; }
+.swatch.on-light .hex { color: #6a6a73; }
+.line { height: 1px; background: var(--line); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.metric-numeral {
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 680;
+  letter-spacing: -.05em;
+  color: var(--strong-text);
+  font-variant-numeric: tabular-nums;
+}
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 500;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--value-text);
+}
+.tag.accent { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-border); }
+.tag.green  { background: rgba(34,197,94,.12); color: var(--green); border-color: rgba(34,197,94,.30); }
+.tag.yellow { background: rgba(234,179,8,.12); color: var(--yellow); border-color: rgba(234,179,8,.30); }
+.tag.red    { background: rgba(239,68,68,.12); color: var(--red); border-color: rgba(239,68,68,.30); }
+.tag.cyan   { background: rgba(103,232,249,.10); color: var(--cyan); border-color: rgba(103,232,249,.28); }

@@ -128,13 +128,13 @@ export function SessionMenu({ pinned, archived, folderId, folders, canDelete, ac
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {item(pinned ? <PinOff size={13} /> : <Pin size={13} />, pinned ? '取消置顶' : '置顶', actions.onTogglePin)}
-      {item(<Pencil size={13} />, '重命名', actions.onRename)}
-      {item(<Tag size={13} />, '编辑标签', actions.onEditTags)}
+      {item(pinned ? <PinOff size={13} /> : <Pin size={13} />, pinned ? 'Unpin' : 'Pin', actions.onTogglePin)}
+      {item(<Pencil size={13} />, 'Rename', actions.onRename)}
+      {item(<Tag size={13} />, 'Edit tags', actions.onEditTags)}
 
       <div className="session-menu-sep" />
 
-      {item(<FolderInput size={13} />, '移到新分组…', actions.onCreateFolderAndMove)}
+      {item(<FolderInput size={13} />, 'Move to new folder…', actions.onCreateFolderAndMove)}
       {folders.length > 0 && folders.map((f) => (
         <button
           key={f.id}
@@ -144,20 +144,20 @@ export function SessionMenu({ pinned, archived, folderId, folders, canDelete, ac
           onClick={(e) => { e.stopPropagation(); actions.onMoveToFolder(f.id); }}
         >
           <span className="session-menu-icon"><FolderInput size={13} /></span>
-          <span>移到「{f.name}」</span>
-          {folderId === f.id && <span className="muted tiny" style={{ marginLeft: 'auto' }}>当前</span>}
+          <span>Move to “{f.name}”</span>
+          {folderId === f.id && <span className="muted tiny" style={{ marginLeft: 'auto' }}>current</span>}
         </button>
       ))}
-      {folderId && item(<FolderMinus size={13} />, '从分组移出', () => actions.onMoveToFolder(null))}
+      {folderId && item(<FolderMinus size={13} />, 'Remove from folder', () => actions.onMoveToFolder(null))}
 
       <div className="session-menu-sep" />
 
       {item(
         archived ? <ArchiveRestore size={13} /> : <Archive size={13} />,
-        archived ? '取消归档' : '归档',
+        archived ? 'Unarchive' : 'Archive',
         actions.onToggleArchive,
       )}
-      {canDelete && actions.onDelete && item(<Trash2 size={13} />, '删除本地', actions.onDelete, { danger: true })}
+      {canDelete && actions.onDelete && item(<Trash2 size={13} />, 'Delete locally', actions.onDelete, { danger: true })}
     </div>
   );
 }

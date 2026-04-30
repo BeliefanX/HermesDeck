@@ -62,17 +62,17 @@ export function PWARegister() {
             .getRegistration()
             .then((r) => r?.waiting?.postMessage({ type: 'SKIP_WAITING' }))
         }
-        aria-label="应用有新版本，点击立即更新"
+        aria-label="A new version is ready — click to update"
       >
         <span className="pwa-update-dot" aria-hidden />
-        <span>新版本已就绪 · 点击更新</span>
+        <span>New version ready · click to update</span>
       </button>
       <button
         type="button"
         className="pwa-update-dismiss"
         onClick={() => setDismissed(true)}
-        aria-label="稍后再说"
-        title="稍后再说"
+        aria-label="Dismiss for now"
+        title="Dismiss for now"
       >
         <X size={14} />
       </button>

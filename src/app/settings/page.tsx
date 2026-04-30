@@ -50,7 +50,7 @@ export default function SettingsPage() {
   }
 
   function clearChatStorage() {
-    if (!confirm('清空 HermesDeck 的本地草稿、会话索引与主题偏好？此操作不可撤销。')) return;
+    if (!confirm('Clear HermesDeck local drafts, session index and theme preference? This cannot be undone.')) return;
     try {
       Object.keys(localStorage).filter((k) => k.startsWith('hermesdeck')).forEach((k) => localStorage.removeItem(k));
       setCleared(true);
@@ -61,35 +61,40 @@ export default function SettingsPage() {
 
   return (
     <div className="page grid">
-      <p className="page-intro">基础设置：主题、连接信息、本地缓存。敏感配置不在前端直接展示，未来会通过受保护的 BFF 编辑。</p>
+      <p className="page-intro">
+        Basics: theme, connection info, local cache. Sensitive config is not exposed in the frontend;
+        future versions will edit it via a guarded BFF.
+      </p>
 
       <section className="card">
-        <h2>外观</h2>
-        <p className="muted small" style={{ marginTop: 6 }}>主题会保存在浏览器，并在加载时同步到服务端渲染前置脚本，避免闪烁。</p>
+        <h2>Appearance</h2>
+        <p className="muted small" style={{ marginTop: 6 }}>
+          Theme persists in the browser and is replayed by the SSR bootstrap script to avoid flashes.
+        </p>
         <div className="row start" style={{ gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
           <button
             className={`chip ${theme === 'dark' ? 'active' : ''}`}
             onClick={() => applyTheme('dark')}
           >
-            <Moon size={13} /> 深色
+            <Moon size={13} /> Dark
           </button>
           <button
             className={`chip ${theme === 'light' ? 'active' : ''}`}
             onClick={() => applyTheme('light')}
           >
-            <Sun size={13} /> 浅色
+            <Sun size={13} /> Light
           </button>
           <button className="chip" onClick={applySystemTheme}>
-            <MonitorSmartphone size={13} /> 跟随系统
+            <MonitorSmartphone size={13} /> Follow system
           </button>
         </div>
       </section>
 
       <section className="card">
         <div className="row">
-          <h2>后端</h2>
-          <button className="btn sm" onClick={refreshHealth} disabled={refreshing} aria-label="刷新健康检查">
-            <RefreshCw size={13} className={refreshing ? 'spin' : ''} /> 刷新
+          <h2>Backend</h2>
+          <button className="btn sm" onClick={refreshHealth} disabled={refreshing} aria-label="Refresh health">
+            <RefreshCw size={13} className={refreshing ? 'spin' : ''} /> Refresh
           </button>
         </div>
         <div className="list" style={{ marginTop: 12 }}>
@@ -119,9 +124,9 @@ export default function SettingsPage() {
           </div>
         </div>
         <div className="surface" style={{ marginTop: 12 }}>
-          <div className="tiny" style={{ marginBottom: 6 }}>环境变量（敏感值不展示）</div>
+          <div className="tiny" style={{ marginBottom: 6 }}>ENV VARS · SECRETS REDACTED</div>
           <div className="small" style={{ display: 'grid', gap: 4 }}>
-            <div>API Server: <span className="kbd">HERMES_API_BASE</span></div>
+            <div>API server: <span className="kbd">HERMES_API_BASE</span></div>
             <div>Dashboard: <span className="kbd">HERMES_DASHBOARD_BASE</span></div>
             <div>Auth: <span className="kbd">HERMES_API_KEY</span> · <span className="kbd">API_SERVER_KEY</span></div>
           </div>
@@ -129,17 +134,18 @@ export default function SettingsPage() {
       </section>
 
       <section className="card">
-        <h2>本地缓存</h2>
+        <h2>Local cache</h2>
         <p className="muted small" style={{ marginTop: 6 }}>
-          HermesDeck 把本地草稿、会话索引和 response_id 串联存在浏览器，便于离线浏览和多 profile 切换。
+          HermesDeck keeps drafts, the session index and response_id chains in the browser,
+          so offline browsing and multi-profile switching feel snappy.
         </p>
         <div className="row" style={{ marginTop: 14, flexWrap: 'wrap', gap: 10 }}>
-          <span className="pill"><ShieldCheck size={13} /> 仅本机存储</span>
+          <span className="pill"><ShieldCheck size={13} /> on-device only</span>
           <span className="pill">~ {(storageUsed / 1024).toFixed(1)} KB</span>
           <button className="btn danger" onClick={clearChatStorage}>
-            <Trash2 size={14} /> 清空 HermesDeck 缓存
+            <Trash2 size={14} /> Clear HermesDeck cache
           </button>
-          {cleared && <span className="pill ok">已清空</span>}
+          {cleared && <span className="pill ok">Cleared</span>}
         </div>
       </section>
     </div>

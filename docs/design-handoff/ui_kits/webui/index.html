@@ -1,0 +1,81 @@
+<!doctype html>
+<html data-theme="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>HermesDeck WebUI · Kit</title>
+<link rel="stylesheet" href="../../colors_and_type.css"/>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); }
+  #app { height: 100vh; display: flex; }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb { background: var(--panel-3); border-radius: 6px; border: 2px solid var(--bg); }
+  *::-webkit-scrollbar-thumb:hover { background: var(--line-strong); }
+  *::-webkit-scrollbar-track { background: transparent; }
+  textarea { font-family: var(--font-sans); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="Primitives.jsx"></script>
+<script type="text/babel" src="AppShell.jsx"></script>
+<script type="text/babel" src="Dashboard.jsx"></script>
+<script type="text/babel" src="ChatView.jsx"></script>
+<script type="text/babel" src="Terminal.jsx"></script>
+<script type="text/babel" src="Pages.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+function App() {
+  const initialFromHash = () => {
+    const h = (typeof window !== 'undefined' ? window.location.hash : '').replace(/^#/, '');
+    const allowed = ['home','chat','profiles','models','runs','tools','terminal','settings','offline'];
+    return allowed.includes(h) ? h : 'home';
+  };
+  const [active, setActive] = useState(initialFromHash);
+  const [collapsed, setCollapsed] = useState(false);
+  const [theme, setTheme] = useState('dark');
+  useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
+  useEffect(() => {
+    if (window.location.hash.replace(/^#/, '') !== active) {
+      window.history.replaceState(null, '', '#' + active);
+    }
+  }, [active]);
+
+  let content;
+  if      (active === 'home')     content = <HDDashboard.Dashboard onOpenChat={() => setActive('chat')}/>;
+  else if (active === 'chat')     content = <HDChat.ChatView/>;
+  else if (active === 'terminal') content = <HDTerminal.Terminal/>;
+  else if (active === 'profiles') content = <HDPages.ProfilesPage/>;
+  else if (active === 'models')   content = <HDPages.ModelsPage/>;
+  else if (active === 'runs')     content = <HDPages.RunsPage/>;
+  else if (active === 'tools')    content = <HDPages.ToolsPage/>;
+  else if (active === 'settings') content = <HDPages.SettingsPage theme={theme} setTheme={setTheme}/>;
+  else                            content = <HDPages.OfflinePage/>;
+
+  return (
+    <>
+      <HDShell.Sidebar active={active} setActive={setActive}
+        collapsed={collapsed} setCollapsed={setCollapsed}
+        theme={theme} setTheme={setTheme}/>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <HDShell.Topbar active={active} theme={theme} setTheme={setTheme}/>
+        <div style={{ flex: 1, overflowY: active === 'chat' ? 'hidden' : 'auto', overflowX: 'hidden', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          {content}
+        </div>
+      </main>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('app')).render(<App/>);
+</script>
+</body>
+</html>

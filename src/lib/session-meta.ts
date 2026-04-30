@@ -84,7 +84,7 @@ export function clearMeta(store: MetaStore, sessionId: string): MetaStore {
 export function addFolder(store: MetaStore, name: string): { store: MetaStore; folder: Folder } {
   const folder: Folder = {
     id: `folder_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-    name: name.trim() || '未命名分组',
+    name: name.trim() || 'Untitled folder',
     createdAt: new Date().toISOString(),
   };
   return { store: { ...store, folders: [...store.folders, folder] }, folder };
@@ -116,7 +116,7 @@ export function deleteFolder(store: MetaStore, folderId: string): MetaStore {
 export function effectiveTitle(meta: SessionMeta | undefined, original?: string): string {
   const custom = meta?.customTitle?.trim();
   if (custom) return custom;
-  return (original || '').trim() || '新对话';
+  return (original || '').trim() || 'New chat';
 }
 
 /** Normalize a list of tags: trim, dedupe, drop empty, cap length. */

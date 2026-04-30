@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 24" width="200" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="HermesDeck">
+  
+  <path d="M3 5v14"></path>
+  <path d="M3 12h7"></path>
+  <path d="M10 5v14"></path>
+  
+  <path d="M14 5v14"></path>
+  <path d="M14 5h3a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-3"></path>
+  
+  <circle cx="29" cy="12" r="0.6" fill="currentColor" stroke="none"></circle>
+  
+  <text x="36" y="16" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" letter-spacing="-0.012em" fill="currentColor" stroke="none">HermesDeck</text>
+</svg>

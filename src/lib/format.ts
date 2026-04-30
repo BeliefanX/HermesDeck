@@ -18,10 +18,10 @@ const SOURCE_TABLE: Record<string, SourceMeta> = {
   whatsapp:    { key: 'whatsapp',    label: 'WhatsApp',        short: 'WA',       tone: 'green' },
   imessage:    { key: 'imessage',    label: 'iMessage',        short: 'iMsg',     tone: 'green' },
   slack:       { key: 'slack',       label: 'Slack',           short: 'Slack',    tone: 'amber' },
-  cron:        { key: 'cron',        label: '定时任务',         short: '定时',     tone: 'amber' },
-  schedule:    { key: 'schedule',    label: '计划任务',         short: '计划',     tone: 'amber' },
-  scheduled:   { key: 'scheduled',   label: '计划任务',         short: '计划',     tone: 'amber' },
-  job:         { key: 'job',         label: '后台任务',         short: 'Job',      tone: 'amber' },
+  cron:        { key: 'cron',        label: 'Scheduled task',   short: 'Cron',     tone: 'amber' },
+  schedule:    { key: 'schedule',    label: 'Scheduled task',   short: 'Sched',    tone: 'amber' },
+  scheduled:   { key: 'scheduled',   label: 'Scheduled task',   short: 'Sched',    tone: 'amber' },
+  job:         { key: 'job',         label: 'Background job',   short: 'Job',      tone: 'amber' },
   hermes:      { key: 'hermes',      label: 'Hermes',          short: 'Hermes',   tone: 'gray' },
 };
 
@@ -32,7 +32,7 @@ export function sourceMeta(source?: string): SourceMeta {
 
 export function shortTitle(title?: string, max = 36): string {
   const t = (title || '').replace(/\s+/g, ' ').trim();
-  if (!t) return '新对话';
+  if (!t) return 'New chat';
   return t.length > max ? t.slice(0, max - 1) + '…' : t;
 }
 
@@ -41,14 +41,14 @@ export function relTime(value?: string | number): string {
   const ms = typeof value === 'number' ? value : Date.parse(value);
   if (!Number.isFinite(ms)) return '';
   const diff = Date.now() - ms;
-  if (diff < 0) return '刚刚';
+  if (diff < 0) return 'just now';
   const min = Math.floor(diff / 60000);
-  if (min < 1) return '刚刚';
-  if (min < 60) return `${min} 分钟前`;
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr} 小时前`;
+  if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
-  if (day < 7) return `${day} 天前`;
+  if (day < 7) return `${day}d ago`;
   const d = new Date(ms);
   const now = new Date();
   if (d.getFullYear() === now.getFullYear()) {

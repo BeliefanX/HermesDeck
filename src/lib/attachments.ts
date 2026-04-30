@@ -52,7 +52,7 @@ function classify(file: File): Classification {
 
 function clipText(text: string): string {
   if (text.length <= MAX_TEXT_CHARS) return text;
-  return text.slice(0, MAX_TEXT_CHARS) + `\n\n[…内容已截断到 ${MAX_TEXT_CHARS} 字符]`;
+  return text.slice(0, MAX_TEXT_CHARS) + `\n\n[…truncated at ${MAX_TEXT_CHARS} chars]`;
 }
 
 async function readAsText(file: File): Promise<string> {
@@ -172,7 +172,7 @@ async function parseOnServer(file: File): Promise<{ text: string }> {
   form.append('file', file);
   const res = await fetch('/api/deck/uploads/parse', { method: 'POST', body: form });
   if (!res.ok) {
-    let msg = `服务端解析失败 (HTTP ${res.status})`;
+    let msg = `Server parse failed (HTTP ${res.status})`;
     try {
       const body = await res.json();
       if (body?.error) msg = body.error;
@@ -211,14 +211,14 @@ export async function ingestFile(file: File): Promise<AttachmentItem> {
   };
 
   if (file.size > MAX_FILE_SIZE) {
-    return { ...base, kind: 'text', status: 'error', error: `文件超过 ${formatLimit(MAX_FILE_SIZE)} 限制` };
+    return { ...base, kind: 'text', status: 'error', error: `File exceeds ${formatLimit(MAX_FILE_SIZE)} limit` };
   }
 
   const cls = classify(file);
 
   if (cls === 'image') {
     if (file.size > MAX_IMAGE_SIZE) {
-      return { ...base, kind: 'image', status: 'error', error: `图片超过 ${formatLimit(MAX_IMAGE_SIZE)} 限制` };
+      return { ...base, kind: 'image', status: 'error', error: `Image exceeds ${formatLimit(MAX_IMAGE_SIZE)} limit` };
     }
     try {
       // Hermes API Server caps request bodies at 1 MB, so we compress the
@@ -231,7 +231,7 @@ export async function ingestFile(file: File): Promise<AttachmentItem> {
           ...base,
           kind: 'image',
           status: 'error',
-          error: `图片压缩后仍超过 ${formatLimit(TARGET_IMAGE_BYTES)} ，无法上传`,
+          error: `Image still exceeds ${formatLimit(TARGET_IMAGE_BYTES)} after compression — cannot upload`,
         };
       }
       return {
@@ -243,7 +243,7 @@ export async function ingestFile(file: File): Promise<AttachmentItem> {
         dataUrl: compressed.dataUrl,
       };
     } catch (e) {
-      return { ...base, kind: 'image', status: 'error', error: e instanceof Error ? e.message : '读取失败' };
+      return { ...base, kind: 'image', status: 'error', error: e instanceof Error ? e.message : 'Read failed' };
     }
   }
 
@@ -252,7 +252,7 @@ export async function ingestFile(file: File): Promise<AttachmentItem> {
       const text = await readAsText(file);
       return { ...base, kind: 'text', status: 'ready', text };
     } catch (e) {
-      return { ...base, kind: 'text', status: 'error', error: e instanceof Error ? e.message : '读取失败' };
+      return { ...base, kind: 'text', status: 'error', error: e instanceof Error ? e.message : 'Read failed' };
     }
   }
 
@@ -261,14 +261,14 @@ export async function ingestFile(file: File): Promise<AttachmentItem> {
       const r = await parseOnServer(file);
       return { ...base, kind: 'text', status: 'ready', text: r.text };
     } catch (e) {
-      return { ...base, kind: 'text', status: 'error', error: e instanceof Error ? e.message : '解析失败' };
+      return { ...base, kind: 'text', status: 'error', error: e instanceof Error ? e.message : 'Parse failed' };
     }
   }
 
-  return { ...base, kind: 'text', status: 'error', error: '不支持的文件类型' };
+  return { ...base, kind: 'text', status: 'error', error: 'Unsupported file type' };
 }
 
-export function ingestPastedText(rawText: string, label = '粘贴内容'): AttachmentItem {
+export function ingestPastedText(rawText: string, label = 'Pasted'): AttachmentItem {
   const text = clipText(rawText);
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   const name = `${label}-${stamp}.txt`;

@@ -44,7 +44,7 @@ export default function TerminalPage() {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
       setRuns((prev) => [{
-        id: `${Date.now()}_error`, ok: false, actionId, label: '请求失败',
+        id: `${Date.now()}_error`, ok: false, actionId, label: 'Request failed',
         commandPreview: actionId, startedAt: Date.now(), durationMs: 0,
         exitCode: null, stdout: '', stderr: '', truncated: false, error: msg,
       }, ...prev].slice(0, 20));
@@ -63,10 +63,10 @@ export default function TerminalPage() {
       <section className="card terminal-hero">
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="compact-title">SAFE OPS CONSOLE</div>
-          <h2 style={{ fontSize: 18, marginBottom: 8, color: 'var(--strong-text)' }}>不是裸 Web Shell，而是受控终端</h2>
+          <h2 style={{ fontSize: 18, marginBottom: 8, color: 'var(--strong-text)' }}>Not a raw web shell — a controlled terminal</h2>
           <p className="muted small">
-            HermesDeck 的安全终端只允许服务端白名单动作，使用 <span className="kbd">shell:false</span>
-            执行，并自动做超时、截断和敏感信息脱敏。
+            HermesDeck&rsquo;s safe terminal only runs server-allowlisted actions with <span className="kbd">shell:false</span>,
+            with automatic timeout, output truncation, and secret redaction.
           </p>
         </div>
         <span className="pill ok"><ShieldCheck size={13} /> allowlisted</span>
@@ -95,19 +95,19 @@ export default function TerminalPage() {
         <main className="card terminal-main">
           <div className="terminal-control-grid">
             <label>
-              <div className="tiny">Action</div>
+              <div className="tiny">ACTION</div>
               <select className="select" value={selected} onChange={(e) => setSelected(e.target.value)}>
                 {actions.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
             </label>
             <label>
-              <div className="tiny">Profile</div>
+              <div className="tiny">PROFILE</div>
               <select className="select" value={profile} onChange={(e) => setProfile(e.target.value)}>
                 {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}{p.active ? ' · active' : ''}</option>)}
               </select>
             </label>
             <label>
-              <div className="tiny">Timeout</div>
+              <div className="tiny">TIMEOUT</div>
               <select className="select" value={timeoutMs} onChange={(e) => setTimeoutMs(Number(e.target.value))}>
                 <option value={3000}>3s</option>
                 <option value={8000}>8s</option>
@@ -129,9 +129,9 @@ export default function TerminalPage() {
 
           <div className="row terminal-toolbar">
             <button className="btn primary" disabled={!selected || busy} onClick={() => run()}>
-              <Play size={15} />{busy ? '执行中…' : '运行'}
+              <Play size={15} />{busy ? 'Running…' : 'Run'}
             </button>
-            <button className="btn" onClick={() => setRuns([])}><Trash2 size={14} /> 清空输出</button>
+            <button className="btn" onClick={() => setRuns([])}><Trash2 size={14} /> Clear output</button>
             {error && <span className="pill bad">{error}</span>}
           </div>
 
@@ -139,8 +139,11 @@ export default function TerminalPage() {
             {runs.length === 0 ? (
               <div className="empty-state">
                 <Terminal size={22} />
-                <h2>等待执行</h2>
-                <p className="muted small">选择一个动作运行，输出会显示在这里。当前终端不接受自由命令，避免把 WebUI 变成危险的远程 Shell。</p>
+                <h2>Awaiting run</h2>
+                <p className="muted small">
+                  Pick an action and run it; output appears here. Free-form commands are intentionally
+                  not accepted — the WebUI never becomes a remote shell.
+                </p>
               </div>
             ) : runs.map((r) => (
               <article className={`terminal-output ${r.ok ? '' : 'failed'}`} key={r.id}>
@@ -154,9 +157,9 @@ export default function TerminalPage() {
                   <button
                     className="btn sm"
                     onClick={() => copy(r.id, [r.stdout, r.stderr, r.error].filter(Boolean).join('\n'))}
-                    aria-label="复制输出"
+                    aria-label="Copy output"
                   >
-                    <Copy size={13} /> {copied === r.id ? '已复制' : '复制'}
+                    <Copy size={13} /> {copied === r.id ? 'Copied' : 'Copy'}
                   </button>
                 </div>
                 {r.error && <pre className="terminal-error">{r.error}</pre>}
@@ -164,7 +167,7 @@ export default function TerminalPage() {
                 {r.stderr && <pre className="terminal-stderr">{r.stderr}</pre>}
                 {!r.error && !r.stdout && !r.stderr && (
                   <div className="muted small" style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <ChevronDown size={13} /> 无输出
+                    <ChevronDown size={13} /> no output
                   </div>
                 )}
               </article>

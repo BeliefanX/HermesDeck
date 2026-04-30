@@ -1,7 +1,7 @@
 // Convert raw Hermes / OpenAI-style stream events into a low-noise UI timeline.
 // We collapse repeated `*delta*` events, surface tool calls, and translate phase
-// names into Chinese labels so the panel reads as "what happened", not as a
-// JSON dump.
+// names into short English labels so the panel reads as "what happened", not as
+// a JSON dump.
 
 export type TimelineKind = 'status' | 'tool' | 'message' | 'done' | 'error' | 'event';
 
@@ -16,9 +16,9 @@ export interface TimelineItem {
 }
 
 const PHASE_LABEL: Record<string, string> = {
-  'connecting':    '正在连接 Hermes API',
-  'streaming':     '开始流式响应',
-  'fallback-cli':  '回落到 hermes CLI',
+  'connecting':    'Connecting to Hermes API',
+  'streaming':     'Streaming response',
+  'fallback-cli':  'Falling back to hermes CLI',
 };
 
 export function isDeltaType(t?: string): boolean {
@@ -61,7 +61,7 @@ export function interpret(
       mergeDelta: false,
       item: {
         id, ts, kind: 'status', raw: type,
-        title: PHASE_LABEL[phase] || `状态：${phase}`,
+        title: PHASE_LABEL[phase] || `Status: ${phase}`,
         summary: typeof payload?.backend === 'string' ? `backend · ${payload.backend}` : undefined,
       },
     };
@@ -74,8 +74,8 @@ export function interpret(
       mergeDelta: false,
       item: {
         id, ts, kind: 'done', raw: type,
-        title: '生成完成',
-        summary: content ? `${content.length} 字符` : undefined,
+        title: 'Generation complete',
+        summary: content ? `${content.length} chars` : undefined,
       },
     };
   }
@@ -84,7 +84,7 @@ export function interpret(
     const msg = payload?.error || payload?.message || payload?.detail || JSON.stringify(payload).slice(0, 120);
     return {
       mergeDelta: false,
-      item: { id, ts, kind: 'error', raw: type, title: '出错了', summary: shorten(String(msg), 160) },
+      item: { id, ts, kind: 'error', raw: type, title: 'Error', summary: shorten(String(msg), 160) },
     };
   }
 
@@ -108,17 +108,17 @@ export function interpret(
       payload?.name ||
       'tool';
     let phase: string = 'tool';
-    if (type.endsWith('.added') || type.endsWith('.created') || type.endsWith('.started')) phase = '调用';
-    else if (type.endsWith('.completed') || type.endsWith('.done')) phase = '完成';
-    else if (type.endsWith('.failed')) phase = '失败';
-    else if (type.endsWith('.delta') || type.includes('arguments')) phase = '参数';
-    else if (type.includes('output')) phase = '结果';
+    if (type.endsWith('.added') || type.endsWith('.created') || type.endsWith('.started')) phase = 'call';
+    else if (type.endsWith('.completed') || type.endsWith('.done')) phase = 'done';
+    else if (type.endsWith('.failed')) phase = 'failed';
+    else if (type.endsWith('.delta') || type.includes('arguments')) phase = 'args';
+    else if (type.includes('output')) phase = 'result';
     const args = payload?.arguments || payload?.args || payload?.input;
     const result = payload?.output || payload?.result;
     const summary = result
-      ? `结果 · ${summarizeArgs(result)}`
+      ? `result · ${summarizeArgs(result)}`
       : args
-      ? `参数 · ${summarizeArgs(args)}`
+      ? `args · ${summarizeArgs(args)}`
       : undefined;
     return {
       mergeDelta: false,
@@ -134,17 +134,17 @@ export function interpret(
 
   // Response lifecycle
   if (type === 'response.created') {
-    return { mergeDelta: false, item: { id, ts, kind: 'event', raw: type, title: '响应已创建', summary: payload?.response?.id } };
+    return { mergeDelta: false, item: { id, ts, kind: 'event', raw: type, title: 'Response created', summary: payload?.response?.id } };
   }
   if (type === 'response.output_item.added') {
     const itype = payload?.item?.type || 'item';
-    return { mergeDelta: false, item: { id, ts, kind: 'event', raw: type, title: `输出片段 · ${itype}` } };
+    return { mergeDelta: false, item: { id, ts, kind: 'event', raw: type, title: `Output item · ${itype}` } };
   }
   if (type === 'response.completed' || type === 'response.done') {
-    return { mergeDelta: false, item: { id, ts, kind: 'done', raw: type, title: '模型响应完成' } };
+    return { mergeDelta: false, item: { id, ts, kind: 'done', raw: type, title: 'Response complete' } };
   }
   if (type === 'response.output_text.done') {
-    return { mergeDelta: false, item: { id, ts, kind: 'event', raw: type, title: '文本输出完成' } };
+    return { mergeDelta: false, item: { id, ts, kind: 'event', raw: type, title: 'Text output done' } };
   }
 
   // Generic fallback — keep but render compactly

@@ -53,12 +53,12 @@ export function MermaidBlock({ chart }: { chart: string }) {
           setError('');
         } catch (e) {
           if (cancelled) return;
-          setError(e instanceof Error ? e.message : '渲染失败');
+          setError(e instanceof Error ? e.message : 'render failed');
         }
       })
       .catch((e: unknown) => {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : '加载失败');
+        setError(e instanceof Error ? e.message : 'load failed');
       });
     return () => {
       cancelled = true;
@@ -68,7 +68,7 @@ export function MermaidBlock({ chart }: { chart: string }) {
   if (error) {
     return (
       <div className="md-mermaid md-mermaid-error">
-        <div className="md-mermaid-msg">Mermaid 渲染失败 · 显示原始代码</div>
+        <div className="md-mermaid-msg">Mermaid render failed · showing source</div>
         <pre>{chart}</pre>
       </div>
     );

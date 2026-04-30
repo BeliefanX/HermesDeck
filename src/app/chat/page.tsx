@@ -67,9 +67,9 @@ type PersistedChatState = {
 
 const STORAGE_KEY = 'hermesdeck.chat.v1';
 const SUGGESTIONS = [
-  '帮我总结一下当前 Hermes 控制台的能力',
-  '列出 active profile 的 model 与 toolsets',
-  '为这个会话生成一段 README 描述',
+  'Summarize what HermesDeck can do right now',
+  'List the active profile’s model and toolsets',
+  'Draft a README description for this session',
 ];
 
 function safeParseStored(): PersistedChatState | null {
@@ -506,15 +506,15 @@ export default function ChatPage() {
       const cur = deltaRef.current;
       if (cur && Date.now() - cur.lastTs < 60_000) {
         cur.item.count = (cur.item.count || 1) + 1;
-        cur.item.summary = `${cur.item.count} 个文本块`;
+        cur.item.summary = `${cur.item.count} text chunks`;
         cur.lastTs = Date.now();
         setTimeline((prev) => prev.map((x) => (x.id === cur.item.id ? { ...cur.item } : x)));
       } else {
         const newItem: TimelineItem = {
           id: `delta-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           kind: 'message',
-          title: '正在流式输出',
-          summary: '1 个文本块',
+          title: 'Streaming…',
+          summary: '1 text chunk',
           ts: Date.now(),
           count: 1,
           raw: innerType,
@@ -563,7 +563,7 @@ export default function ChatPage() {
     let sid = active;
     if (!sid) {
       sid = genSessionId();
-      const title = text.split('\n')[0].slice(0, 64) || '新对话';
+      const title = text.split('\n')[0].slice(0, 64) || 'New chat';
       const created: LocalSession = {
         id: sid, profileId: profile, title, source: 'hermesdeck', model: profile,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), messageCount: 0,
@@ -729,7 +729,7 @@ export default function ChatPage() {
       await deckApi.deleteSession(id, profile);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(`删除失败：${msg}`);
+      setError(`Delete failed: ${msg}`);
     }
   }
 
@@ -936,18 +936,18 @@ export default function ChatPage() {
         <div className="row" style={{ alignItems: 'center', gap: 8 }}>
           <span className={`tag ${meta.tone}`} title={meta.label}>{meta.short}</span>
           {s.parentSessionId && (
-            <span className="tag gray subagent-tag" title={`Subagent · 父会话 ${s.parentSessionId}`}>子</span>
+            <span className="tag gray subagent-tag" title={`Subagent · parent ${s.parentSessionId}`}>sub</span>
           )}
           <div className="session-title" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-            {showPinIcon && <Pin size={11} className="pin-mark" aria-label="已置顶" />}
+            {showPinIcon && <Pin size={11} className="pin-mark" aria-label="Pinned" />}
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortTitle(title, 36)}</span>
           </div>
           <div className="session-actions">
             <button
               type="button"
               className="session-kebab"
-              aria-label="会话操作"
-              title="会话操作"
+              aria-label="Session actions"
+              title="Session actions"
               onClick={(e) => {
                 e.stopPropagation();
                 if (isMenuOpen) {
@@ -990,28 +990,28 @@ export default function ChatPage() {
         <div className="session-meta">
           {time && <span className="tiny">{time}</span>}
           {s.model && <span className="tiny" style={{ flex: 'unset' }}>· {s.model}</span>}
-          {!!s.messageCount && <span className="tiny" style={{ flex: 'unset' }}>· {s.messageCount} 条</span>}
+          {!!s.messageCount && <span className="tiny" style={{ flex: 'unset' }}>· {s.messageCount} msgs</span>}
           {!!s.childCount && (
-            <span className="tiny session-childcount" style={{ flex: 'unset' }} title={`包含 ${s.childCount} 个 subagent 子会话`}>
+            <span className="tiny session-childcount" style={{ flex: 'unset' }} title={`Contains ${s.childCount} subagent sessions`}>
               · ↳ {s.childCount} subagent
             </span>
           )}
           {folder && !showArchived && !sm.pinned && (
-            <span className="tiny session-folder-tag" style={{ flex: 'unset' }} title={`分组：${folder.name}`}>
+            <span className="tiny session-folder-tag" style={{ flex: 'unset' }} title={`Folder: ${folder.name}`}>
               <FolderIcon size={9} /> {folder.name}
             </span>
           )}
           {sm.pinned && folder && (
-            <span className="tiny session-folder-tag" style={{ flex: 'unset' }} title={`分组：${folder.name}`}>
+            <span className="tiny session-folder-tag" style={{ flex: 'unset' }} title={`Folder: ${folder.name}`}>
               <FolderIcon size={9} /> {folder.name}
             </span>
           )}
           {sm.archived && (
-            <span className="tiny" style={{ flex: 'unset', color: 'var(--muted)' }}>· 已归档</span>
+            <span className="tiny" style={{ flex: 'unset', color: 'var(--muted)' }}>· archived</span>
           )}
         </div>
         {sm.tags && sm.tags.length > 0 && (
-          <div className="session-tags" aria-label="标签">
+          <div className="session-tags" aria-label="Tags">
             {sm.tags.map((t) => (
               <span key={t} className="session-tag" title={`#${t}`}>#{t}</span>
             ))}
@@ -1026,7 +1026,7 @@ export default function ChatPage() {
       {sessionGroups.pinned.length > 0 && (
         <div className="session-group">
           <div className="session-group-head">
-            <Pin size={11} /><span>置顶</span>
+            <Pin size={11} /><span>Pinned</span>
             <span className="muted tiny">{sessionGroups.pinned.length}</span>
           </div>
           {sessionGroups.pinned.map(renderSessionItem)}
@@ -1041,7 +1041,7 @@ export default function ChatPage() {
                 type="button"
                 className="folder-toggle"
                 onClick={(e) => { e.stopPropagation(); toggleFolderCollapsed(folder.id); }}
-                aria-label={collapsed ? '展开分组' : '折叠分组'}
+                aria-label={collapsed ? 'Expand folder' : 'Collapse folder'}
               >
                 {collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
               </button>
@@ -1052,8 +1052,8 @@ export default function ChatPage() {
                 <button
                   type="button"
                   className="folder-action"
-                  aria-label="重命名分组"
-                  title="重命名分组"
+                  aria-label="Rename folder"
+                  title="Rename folder"
                   onClick={(e) => { e.stopPropagation(); setDialog({ kind: 'renameFolder', folderId: folder.id }); }}
                 >
                   <Sparkles size={11} />
@@ -1061,8 +1061,8 @@ export default function ChatPage() {
                 <button
                   type="button"
                   className="folder-action"
-                  aria-label="删除分组"
-                  title="删除分组（会话不会被删除）"
+                  aria-label="Delete folder"
+                  title="Delete folder (sessions are kept)"
                   onClick={(e) => { e.stopPropagation(); applyDeleteFolder(folder.id); }}
                 >
                   <X size={12} />
@@ -1071,7 +1071,7 @@ export default function ChatPage() {
             </div>
             {!collapsed && list.map(renderSessionItem)}
             {!collapsed && list.length === 0 && (
-              <div className="session-group-empty muted tiny">空分组</div>
+              <div className="session-group-empty muted tiny">Empty folder</div>
             )}
           </div>
         );
@@ -1080,7 +1080,7 @@ export default function ChatPage() {
         <div className="session-group">
           {(sessionGroups.pinned.length > 0 || sessionGroups.folderGroups.length > 0) && (
             <div className="session-group-head">
-              <Inbox size={11} /><span>未分组</span>
+              <Inbox size={11} /><span>Unfiled</span>
               <span className="muted tiny">{sessionGroups.unfoldered.length}</span>
             </div>
           )}
@@ -1093,7 +1093,7 @@ export default function ChatPage() {
         && (
           <div className="session-empty">
             <span className="muted small">
-              {showArchived ? '没有已归档的会话' : (search ? '没有匹配的会话' : '还没有会话')}
+              {showArchived ? 'No archived sessions' : (search ? 'No matching sessions' : 'No sessions yet')}
             </span>
           </div>
         )}
@@ -1123,8 +1123,8 @@ export default function ChatPage() {
         <button
           type="button"
           className={`sessions-source-toggle ${sourceFilterActive ? 'active' : ''}`}
-          aria-label={sourceFilterActive ? `按来源筛选（已启用 ${enabledSources?.length || 0}）` : '按来源筛选'}
-          title="按来源筛选"
+          aria-label={sourceFilterActive ? `Filter by source (${enabledSources?.length || 0} enabled)` : 'Filter by source'}
+          title="Filter by source"
           onClick={() => setSourceFilterOpen((v) => !v)}
         >
           <ListFilter size={12} />
@@ -1133,10 +1133,10 @@ export default function ChatPage() {
           )}
         </button>
         {sourceFilterOpen && (
-          <div className="source-filter-pop" role="dialog" aria-label="按来源筛选">
+          <div className="source-filter-pop" role="dialog" aria-label="Filter by source">
             <div className="source-filter-head">
-              <b>按来源筛选</b>
-              <span className="muted tiny">{totalCount} 个会话</span>
+              <b>Filter by source</b>
+              <span className="muted tiny">{totalCount} sessions</span>
             </div>
             <label className={`source-filter-row toggle ${showSubagents ? 'on' : ''}`}>
               <input
@@ -1144,13 +1144,13 @@ export default function ChatPage() {
                 checked={showSubagents}
                 onChange={(e) => setShowSubagents(e.target.checked)}
               />
-              <span className="source-filter-name">显示 subagent 子会话</span>
+              <span className="source-filter-name">Show subagent sessions</span>
               <span className="muted tiny">{subagentCount}</span>
             </label>
             <div className="source-filter-divider" />
             <div className="source-filter-list">
               {knownSources.length === 0 && (
-                <div className="muted tiny" style={{ padding: 6 }}>暂无会话</div>
+                <div className="muted tiny" style={{ padding: 6 }}>No sessions yet</div>
               )}
               {knownSources.map(([key, count]) => {
                 const meta = sourceMeta(key);
@@ -1171,12 +1171,12 @@ export default function ChatPage() {
                 className="btn sm ghost"
                 onClick={() => setEnabledSources(['api_server'])}
                 disabled={!sourceCounts.has('api_server')}
-              >仅 Web</button>
+              >Web only</button>
               <button
                 type="button"
                 className="btn sm ghost"
                 onClick={() => setEnabledSources(null)}
-              >全部</button>
+              >All</button>
             </div>
           </div>
         )}
@@ -1192,14 +1192,14 @@ export default function ChatPage() {
       const sm = getMeta(metaStore, dialog.sessionId);
       return (
         <InlineDialog
-          title="重命名会话"
-          description="自定义标题只在 Deck 本地展示，不会同步到 Hermes。"
+          title="Rename session"
+          description="The custom title is shown in this Deck only — it does not sync to Hermes."
           initialValue={effectiveTitle(sm, s?.title)}
-          placeholder="新对话"
-          confirmLabel="保存"
+          placeholder="New chat"
+          confirmLabel="Save"
           onConfirm={(v) => { applyRename(dialog.sessionId, v); setDialog(null); }}
           onCancel={() => setDialog(null)}
-          helper="留空可恢复为原始标题"
+          helper="Leave empty to restore the original title"
         />
       );
     }
@@ -1207,24 +1207,24 @@ export default function ChatPage() {
       const sm = getMeta(metaStore, dialog.sessionId);
       return (
         <InlineDialog
-          title="编辑标签"
-          description="用于在侧栏快速识别会话；最多 8 个，逗号分隔。"
+          title="Edit tags"
+          description="Quick identifiers for the sessions list — up to 8, comma-separated."
           initialValue={(sm.tags || []).join(', ')}
-          placeholder="工作, 重要, AI"
-          confirmLabel="保存"
+          placeholder="work, urgent, AI"
+          confirmLabel="Save"
           onConfirm={(v) => { applyTags(dialog.sessionId, v); setDialog(null); }}
           onCancel={() => setDialog(null)}
-          helper="支持中英文，单个标签最多 24 个字符"
+          helper="Up to 24 chars per tag"
         />
       );
     }
     if (dialog.kind === 'newFolder') {
       return (
         <InlineDialog
-          title="新建分组"
+          title="New folder"
           initialValue=""
-          placeholder="工作 / 个人 / 学习…"
-          confirmLabel="创建"
+          placeholder="Work / Personal / Research…"
+          confirmLabel="Create"
           onConfirm={(v) => {
             const name = v.trim();
             if (!name) { setDialog(null); return; }
@@ -1239,9 +1239,9 @@ export default function ChatPage() {
       const folder = metaStore.folders.find((f) => f.id === dialog.folderId);
       return (
         <InlineDialog
-          title="重命名分组"
+          title="Rename folder"
           initialValue={folder?.name || ''}
-          confirmLabel="保存"
+          confirmLabel="Save"
           onConfirm={(v) => { applyRenameFolder(dialog.folderId, v); setDialog(null); }}
           onCancel={() => setDialog(null)}
         />
@@ -1251,26 +1251,26 @@ export default function ChatPage() {
       const sid = dialog.sessionId;
       const title = dialog.sessionTitle;
       return (
-        <div className="dialog-backdrop" onClick={() => setDialog(null)} role="dialog" aria-modal="true" aria-label="删除会话">
+        <div className="dialog-backdrop" onClick={() => setDialog(null)} role="dialog" aria-modal="true" aria-label="Delete session">
           <div className="dialog-card" onClick={(e) => e.stopPropagation()}>
             <div className="dialog-header">
               <div>
-                <h3>删除会话</h3>
+                <h3>Delete session</h3>
                 <div className="muted small" style={{ marginTop: 4 }}>
-                  即将永久删除「{shortTitle(title, 40)}」及其所有消息。Hermes 后端的 state.db 也会一并清除，无法恢复。
+                  This permanently deletes “{shortTitle(title, 40)}” and all of its messages. The matching row in Hermes&rsquo; state.db is also cleared. This cannot be undone.
                 </div>
               </div>
-              <button className="btn icon sm" onClick={() => setDialog(null)} aria-label="关闭"><X size={14} /></button>
+              <button className="btn icon sm" onClick={() => setDialog(null)} aria-label="Close"><X size={14} /></button>
             </div>
             <div className="dialog-actions" style={{ marginTop: 14 }}>
-              <button className="btn sm" onClick={() => setDialog(null)}>取消</button>
+              <button className="btn sm" onClick={() => setDialog(null)}>Cancel</button>
               <button
                 className="btn sm danger"
                 onClick={() => {
                   setDialog(null);
                   performDeleteSession(sid);
                 }}
-              >确认删除</button>
+              >Confirm delete</button>
             </div>
           </div>
         </div>
@@ -1285,8 +1285,8 @@ export default function ChatPage() {
         <div className="dropzone-overlay" aria-hidden>
           <div className="dropzone-card">
             <Upload size={28} />
-            <div className="dropzone-title">释放以添加附件</div>
-            <div className="dropzone-sub">支持图片、PDF、DOCX、文本与代码文件</div>
+            <div className="dropzone-title">Drop to attach</div>
+            <div className="dropzone-sub">Images, PDF, DOCX, text and code files</div>
           </div>
         </div>
       )}
@@ -1295,8 +1295,8 @@ export default function ChatPage() {
           type="button"
           className={`edge-toggle edge-left ${showSessions ? 'on' : 'off'}`}
           onClick={() => setShowSessions((v) => !v)}
-          aria-label={showSessions ? '折叠会话面板' : '展开会话面板'}
-          title={showSessions ? '折叠会话面板' : '展开会话面板'}
+          aria-label={showSessions ? 'Collapse sessions panel' : 'Expand sessions panel'}
+          title={showSessions ? 'Collapse sessions panel' : 'Expand sessions panel'}
         >
           {showSessions ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
         </button>
@@ -1304,8 +1304,8 @@ export default function ChatPage() {
           type="button"
           className={`edge-toggle edge-right ${showTimeline ? 'on' : 'off'}`}
           onClick={() => setShowTimeline((v) => !v)}
-          aria-label={showTimeline ? '折叠运行事件' : '展开运行事件'}
-          title={showTimeline ? '折叠运行事件' : '展开运行事件'}
+          aria-label={showTimeline ? 'Collapse run timeline' : 'Expand run timeline'}
+          title={showTimeline ? 'Collapse run timeline' : 'Expand run timeline'}
         >
           {showTimeline ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
@@ -1314,52 +1314,52 @@ export default function ChatPage() {
         <aside className="card chat-panel thread sessions-panel">
           <div className="panel-header">
             <div style={{ minWidth: 0, flex: 1 }}>
-              <h2>会话</h2>
-              <div className="tiny">Hermes sessions · 跨设备同步</div>
+              <h2>Sessions</h2>
+              <div className="tiny">Hermes sessions · synced across devices</div>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
               <button
                 className="btn icon sm primary"
                 onClick={newChat}
-                aria-label="新建对话"
-                title="新建对话"
+                aria-label="New chat"
+                title="New chat"
               >
                 <Plus size={14} />
               </button>
             </div>
           </div>
           <div className="sessions-toolbar">
-            <select className="select" value={profile} onChange={(e) => setProfile(e.target.value)} aria-label="选择 profile">
+            <select className="select" value={profile} onChange={(e) => setProfile(e.target.value)} aria-label="Select profile">
               {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}{p.active ? ' · active' : ''}</option>)}
             </select>
             <div className="input-group sessions-search">
               <span className="icon"><Search size={13} /></span>
               <input
                 className="input"
-                placeholder={showArchived ? '搜索已归档…' : '搜索会话或 #标签'}
+                placeholder={showArchived ? 'Search archived…' : 'Search sessions or #tags'}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                aria-label="搜索会话"
+                aria-label="Search sessions"
               />
               {search && (
                 <button
                   className="sessions-search-clear"
                   onClick={() => setSearch('')}
-                  aria-label="清除搜索"
-                  title="清除搜索"
+                  aria-label="Clear search"
+                  title="Clear search"
                   type="button"
                 >
                   <X size={11} />
                 </button>
               )}
             </div>
-            <div className="sessions-tabs" role="tablist" aria-label="视图">
+            <div className="sessions-tabs" role="tablist" aria-label="View">
               <button
                 role="tab"
                 aria-selected={!showArchived}
                 className={`sessions-tab ${!showArchived ? 'active' : ''}`}
                 onClick={() => setShowArchived(false)}
-              >全部</button>
+              >All</button>
               <button
                 role="tab"
                 aria-selected={showArchived}
@@ -1367,13 +1367,13 @@ export default function ChatPage() {
                 onClick={() => setShowArchived(true)}
               >
                 {showArchived ? <ArchiveRestore size={11} /> : <Archive size={11} />}
-                已归档
+                Archived
               </button>
               <button
                 className="sessions-folder-add"
                 onClick={() => setDialog({ kind: 'newFolder' })}
-                aria-label="新建分组"
-                title="新建分组"
+                aria-label="New folder"
+                title="New folder"
                 type="button"
               >
                 <FolderPlus size={12} />
@@ -1394,21 +1394,21 @@ export default function ChatPage() {
               <button
                 className="btn icon sm panel-collapse chat-mobile-only"
                 onClick={() => setSessionsOpen(true)}
-                aria-label="会话列表"
-                title="会话列表"
+                aria-label="Sessions list"
+                title="Sessions list"
               >
                 <Layers size={15} />
               </button>
               <button
                 className="btn icon sm panel-collapse chat-mobile-only"
                 onClick={newChat}
-                aria-label="新建对话"
-                title="新建对话"
+                aria-label="New chat"
+                title="New chat"
               >
                 <Plus size={15} />
               </button>
               {!showSessions && (
-                <button className="btn icon sm" onClick={newChat} aria-label="新建对话" title="新建对话">
+                <button className="btn icon sm" onClick={newChat} aria-label="New chat" title="New chat">
                   <Plus size={14} />
                 </button>
               )}
@@ -1425,15 +1425,15 @@ export default function ChatPage() {
                 type="button"
                 className={`btn icon sm ${showToolDetails ? 'primary' : ''}`}
                 onClick={() => setShowToolDetails((v) => !v)}
-                aria-label={showToolDetails ? '隐藏工具调用' : '显示工具调用'}
-                title={showToolDetails ? '隐藏工具调用 / Subagent 内部消息' : '显示工具调用 / Subagent 内部消息（排查用）'}
+                aria-label={showToolDetails ? 'Hide tool calls' : 'Show tool calls'}
+                title={showToolDetails ? 'Hide tool calls / subagent internals' : 'Show tool calls / subagent internals (debug)'}
                 aria-pressed={showToolDetails}
               >
                 <Wrench size={13} />
               </button>
               {busy ? (
-                <button className="btn sm" onClick={() => abortRef.current?.abort()} aria-label="停止生成">
-                  <Square size={13} /> 停止
+                <button className="btn sm" onClick={() => abortRef.current?.abort()} aria-label="Stop generation">
+                  <Square size={13} /> Stop
                 </button>
               ) : (
                 <span className="pill ok"><Sparkles size={12} /> ready</span>
@@ -1447,9 +1447,9 @@ export default function ChatPage() {
                 <div className="metric-icon" style={{ width: 44, height: 44, borderRadius: 14 }}>
                   <MessageSquare size={20} />
                 </div>
-                <h2>开始一个 Hermes 会话</h2>
+                <h2>Start a Hermes session</h2>
                 <p className="muted small">
-                  选择 Profile，发送消息。HermesDeck 会保存本地会话，并用 response_id 串联后续轮次。
+                  Pick a profile and send a message. HermesDeck stores sessions locally and chains follow-ups via response_id.
                 </p>
                 <div className="suggest">
                   {SUGGESTIONS.map((s) => (
@@ -1460,9 +1460,9 @@ export default function ChatPage() {
             )}
             {!showToolDetails && hiddenToolCount > 0 && (
               <div className="tool-hidden-bar" role="note">
-                <span className="muted small">{hiddenToolCount} 条工具调用 / Subagent 内部消息已折叠</span>
+                <span className="muted small">{hiddenToolCount} tool calls / subagent internals hidden</span>
                 <button type="button" className="btn sm" onClick={() => setShowToolDetails(true)}>
-                  <Wrench size={12} /> 显示
+                  <Wrench size={12} /> Show
                 </button>
               </div>
             )}
@@ -1490,7 +1490,7 @@ export default function ChatPage() {
                 >
                   <div className={`msg ${m.role}${isTool || isToolCall ? ' tool' : ''}${isSubagentRow ? ' subagent' : ''}`}>
                     {m.attachments && m.attachments.length > 0 && (
-                      <div className="msg-attachments" role="list" aria-label="附件">
+                      <div className="msg-attachments" role="list" aria-label="Attachments">
                         {m.attachments.map((a) => (
                           <AttachmentChip
                             key={a.id}
@@ -1525,26 +1525,26 @@ export default function ChatPage() {
               <div className="surface" style={{ borderColor: 'rgba(255,102,122,.36)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 <AlertTriangle size={16} color="var(--red)" style={{ flexShrink: 0, marginTop: 2 }} />
                 <div style={{ minWidth: 0 }}>
-                  <b style={{ color: 'var(--red)' }}>请求失败</b>
+                  <b style={{ color: 'var(--red)' }}>Request failed</b>
                   <div className="tiny" style={{ marginTop: 4, color: 'var(--muted)' }}>{error}</div>
                 </div>
-                <button className="btn sm" onClick={() => setError('')} aria-label="关闭错误"><X size={13} /></button>
+                <button className="btn sm" onClick={() => setError('')} aria-label="Dismiss error"><X size={13} /></button>
               </div>
             )}
             {showJumpToBottom && (
               <button
                 className="btn sm scroll-to-bottom"
                 onClick={() => { stickToBottomRef.current = true; scrollToBottom(true); }}
-                aria-label="滚动到底部"
+                aria-label="Scroll to latest"
               >
-                <ArrowDown size={14} /> 跳到最新
+                <ArrowDown size={14} /> Jump to latest
               </button>
             )}
           </div>
 
           <div className="composer">
             {attachments.length > 0 && (
-              <div className="composer-atts" role="list" aria-label="已添加的附件">
+              <div className="composer-atts" role="list" aria-label="Pending attachments">
                 {attachments.map((a) => (
                   <AttachmentChip key={a.id} item={a} onRemove={() => removeAttachment(a.id)} />
                 ))}
@@ -1567,8 +1567,8 @@ export default function ChatPage() {
                 type="button"
                 className="btn icon composer-attach-btn"
                 onClick={() => fileInputRef.current?.click()}
-                aria-label="添加附件"
-                title="添加文件、图片"
+                aria-label="Add attachment"
+                title="Add files or images"
                 disabled={busy}
               >
                 <Paperclip size={15} />
@@ -1604,7 +1604,7 @@ export default function ChatPage() {
                     if (files.length) {
                       e.preventDefault();
                       addFiles(files);
-                      flashPasteHint(`已添加 ${files.length} 个文件`);
+                      flashPasteHint(`Added ${files.length} file${files.length === 1 ? '' : 's'}`);
                       return;
                     }
                     const text = cd.getData('text/plain');
@@ -1612,7 +1612,7 @@ export default function ChatPage() {
                       e.preventDefault();
                       const att = ingestPastedText(text);
                       setAttachments((cur) => [...cur, att]);
-                      flashPasteHint(`大段文本（${text.length.toLocaleString()} 字符）已转为附件`);
+                      flashPasteHint(`Long paste (${text.length.toLocaleString()} chars) converted to attachment`);
                     }
                   }}
                   onKeyDown={(e) => {
@@ -1646,16 +1646,16 @@ export default function ChatPage() {
                     }
                   }}
                   rows={1}
-                  aria-label="消息输入框"
+                  aria-label="Message composer"
                 />
               </div>
               <button
                 className="btn primary"
                 disabled={busy || !input.trim()}
                 onClick={() => send()}
-                aria-label="发送消息"
+                aria-label="Send message"
               >
-                <Send size={15} /> 发送
+                <Send size={15} /> Send
               </button>
             </div>
             {pasteHint && (
@@ -1668,12 +1668,12 @@ export default function ChatPage() {
         <aside className="card chat-panel thread right-panel">
           <div className="panel-header">
             <div style={{ minWidth: 0, flex: 1 }}>
-              <h2>运行事件</h2>
-              <div className="tiny">从最新到最早 · 文本块自动合并</div>
+              <h2>Run timeline</h2>
+              <div className="tiny">Newest first · text chunks auto-merged</div>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
               {timeline.length > 0 && (
-                <button className="btn sm" onClick={clearTimeline} aria-label="清空时间线">清空</button>
+                <button className="btn sm" onClick={clearTimeline} aria-label="Clear timeline">Clear</button>
               )}
             </div>
           </div>
@@ -1690,34 +1690,34 @@ export default function ChatPage() {
         onClick={() => setSessionsOpen(false)}
         aria-hidden
       />
-      <div className={`sheet ${sessionsOpen ? 'open' : ''}`} role="dialog" aria-label="会话列表">
+      <div className={`sheet ${sessionsOpen ? 'open' : ''}`} role="dialog" aria-label="Sessions list">
         <div className="sheet-handle" />
         <div className="sheet-header">
           <div>
-            <h2>会话</h2>
+            <h2>Sessions</h2>
             <div className="tiny">Profile <span className="kbd">{profile}</span></div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button
               className="btn icon sm primary"
               onClick={newChat}
-              aria-label="新建对话"
-              title="新建对话"
+              aria-label="New chat"
+              title="New chat"
             >
               <Plus size={13} />
             </button>
-            <button className="btn icon" onClick={() => setSessionsOpen(false)} aria-label="关闭"><X size={16} /></button>
+            <button className="btn icon" onClick={() => setSessionsOpen(false)} aria-label="Close"><X size={16} /></button>
           </div>
         </div>
         <div className="sessions-toolbar mobile">
-          <select className="select" value={profile} onChange={(e) => setProfile(e.target.value)} aria-label="选择 profile">
+          <select className="select" value={profile} onChange={(e) => setProfile(e.target.value)} aria-label="Select profile">
             {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}{p.active ? ' · active' : ''}</option>)}
           </select>
           <div className="input-group sessions-search">
             <span className="icon"><Search size={13} /></span>
             <input
               className="input"
-              placeholder={showArchived ? '搜索已归档…' : '搜索会话或 #标签'}
+              placeholder={showArchived ? 'Search archived…' : 'Search sessions or #tags'}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -1728,18 +1728,18 @@ export default function ChatPage() {
               aria-selected={!showArchived}
               className={`sessions-tab ${!showArchived ? 'active' : ''}`}
               onClick={() => setShowArchived(false)}
-            >全部</button>
+            >All</button>
             <button
               role="tab"
               aria-selected={showArchived}
               className={`sessions-tab ${showArchived ? 'active' : ''}`}
               onClick={() => setShowArchived(true)}
-            >已归档</button>
+            >Archived</button>
             <button
               className="sessions-folder-add"
               onClick={() => setDialog({ kind: 'newFolder' })}
-              aria-label="新建分组"
-              title="新建分组"
+              aria-label="New folder"
+              title="New folder"
               type="button"
             >
               <FolderPlus size={12} />
@@ -1759,7 +1759,7 @@ function TimelineView({ items, busy }: { items: TimelineItem[]; busy: boolean })
     return (
       <div className="tl-empty">
         <Radio size={20} />
-        <div className="muted small">{busy ? '等待 Hermes 第一个事件…' : '工具调用、状态与流式事件会显示在这里'}</div>
+        <div className="muted small">{busy ? 'Waiting for first Hermes event…' : 'Tool calls, status, and stream events will show up here'}</div>
       </div>
     );
   }
@@ -1811,7 +1811,7 @@ function ToolCallSummary({ calls }: { calls: Array<{ id?: string; name?: string;
   const [open, setOpen] = useState(false);
   const subagent = calls.some((c) => isSubagentTool(c.name));
   const Icon = subagent ? Network : Wrench;
-  const title = subagent ? '委派 Subagent' : '调用工具';
+  const title = subagent ? 'Delegate to subagent' : 'Tool call';
   return (
     <div className={`tool-block${subagent ? ' subagent' : ''}`}>
       <div className="tool-block-head" onClick={() => setOpen((v) => !v)} role="button" aria-expanded={open}>
@@ -1834,7 +1834,7 @@ function ToolCallSummary({ calls }: { calls: Array<{ id?: string; name?: string;
                   {isSubagentTool(c.name) && <Bot size={11} style={{ marginRight: 4, verticalAlign: -1 }} />}
                   {c.name || 'tool'}
                 </div>
-                <pre className="tool-call-args">{parsed.formatted || '(无参数)'}</pre>
+                <pre className="tool-call-args">{parsed.formatted || '(no args)'}</pre>
               </div>
             );
           })}
@@ -1886,7 +1886,7 @@ function ToolResultSummary({ toolName, content }: { toolName?: string; content: 
         })()
       : (content.length > 140 ? content.slice(0, 140) + '…' : content);
   const Icon = subagent ? Bot : CheckCircle2;
-  const title = subagent ? 'Subagent 返回' : '工具返回';
+  const title = subagent ? 'Subagent result' : 'Tool result';
   return (
     <div className={`tool-block result${subagent ? ' subagent' : ''}`}>
       <div className="tool-block-head" onClick={() => setOpen((v) => !v)} role="button" aria-expanded={open}>

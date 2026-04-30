@@ -34,16 +34,16 @@ export function CodeBlock({ language, raw, children }: Props) {
           type="button"
           className="md-code-copy"
           onClick={onCopy}
-          aria-label="复制代码"
-          title="复制代码"
+          aria-label="Copy code"
+          title="Copy code"
         >
           {copied ? (
             <>
-              <Check size={11} /> 已复制
+              <Check size={11} /> Copied
             </>
           ) : (
             <>
-              <Copy size={11} /> 复制
+              <Copy size={11} /> Copy
             </>
           )}
         </button>

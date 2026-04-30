@@ -28,17 +28,17 @@ export function AttachmentChip({ item, onRemove, onPreview, readOnly }: Props) {
         <div className="att-sub">
           {item.status === 'loading' && (
             <>
-              <Loader2 size={11} className="spin" /> 处理中
+              <Loader2 size={11} className="spin" /> Processing
             </>
           )}
           {item.status === 'ready' && (
             <span>
-              {isImage ? '图片' : '文本'} · {formatBytes(item.size)}
+              {isImage ? 'image' : 'text'} · {formatBytes(item.size)}
             </span>
           )}
           {item.status === 'error' && (
             <>
-              <AlertCircle size={11} /> {item.error || '失败'}
+              <AlertCircle size={11} /> {item.error || 'Failed'}
             </>
           )}
         </div>
@@ -61,8 +61,8 @@ export function AttachmentChip({ item, onRemove, onPreview, readOnly }: Props) {
           type="button"
           className="att-remove"
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          aria-label="移除附件"
-          title="移除附件"
+          aria-label="Remove attachment"
+          title="Remove attachment"
         >
           <X size={12} />
         </button>

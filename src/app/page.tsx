@@ -42,9 +42,9 @@ export default function HomePage() {
   }, []);
 
   const statusClass = health?.status === 'connected' ? 'ok' : health?.status === 'degraded' ? 'warn' : 'bad';
-  const statusLabel = health?.status === 'connected' ? '已连接'
-    : health?.status === 'degraded' ? '降级可用'
-    : health ? '未连接' : '检测中';
+  const statusLabel = health?.status === 'connected' ? 'Connected'
+    : health?.status === 'degraded' ? 'Degraded'
+    : health ? 'Disconnected' : 'Checking';
   const activeProfile = profiles.find((p) => p.active);
 
   // ── Aggregations ────────────────────────────────────────────────
@@ -127,9 +127,9 @@ export default function HomePage() {
         <div className="row" style={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div className="hero-kicker">Command deck</div>
-            <h1>Hermes 控制台</h1>
+            <h1>Hermes command deck</h1>
             <p className="muted" style={{ maxWidth: 640, marginTop: 12, fontSize: 14.5 }}>
-              多会话对话工作台，Profiles、Runs、Tools 与安全终端集中在一处。所有数据来自 Hermes 原生 state.db 与 API Server，前端零硬编码。
+              Multi-session chat workspace — profiles, runs, tools and a safe terminal in one place. All data comes from Hermes&rsquo; native state.db and API Server. Zero hard-coded values in the frontend.
             </p>
           </div>
           <span className={`pill ${statusClass}`} style={{ alignSelf: 'flex-start' }}>
@@ -137,8 +137,8 @@ export default function HomePage() {
           </span>
         </div>
         <div className="row start" style={{ marginTop: 22, gap: 10, flexWrap: 'wrap' }}>
-          <Link href="/chat" className="btn primary"><MessageSquare size={15} /> 进入对话</Link>
-          <Link href="/terminal" className="btn ghost"><Terminal size={15} /> 安全终端</Link>
+          <Link href="/chat" className="btn primary"><MessageSquare size={15} /> Open chat</Link>
+          <Link href="/terminal" className="btn ghost"><Terminal size={15} /> Safe terminal</Link>
           {activeProfile && <span className="pill" style={{ marginLeft: 'auto' }}>profile · {activeProfile.name}</span>}
         </div>
       </section>
@@ -165,9 +165,9 @@ export default function HomePage() {
         />
         <Metric
           icon={<Hash size={18} />}
-          label="总消息数"
+          label="Total messages"
           value={loading ? <Skel w={50} /> : totalMessages.toLocaleString()}
-          detail={sessions.length ? `平均 ${avgMsgsPerSession} / 会话` : '—'}
+          detail={sessions.length ? `avg ${avgMsgsPerSession} / session` : '—'}
         />
         <Metric
           icon={<Wrench size={18} />}
@@ -188,12 +188,12 @@ export default function HomePage() {
         <div className="section-head">
           <div className="section-title">
             <span className="section-kicker">24 hour activity</span>
-            <h2>会话热度</h2>
+            <h2>Session activity</h2>
           </div>
-          <span className="pill"><BarChart3 size={12} /> 按小时聚合</span>
+          <span className="pill"><BarChart3 size={12} /> hourly buckets</span>
         </div>
 
-        <div className="spark-chart" aria-label="过去 24 小时会话活跃度">
+        <div className="spark-chart" aria-label="Sessions updated in the last 24 hours">
           {activity.buckets.map((v, i) => {
             const pct = activity.peak === 0 ? 0 : (v / activity.peak) * 100;
             const isPeak = v > 0 && v === activity.peak;
@@ -202,7 +202,7 @@ export default function HomePage() {
                 key={i}
                 className={`spark-bar ${v > 0 ? 'has-data' : ''} ${isPeak ? 'peak' : ''}`}
                 style={{ height: `${v > 0 ? Math.max(pct, 12) : 3}%` }}
-                title={`${v} 个会话更新`}
+                title={`${v} session${v === 1 ? '' : 's'} updated`}
                 aria-hidden
               />
             );
@@ -218,19 +218,19 @@ export default function HomePage() {
 
         <div className="spark-summary">
           <div>
-            <div className="label">24h 会话</div>
+            <div className="label">24H SESSIONS</div>
             <div className="value">{loading ? '—' : lastDayCount}</div>
-            <div className="detail">{sessions.length ? `占总数 ${Math.round((lastDayCount / sessions.length) * 100)}%` : '尚无数据'}</div>
+            <div className="detail">{sessions.length ? `${Math.round((lastDayCount / sessions.length) * 100)}% of all` : 'no data yet'}</div>
           </div>
           <div>
-            <div className="label">峰值小时</div>
+            <div className="label">PEAK HOUR</div>
             <div className="value">{peakHour}</div>
-            <div className="detail">{activity.peak ? `${activity.peak} 个会话` : '—'}</div>
+            <div className="detail">{activity.peak ? `${activity.peak} session${activity.peak === 1 ? '' : 's'}` : '—'}</div>
           </div>
           <div>
-            <div className="label">总消息</div>
+            <div className="label">TOTAL MESSAGES</div>
             <div className="value">{loading ? '—' : totalMessages.toLocaleString()}</div>
-            <div className="detail">{sessions.length ? `跨 ${sessions.length} 个会话` : '—'}</div>
+            <div className="detail">{sessions.length ? `across ${sessions.length} session${sessions.length === 1 ? '' : 's'}` : '—'}</div>
           </div>
         </div>
       </section>
@@ -286,7 +286,7 @@ export default function HomePage() {
             ))}
             {!loading && profiles.length === 0 && (
               <div className="empty-state" style={{ padding: 18 }}>
-                <p className="muted">未发现 profile，将以默认上下文运行。</p>
+                <p className="muted">No profiles found — running with the default context.</p>
               </div>
             )}
           </div>
@@ -296,9 +296,9 @@ export default function HomePage() {
           <div className="section-head">
             <div className="section-title">
               <span className="section-kicker">Recent sessions</span>
-              <h2>最近会话</h2>
+              <h2>Recent sessions</h2>
             </div>
-            <Link href="/chat" className="pill"><ArrowUpRight size={12} /> 进入对话</Link>
+            <Link href="/chat" className="pill"><ArrowUpRight size={12} /> Open chat</Link>
           </div>
           <div className="list">
             {loading && sessions.length === 0 && Array.from({ length: 4 }).map((_, i) => (
@@ -326,7 +326,7 @@ export default function HomePage() {
             })}
             {!loading && sessions.length === 0 && (
               <div className="empty-state" style={{ padding: 18 }}>
-                <p className="muted">尚无会话。在对话里发送一条消息即可创建第一个会话。</p>
+                <p className="muted">No sessions yet. Send a message in chat to create your first one.</p>
               </div>
             )}
           </div>
@@ -339,9 +339,9 @@ export default function HomePage() {
           <div className="section-head">
             <div className="section-title">
               <span className="section-kicker">Source distribution</span>
-              <h2>会话来源</h2>
+              <h2>Sessions by source</h2>
             </div>
-            <span className="pill">{sourceBreakdown.length} 渠道</span>
+            <span className="pill">{sourceBreakdown.length} channels</span>
           </div>
           <div className="bar-list">
             {loading && Array.from({ length: 3 }).map((_, i) => (
@@ -353,7 +353,7 @@ export default function HomePage() {
             ))}
             {!loading && sourceBreakdown.length === 0 && (
               <div className="empty-state" style={{ padding: 18 }}>
-                <p className="muted">尚无来源数据。</p>
+                <p className="muted">No source data yet.</p>
               </div>
             )}
             {!loading && sourceBreakdown.map(({ source, count }) => {
@@ -364,7 +364,7 @@ export default function HomePage() {
                   <span className="bar-label">
                     <span className={`tag ${meta.tone}`} style={{ minWidth: 'auto' }}>{meta.short}</span>
                   </span>
-                  <div className="bar-track" aria-label={`${meta.label} ${count} 个会话`}>
+                  <div className="bar-track" aria-label={`${meta.label}: ${count} sessions`}>
                     <div className="bar-fill" style={{ width: `${pct}%` }} />
                   </div>
                   <span className="bar-value">{count}<span className="muted" style={{ fontSize: 10 }}>·{Math.round(pct)}%</span></span>
@@ -378,7 +378,7 @@ export default function HomePage() {
           <div className="section-head">
             <div className="section-title">
               <span className="section-kicker">Workload by profile</span>
-              <h2>Profile 负载</h2>
+              <h2>Profile workload</h2>
             </div>
             <span className="pill">{profileBreakdown.length} active</span>
           </div>
@@ -392,7 +392,7 @@ export default function HomePage() {
             ))}
             {!loading && profileBreakdown.length === 0 && (
               <div className="empty-state" style={{ padding: 18 }}>
-                <p className="muted">尚无可统计的 profile 数据。</p>
+                <p className="muted">No profile workload data yet.</p>
               </div>
             )}
             {!loading && profileBreakdown.map(({ id, name, active, count }) => {
@@ -404,7 +404,7 @@ export default function HomePage() {
                     {name}
                     {active && <span className="pill ok" style={{ padding: '1px 6px', fontSize: 9 }}>active</span>}
                   </span>
-                  <div className="bar-track" aria-label={`${name} ${count} 个会话`}>
+                  <div className="bar-track" aria-label={`${name}: ${count} sessions`}>
                     <div className="bar-fill" style={{ width: `${pct}%` }} />
                   </div>
                   <span className="bar-value">{count}<span className="muted" style={{ fontSize: 10 }}>·{Math.round(pct)}%</span></span>
@@ -421,9 +421,9 @@ export default function HomePage() {
           <div className="section-head">
             <div className="section-title">
               <span className="section-kicker">Capabilities</span>
-              <h2>能力分类</h2>
+              <h2>Capabilities</h2>
             </div>
-            <Link href="/tools" className="pill">{tools.length} 项 <ChevronRight size={12} /></Link>
+            <Link href="/tools" className="pill">{tools.length} items <ChevronRight size={12} /></Link>
           </div>
           <div className="bar-list">
             {loading && Array.from({ length: 3 }).map((_, i) => (
@@ -435,7 +435,7 @@ export default function HomePage() {
             ))}
             {!loading && toolBreakdown.length === 0 && (
               <div className="empty-state" style={{ padding: 18 }}>
-                <p className="muted">CLI 未提供 tools / skills 清单。</p>
+                <p className="muted">CLI did not return a tools / skills list.</p>
               </div>
             )}
             {!loading && toolBreakdown.map(({ kind, count }) => {
@@ -449,7 +449,7 @@ export default function HomePage() {
                     {kind === 'unknown' && <Boxes size={13} color="var(--muted)" />}
                     {kind}
                   </span>
-                  <div className="bar-track" aria-label={`${kind} ${count} 项`}>
+                  <div className="bar-track" aria-label={`${kind}: ${count} items`}>
                     <div className="bar-fill" style={{ width: `${pct}%` }} />
                   </div>
                   <span className="bar-value">{count}<span className="muted" style={{ fontSize: 10 }}>·{Math.round(pct)}%</span></span>
@@ -463,51 +463,51 @@ export default function HomePage() {
           <div className="section-head">
             <div className="section-title">
               <span className="section-kicker">Quick actions</span>
-              <h2>快捷入口</h2>
+              <h2>Quick actions</h2>
             </div>
-            <span className="pill"><Radio size={11} /> 实时</span>
+            <span className="pill"><Radio size={11} /> live</span>
           </div>
           <div className="action-grid">
             <Link href="/chat" className="action-card">
               <span className="action-icon"><MessageSquare size={15} /></span>
               <span className="action-text">
-                <span className="action-title">新对话</span>
-                <span className="action-sub">SSE · 多会话切换</span>
+                <span className="action-title">New chat</span>
+                <span className="action-sub">SSE · multi-session</span>
               </span>
             </Link>
             <Link href="/profiles" className="action-card">
               <span className="action-icon"><Bot size={15} /></span>
               <span className="action-text">
-                <span className="action-title">Profile 切换</span>
-                <span className="action-sub">{profiles.length} 个执行上下文</span>
+                <span className="action-title">Switch profile</span>
+                <span className="action-sub">{profiles.length} execution contexts</span>
               </span>
             </Link>
             <Link href="/tools" className="action-card">
               <span className="action-icon"><Wrench size={15} /></span>
               <span className="action-text">
-                <span className="action-title">能力清单</span>
+                <span className="action-title">Capabilities</span>
                 <span className="action-sub">tools · skills · MCP</span>
               </span>
             </Link>
             <Link href="/runs" className="action-card">
               <span className="action-icon"><Layers size={15} /></span>
               <span className="action-text">
-                <span className="action-title">Run 时间线</span>
-                <span className="action-sub">SSE 事件流</span>
+                <span className="action-title">Run timeline</span>
+                <span className="action-sub">SSE event stream</span>
               </span>
             </Link>
             <Link href="/terminal" className="action-card">
               <span className="action-icon"><Terminal size={15} /></span>
               <span className="action-text">
-                <span className="action-title">安全终端</span>
-                <span className="action-sub">白名单命令</span>
+                <span className="action-title">Safe terminal</span>
+                <span className="action-sub">allowlisted commands</span>
               </span>
             </Link>
             <Link href="/settings" className="action-card">
               <span className="action-icon"><Server size={15} /></span>
               <span className="action-text">
-                <span className="action-title">配置</span>
-                <span className="action-sub">主题 / 偏好</span>
+                <span className="action-title">Settings</span>
+                <span className="action-sub">theme / preferences</span>
               </span>
             </Link>
           </div>
@@ -519,7 +519,7 @@ export default function HomePage() {
         <div className="section-head">
           <div className="section-title">
             <span className="section-kicker">Runtime metadata</span>
-            <h2>系统信息</h2>
+            <h2>System info</h2>
           </div>
           <span className="pill"><Server size={12} /> Hermes BFF</span>
         </div>
@@ -625,9 +625,9 @@ function TokenUsageCard({ tokens, loading }: { tokens: TokenStats | null; loadin
             <span className="token-hero-unit">tokens</span>
           </h2>
           <div className="token-hero-meta">
-            <span className="token-meta-pill"><DollarSign size={11} /> 累计成本 <b>{loading || !t ? '—' : fmtCost(t.cost)}</b></span>
-            <span className="token-meta-pill"><Activity size={11} /> {loading || !t ? '—' : t.sessions.toLocaleString()} 个会话</span>
-            <span className="token-meta-pill"><Zap size={11} /> {loading || !t ? '—' : t.apiCalls.toLocaleString()} 次 API 调用</span>
+            <span className="token-meta-pill"><DollarSign size={11} /> total cost <b>{loading || !t ? '—' : fmtCost(t.cost)}</b></span>
+            <span className="token-meta-pill"><Activity size={11} /> {loading || !t ? '—' : t.sessions.toLocaleString()} sessions</span>
+            <span className="token-meta-pill"><Zap size={11} /> {loading || !t ? '—' : t.apiCalls.toLocaleString()} API calls</span>
           </div>
 
           <div className="token-split">
@@ -661,17 +661,17 @@ function TokenUsageCard({ tokens, loading }: { tokens: TokenStats | null; loadin
         <div className="token-hero-right">
           <div className="token-kpi-row">
             <div className="token-kpi">
-              <div className="token-kpi-label">过去 24h</div>
+              <div className="token-kpi-label">Last 24h</div>
               <div className="token-kpi-value">{loading || !day ? '—' : fmtTokens(day.total)}</div>
-              <div className="token-kpi-detail">{loading || !day ? '—' : `${day.sessions} 会话`}</div>
+              <div className="token-kpi-detail">{loading || !day ? '—' : `${day.sessions} sessions`}</div>
             </div>
             <div className="token-kpi">
-              <div className="token-kpi-label">14d 总计</div>
+              <div className="token-kpi-label">14d total</div>
               <div className="token-kpi-value">{loading || !tokens ? '—' : fmtTokens(totalDailyTokens)}</div>
-              <div className="token-kpi-detail">滑动窗口</div>
+              <div className="token-kpi-detail">rolling window</div>
             </div>
           </div>
-          <div className="token-spark" aria-label="14 天 token 使用走势">
+          <div className="token-spark" aria-label="14-day token usage trend">
             {(tokens?.daily || []).map((d) => {
               const pct = sparkPeak ? (d.total / sparkPeak) * 100 : 0;
               return (
@@ -702,11 +702,11 @@ function TokenDailyChart({ tokens, loading }: { tokens: TokenStats | null; loadi
       <div className="section-head">
         <div className="section-title">
           <span className="section-kicker">Token trend</span>
-          <h2>每日 Token 用量</h2>
+          <h2>Daily token usage</h2>
         </div>
-        <span className="pill"><TrendingUp size={12} /> {tokens?.windowDays || 14}d 窗口</span>
+        <span className="pill"><TrendingUp size={12} /> {tokens?.windowDays || 14}d window</span>
       </div>
-      <div className="stacked-chart" aria-label="每日 input/output token 堆叠图">
+      <div className="stacked-chart" aria-label="Daily input/output token stack">
         {loading && Array.from({ length: 14 }).map((_, i) => (
           <div className="stacked-bar-wrap" key={i}><div className="stacked-bar skel-bar" style={{ height: `${20 + (i * 7) % 60}%` }} /></div>
         ))}
@@ -727,7 +727,7 @@ function TokenDailyChart({ tokens, loading }: { tokens: TokenStats | null; loadi
       <div className="chart-legend">
         <span className="legend-dot is-input" /> Input
         <span className="legend-dot is-output" /> Output
-        <span style={{ marginLeft: 'auto' }} className="muted small">窗口成本 {loading ? '—' : fmtCost(totalCost)}</span>
+        <span style={{ marginLeft: 'auto' }} className="muted small">Window cost {loading ? '—' : fmtCost(totalCost)}</span>
       </div>
     </section>
   );
@@ -746,13 +746,13 @@ function TokenHourlyHeatmap({ tokens, loading }: { tokens: TokenStats | null; lo
       <div className="section-head">
         <div className="section-title">
           <span className="section-kicker">Activity rhythm</span>
-          <h2>使用节奏</h2>
+          <h2>Activity rhythm</h2>
         </div>
-        <span className="pill"><CalendarDays size={12} /> 按小时 / 工作日</span>
+        <span className="pill"><CalendarDays size={12} /> hour × weekday</span>
       </div>
 
       <div className="rhythm-block">
-        <div className="rhythm-label">工作日 token 分布</div>
+        <div className="rhythm-label">Tokens by weekday</div>
         <div className="weekday-row">
           {weekday.map((v, i) => {
             const intensity = peakDay ? v / peakDay : 0;
@@ -765,13 +765,13 @@ function TokenHourlyHeatmap({ tokens, loading }: { tokens: TokenStats | null; lo
           })}
         </div>
         <div className="muted small" style={{ marginTop: 6 }}>
-          {loading ? '—' : peakDay > 0 ? <>峰值 <b>{dayNames[peakDayIdx]}</b> · {fmtTokens(peakDay)} tokens</> : '尚无数据'}
+          {loading ? '—' : peakDay > 0 ? <>Peak <b>{dayNames[peakDayIdx]}</b> · {fmtTokens(peakDay)} tokens</> : 'No data yet'}
         </div>
       </div>
 
       <div className="rhythm-block">
-        <div className="rhythm-label">小时分布 (0–23)</div>
-        <div className="hourly-row" aria-label="按小时 token 使用">
+        <div className="rhythm-label">Hour-of-day (0–23)</div>
+        <div className="hourly-row" aria-label="Hourly token usage">
           {hourly.map((v, i) => {
             const pct = peakHour ? (v / peakHour) * 100 : 0;
             return (
@@ -786,7 +786,7 @@ function TokenHourlyHeatmap({ tokens, loading }: { tokens: TokenStats | null; lo
         </div>
         <div className="hourly-axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
         <div className="muted small" style={{ marginTop: 6 }}>
-          {loading ? '—' : peakHour > 0 ? <>峰值 <b>{peakHourIdx.toString().padStart(2, '0')}:00</b> · {fmtTokens(peakHour)} tokens</> : '尚无数据'}
+          {loading ? '—' : peakHour > 0 ? <>Peak <b>{peakHourIdx.toString().padStart(2, '0')}:00</b> · {fmtTokens(peakHour)} tokens</> : 'No data yet'}
         </div>
       </div>
     </section>
@@ -803,7 +803,7 @@ function TopModelsByTokens({ tokens, loading }: { tokens: TokenStats | null; loa
           <span className="section-kicker">By model</span>
           <h2>Top Models · 14d</h2>
         </div>
-        <Link href="/models" className="pill">查看全部 <ChevronRight size={12} /></Link>
+        <Link href="/models" className="pill">View all <ChevronRight size={12} /></Link>
       </div>
       <div className="bar-list">
         {loading && Array.from({ length: 4 }).map((_, i) => (
@@ -815,7 +815,7 @@ function TopModelsByTokens({ tokens, loading }: { tokens: TokenStats | null; loa
         ))}
         {!loading && models.length === 0 && (
           <div className="empty-state" style={{ padding: 18 }}>
-            <p className="muted">窗口内尚无 token 使用数据。</p>
+            <p className="muted">No token usage in this window yet.</p>
           </div>
         )}
         {!loading && models.map((m) => {
@@ -848,9 +848,9 @@ function TopSourcesByTokens({ tokens, loading }: { tokens: TokenStats | null; lo
       <div className="section-head">
         <div className="section-title">
           <span className="section-kicker">By source</span>
-          <h2>Top 来源 · 14d</h2>
+          <h2>Top sources · 14d</h2>
         </div>
-        <span className="pill"><Flame size={12} /> token 视角</span>
+        <span className="pill"><Flame size={12} /> by tokens</span>
       </div>
       <div className="bar-list">
         {loading && Array.from({ length: 4 }).map((_, i) => (
@@ -862,7 +862,7 @@ function TopSourcesByTokens({ tokens, loading }: { tokens: TokenStats | null; lo
         ))}
         {!loading && sources.length === 0 && (
           <div className="empty-state" style={{ padding: 18 }}>
-            <p className="muted">窗口内尚无来源记录。</p>
+            <p className="muted">No source data in this window yet.</p>
           </div>
         )}
         {!loading && sources.map((s) => {
@@ -878,7 +878,7 @@ function TopSourcesByTokens({ tokens, loading }: { tokens: TokenStats | null; lo
               </div>
               <span className="bar-value">
                 {fmtTokens(s.tokens)}
-                <span className="muted" style={{ fontSize: 10 }}>{s.sessions} 会话</span>
+                <span className="muted" style={{ fontSize: 10 }}>{s.sessions} sessions</span>
               </span>
             </div>
           );

@@ -27,9 +27,9 @@ export function SlashCommandMenu({ commands, query, selectedIndex, onHover, onPi
 
   if (!visible.length) {
     return (
-      <div className="slash-menu" role="listbox" aria-label="斜杠命令">
+      <div className="slash-menu" role="listbox" aria-label="Slash commands">
         <div className="slash-empty">
-          没有匹配的命令
+          No matching command
           {query && <span className="muted small"> · /{query}</span>}
         </div>
       </div>
@@ -37,9 +37,9 @@ export function SlashCommandMenu({ commands, query, selectedIndex, onHover, onPi
   }
 
   return (
-    <div className="slash-menu" role="listbox" aria-label="斜杠命令" ref={listRef}>
+    <div className="slash-menu" role="listbox" aria-label="Slash commands" ref={listRef}>
       <div className="slash-header">
-        <span className="muted tiny">斜杠命令 · ↑↓ 选择 · Enter 确认 · Esc 取消</span>
+        <span className="muted tiny">Slash commands · ↑↓ select · Enter confirm · Esc cancel</span>
       </div>
       {visible.map((cmd, i) => {
         const Icon = cmd.kind === 'action' ? Zap : Sparkles;
@@ -65,7 +65,7 @@ export function SlashCommandMenu({ commands, query, selectedIndex, onHover, onPi
               </div>
               <div className="slash-desc">{cmd.description}</div>
             </div>
-            {cmd.kind === 'action' && <span className="pill ok slash-pill">动作</span>}
+            {cmd.kind === 'action' && <span className="pill ok slash-pill">action</span>}
           </button>
         );
       })}
@@ -74,9 +74,9 @@ export function SlashCommandMenu({ commands, query, selectedIndex, onHover, onPi
         className="slash-close"
         onClick={onClose}
         onMouseDown={(e) => e.preventDefault()}
-        aria-label="关闭命令面板"
+        aria-label="Close command palette"
       >
-        关闭
+        Close
       </button>
     </div>
   );
