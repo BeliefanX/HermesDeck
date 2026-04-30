@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { deckApi } from '@/lib/api';
 import type { DeckProfile } from '@/lib/types';
 import { Bot, Cpu, Network } from 'lucide-react';
+import { Page, Card, Tag, Kbd, Kicker } from '@/components/Brand';
 
 export default function ProfilesPage() {
   const [profiles, setProfiles] = useState<DeckProfile[]>([]);
@@ -15,54 +16,130 @@ export default function ProfilesPage() {
   }, []);
 
   return (
-    <div className="page grid">
-      <p className="page-intro">
-        A profile is HermesDeck&rsquo;s agent &amp; execution-context unit. Each one keeps its own state directory at <span className="kbd">~/.hermes/profiles/&lt;id&gt;</span>.
-      </p>
+    <Page
+      intro={
+        <>
+          A profile is HermesDeck&rsquo;s agent &amp; execution-context unit. Each one keeps its own state directory at{' '}
+          <Kbd>~/.hermes/profiles/&lt;id&gt;</Kbd>.
+        </>
+      }
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
+        {loading
+          ? Array.from({ length: 3 }).map((_, i) => (
+              <Card key={i}>
+                <div className="skel" style={{ width: 140, height: 18 }} />
+                <div style={{ height: 10 }} />
+                <div className="skel" style={{ width: 220, height: 12 }} />
+                <div style={{ height: 6 }} />
+                <div className="skel" style={{ width: 180, height: 12 }} />
+              </Card>
+            ))
+          : profiles.map((p) => (
+              <Card key={p.id}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 10,
+                      background: 'var(--surface-bg)',
+                      border: '1px solid var(--line)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--accent)',
+                    }}
+                  >
+                    <Bot size={16} />
+                  </div>
+                  {p.active && <Tag variant="green">active</Tag>}
+                </div>
 
-      <div className="grid cols-3">
-        {loading && Array.from({ length: 3 }).map((_, i) => (
-          <div className="card" key={i}>
-            <div className="skel" style={{ width: 140, height: 18 }} />
-            <div style={{ height: 8 }} />
-            <div className="skel" style={{ width: 220, height: 12 }} />
-            <div style={{ height: 6 }} />
-            <div className="skel" style={{ width: 180, height: 12 }} />
-          </div>
-        ))}
-        {!loading && profiles.map((p) => (
-          <article key={p.id} className="card hover-lift">
-            <div className="row" style={{ alignItems: 'flex-start' }}>
-              <div className="metric-icon"><Bot size={18} /></div>
-              {p.active && <span className="pill ok">active</span>}
-            </div>
-            <h2 style={{ marginTop: 12 }}>{p.name}</h2>
-            <div className="stack" style={{ marginTop: 8, gap: 6 }}>
-              <div className="row start" style={{ gap: 8 }}>
-                <Cpu size={13} color="var(--muted)" />
-                <span className="small">{p.model || 'model from Hermes config'}</span>
-              </div>
-              <div className="row start" style={{ gap: 8 }}>
-                <Network size={13} color="var(--muted)" />
-                <span className="small">{p.gateway || 'gateway —'}</span>
-              </div>
-            </div>
-            <div className="row" style={{ marginTop: 14 }}>
-              <span className="tiny">PROFILE ID</span>
-              <span className="kbd">{p.id}</span>
-            </div>
-          </article>
-        ))}
+                <h2
+                  style={{
+                    margin: '12px 0 0',
+                    fontSize: 18,
+                    fontWeight: 620,
+                    letterSpacing: '-.018em',
+                    color: 'var(--strong-text)',
+                  }}
+                >
+                  {p.name}
+                </h2>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <Cpu size={12} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: 'var(--text)',
+                        fontFamily: 'var(--font-mono)',
+                        flex: 1,
+                        minWidth: 0,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {p.model || 'model from Hermes config'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <Network size={12} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: 'var(--text)',
+                        fontFamily: 'var(--font-mono)',
+                        flex: 1,
+                        minWidth: 0,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {p.gateway || 'gateway —'}
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginTop: 14,
+                    paddingTop: 12,
+                    borderTop: '1px solid var(--hairline)',
+                  }}
+                >
+                  <Kicker>PROFILE ID</Kicker>
+                  <Kbd>{p.id}</Kbd>
+                </div>
+              </Card>
+            ))}
+
         {!loading && profiles.length === 0 && (
-          <div className="empty-state" style={{ gridColumn: '1 / -1', padding: 24 }}>
-            <Bot size={22} />
-            <h2>No profiles found</h2>
-            <p className="muted small">
-              HermesDeck will run with a default context. Use <span className="kbd">hermes profile create</span> to add a new execution context.
+          <Card style={{ gridColumn: '1 / -1', padding: 28, textAlign: 'center' }}>
+            <Bot size={22} style={{ color: 'var(--muted)' }} />
+            <h2
+              style={{
+                margin: '8px 0 4px',
+                fontSize: 16,
+                fontWeight: 620,
+                color: 'var(--strong-text)',
+              }}
+            >
+              No profiles found
+            </h2>
+            <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: 0 }}>
+              HermesDeck will run with a default context. Use <Kbd>hermes profile create</Kbd> to add a new execution context.
             </p>
-          </div>
+          </Card>
         )}
       </div>
-    </div>
+    </Page>
   );
 }

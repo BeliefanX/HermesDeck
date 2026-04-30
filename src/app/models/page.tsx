@@ -2,9 +2,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { deckApi } from '@/lib/api';
 import type { DeckModelsResponse, ModelInfo, ProviderInfo } from '@/lib/types';
-import {
-  Cpu, Server, Star, Database, Activity, Plug, KeyRound, AlertCircle, Sparkles,
-} from 'lucide-react';
+import { Cpu, Server, Star, Database, Plug, KeyRound, AlertCircle, Sparkles } from 'lucide-react';
+import { Page, Card, Kicker, Tag, Kbd, MetricCard, SectionHead } from '@/components/Brand';
 
 function fmtTokens(n?: number): string {
   if (!n) return '—';
@@ -52,108 +51,118 @@ export default function ModelsPage() {
   }, [data]);
 
   return (
-    <div className="page grid">
-      <p className="page-intro">
-        Currently connected providers and their previously used models. Data sourced from
-        <span className="kbd" style={{ margin: '0 4px' }}>hermes auth list</span>,
-        <span className="kbd" style={{ margin: '0 4px' }}>~/.hermes/config.yaml</span> and the sessions table in state.db.
-      </p>
-
-      {/* Header metrics */}
-      <div className="grid cols-3">
-        <div className="card metric-card hover-lift">
-          <div className="metric-top"><span className="metric-icon"><Plug size={18} /></span><span className="metric-label">Providers</span></div>
-          <div className="metric">{loading ? '—' : totals.providers}</div>
-          <div className="muted small">{loading ? 'Loading…' : `${totals.withCreds} with credentials`}</div>
-        </div>
-        <div className="card metric-card hover-lift">
-          <div className="metric-top"><span className="metric-icon"><Cpu size={18} /></span><span className="metric-label">Models</span></div>
-          <div className="metric">{loading ? '—' : totals.models}</div>
-          <div className="muted small">used or set as default</div>
-        </div>
-        <div className="card metric-card hover-lift">
-          <div className="metric-top"><span className="metric-icon"><Activity size={18} /></span><span className="metric-label">Tokens · all time</span></div>
-          <div className="metric">{loading ? '—' : fmtTokens(totals.tokens)}</div>
-          <div className="muted small">across providers × models</div>
-        </div>
+    <Page
+      intro={
+        <>
+          Currently connected providers and their previously used models. Data sourced from{' '}
+          <Kbd>hermes auth list</Kbd>, <Kbd>~/.hermes/config.yaml</Kbd> and the sessions table in state.db.
+        </>
+      }
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+        <MetricCard
+          kicker="PROVIDERS"
+          value={loading ? '—' : totals.providers}
+          sub={loading ? 'Loading…' : `${totals.withCreds} with credentials`}
+        />
+        <MetricCard
+          kicker="MODELS"
+          value={loading ? '—' : totals.models}
+          sub="used or set as default"
+        />
+        <MetricCard
+          kicker="TOKENS · ALL TIME"
+          value={loading ? '—' : fmtTokens(totals.tokens)}
+          sub="across providers × models"
+        />
       </div>
 
-      {/* Default model card */}
       {data?.default && (
-        <section className="card hero-card model-default-card">
-          <div className="row" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+        <Card hero>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="hero-kicker">DEFAULT MODEL</div>
-              <h2 style={{ marginTop: 6 }}>
-                <Star size={16} style={{ verticalAlign: -2, marginRight: 6, color: 'var(--accent)' }} />
+              <Kicker>DEFAULT MODEL</Kicker>
+              <h2
+                style={{
+                  margin: '6px 0 6px',
+                  fontSize: 20,
+                  fontWeight: 650,
+                  letterSpacing: '-.018em',
+                  color: 'var(--strong-text)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <Star size={16} style={{ color: 'var(--accent)' }} />
                 {data.default.model}
               </h2>
-              <div className="muted small" style={{ marginTop: 6 }}>
-                provider · <span className="kbd">{data.default.provider}</span>
-                {data.default.baseUrl && <> · base_url · <span className="kbd" style={{ wordBreak: 'break-all' }}>{data.default.baseUrl}</span></>}
+              <div style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <span>provider · <Kbd>{data.default.provider}</Kbd></span>
+                {data.default.baseUrl && <span>base_url · <Kbd>{data.default.baseUrl}</Kbd></span>}
               </div>
             </div>
-            <span className="pill ok"><Sparkles size={12} /> currently active</span>
+            <Tag variant="green" icon={<Sparkles size={11} />}>currently active</Tag>
           </div>
-        </section>
+        </Card>
       )}
 
       {err && (
-        <div className="card" style={{ borderColor: 'var(--danger,#ff6363)' }}>
-          <div className="row start" style={{ gap: 8, color: 'var(--danger,#ff6363)' }}>
+        <Card style={{ borderColor: 'rgba(239,68,68,.4)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--red)' }}>
             <AlertCircle size={15} /> Load failed: {err}
           </div>
-        </div>
+        </Card>
       )}
 
-      {/* Loading state */}
       {loading && (
-        <div className="grid cols-2">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
           {Array.from({ length: 2 }).map((_, i) => (
-            <div className="card" key={i}>
+            <Card key={i}>
               <div className="skel" style={{ width: 180, height: 22 }} />
               <div style={{ height: 8 }} />
               <div className="skel" style={{ width: 240, height: 12 }} />
               <div style={{ height: 16 }} />
               <div className="skel" style={{ width: '100%', height: 60 }} />
-            </div>
+            </Card>
           ))}
         </div>
       )}
 
-      {/* Providers list */}
       {!loading && data && data.providers.map((p) => (
         <ProviderCard key={p.id} provider={p} />
       ))}
 
-      {/* Orphan models */}
       {!loading && data && data.orphanModels.length > 0 && (
-        <section className="card">
-          <div className="section-head">
-            <div className="section-title">
-              <span className="section-kicker">NO PROVIDER TAG</span>
-              <h2>Orphan models from session history</h2>
-            </div>
-            <span className="pill"><Database size={12} /> {data.orphanModels.length}</span>
-          </div>
-          <div className="bar-list">
-            {data.orphanModels.map((m) => (
-              <ModelRow key={m.id} model={m} maxTokens={Math.max(...data.orphanModels.map((x) => x.tokens || 0), 1)} />
+        <Card>
+          <SectionHead
+            kicker="NO PROVIDER TAG"
+            title="Orphan models from session history"
+            right={<Tag icon={<Database size={11} />}>{data.orphanModels.length}</Tag>}
+          />
+          <div>
+            {data.orphanModels.map((m, i) => (
+              <ModelRow
+                key={m.id}
+                model={m}
+                maxTokens={Math.max(...data.orphanModels.map((x) => x.tokens || 0), 1)}
+                first={i === 0}
+              />
             ))}
           </div>
-        </section>
+        </Card>
       )}
 
       {!loading && data && data.providers.length === 0 && data.orphanModels.length === 0 && (
-        <div className="empty-state" style={{ padding: 24 }}>
-          <Cpu size={22} />
-          <h2>No provider data</h2>
-          <p className="muted small">
-            Use <span className="kbd">hermes auth add</span> or <span className="kbd">hermes login</span> to add a provider credential.
+        <Card style={{ textAlign: 'center', padding: 28 }}>
+          <Cpu size={22} style={{ color: 'var(--muted)' }} />
+          <h2 style={{ margin: '8px 0 4px', fontSize: 16, fontWeight: 620, color: 'var(--strong-text)' }}>No provider data</h2>
+          <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: 0 }}>
+            Use <Kbd>hermes auth add</Kbd> or <Kbd>hermes login</Kbd> to add a provider credential.
           </p>
-        </div>
+        </Card>
       )}
-    </div>
+    </Page>
   );
 }
 
@@ -163,75 +172,120 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const maxTokens = Math.max(...provider.models.map((m) => m.tokens || 0), 1);
 
   return (
-    <section className={`card provider-card ${provider.isDefault ? 'is-default' : ''}`}>
-      <div className="section-head">
-        <div className="section-title" style={{ minWidth: 0 }}>
-          <span className="section-kicker">{provider.id}</span>
-          <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <Server size={16} style={{ color: 'var(--accent)' }} />
-            {provider.name}
-            {provider.isDefault && <span className="pill ok"><Star size={10} /> default</span>}
-          </h2>
-        </div>
-        <div className="row" style={{ gap: 6, flexShrink: 0 }}>
-          {provider.credentialCount != null && (
-            <span className="pill" title="Credentials from hermes auth list">
-              <KeyRound size={11} /> {provider.credentialCount} creds
-            </span>
-          )}
-          <span className="pill"><Cpu size={11} /> {provider.models.length} models</span>
-        </div>
-      </div>
+    <Card>
+      <SectionHead
+        kicker={provider.id}
+        title={
+          <>
+            <Server size={15} style={{ color: 'var(--accent)' }} />
+            <span>{provider.name}</span>
+            {provider.isDefault && <Tag variant="green" icon={<Star size={10} />}>default</Tag>}
+          </>
+        }
+        right={
+          <>
+            {provider.credentialCount != null && (
+              <Tag icon={<KeyRound size={11} />}>{provider.credentialCount} creds</Tag>
+            )}
+            <Tag icon={<Cpu size={11} />}>{provider.models.length} models</Tag>
+          </>
+        }
+      />
 
-      <div className="provider-stat-row">
-        <div className="provider-stat">
-          <div className="label">Sessions</div>
-          <div className="value">{totalSessions.toLocaleString()}</div>
+      <div
+        style={{
+          display: 'flex',
+          gap: 24,
+          padding: '10px 0',
+          borderTop: '1px solid var(--hairline)',
+          borderBottom: '1px solid var(--hairline)',
+          marginBottom: 6,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <Kicker>SESSIONS</Kicker>
+          <div style={{ fontSize: 16, fontWeight: 620, color: 'var(--strong-text)', fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>
+            {totalSessions.toLocaleString()}
+          </div>
         </div>
-        <div className="provider-stat">
-          <div className="label">Tokens</div>
-          <div className="value">{fmtTokens(totalTokens)}</div>
+        <div>
+          <Kicker>TOKENS</Kicker>
+          <div style={{ fontSize: 16, fontWeight: 620, color: 'var(--strong-text)', fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>
+            {fmtTokens(totalTokens)}
+          </div>
         </div>
         {provider.baseUrl && (
-          <div className="provider-stat" style={{ flex: '1 1 240px', minWidth: 0 }}>
-            <div className="label">base_url</div>
-            <div className="value" style={{ fontSize: 11, fontFamily: 'var(--mono, monospace)', wordBreak: 'break-all', fontWeight: 500 }}>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <Kicker>BASE_URL</Kicker>
+            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--value-text)', wordBreak: 'break-all', marginTop: 4 }}>
               {provider.baseUrl}
             </div>
           </div>
         )}
       </div>
 
-      <div className="bar-list" style={{ marginTop: 4 }}>
-        {provider.models.map((m) => (
-          <ModelRow key={m.id} model={m} maxTokens={maxTokens} />
+      <div>
+        {provider.models.map((m, i) => (
+          <ModelRow key={m.id} model={m} maxTokens={maxTokens} first={i === 0} />
         ))}
         {provider.models.length === 0 && (
-          <div className="muted small" style={{ padding: '12px 4px' }}>No model usage recorded under this provider yet.</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', padding: '12px 4px' }}>
+            No model usage recorded under this provider yet.
+          </div>
         )}
       </div>
-    </section>
+    </Card>
   );
 }
 
-function ModelRow({ model, maxTokens }: { model: ModelInfo; maxTokens: number }) {
+function ModelRow({ model, maxTokens, first }: { model: ModelInfo; maxTokens: number; first?: boolean }) {
   const pct = maxTokens > 0 ? ((model.tokens || 0) / maxTokens) * 100 : 0;
   return (
-    <div className="bar-row model-row">
-      <span className="bar-label" style={{ minWidth: 0, flex: '1 1 220px' }}>
-        <Cpu size={12} color={model.isDefault ? 'var(--accent)' : 'var(--muted)'} />
-        <span style={{ fontWeight: model.isDefault ? 600 : 500, color: model.isDefault ? 'var(--accent)' : undefined }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 2fr) auto',
+        gap: 12,
+        alignItems: 'center',
+        padding: '8px 0',
+        borderTop: first ? 'none' : '1px solid var(--hairline)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <Cpu size={12} style={{ color: model.isDefault ? 'var(--accent)' : 'var(--muted)', flexShrink: 0 }} />
+        <span
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 12,
+            fontWeight: model.isDefault ? 600 : 500,
+            color: model.isDefault ? 'var(--accent)' : 'var(--text)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
           {model.id}
         </span>
-        {model.isDefault && <Star size={10} style={{ color: 'var(--accent)' }} />}
-      </span>
-      <div className="bar-track" aria-label={`${model.id} ${fmtTokens(model.tokens)} tokens`}>
-        <div className="bar-fill" style={{ width: `${pct}%` }} />
+        {model.isDefault && <Star size={10} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
       </div>
-      <div className="model-stats">
-        <span className="model-stat" title="Total tokens">{fmtTokens(model.tokens)}</span>
-        <span className="model-stat dim" title="Sessions that used this model">{model.sessions || 0} sessions</span>
-        <span className="model-stat dim" title="Last used">{relTime(model.lastUsed)}</span>
+      <div style={{ height: 6, background: 'var(--surface-bg)', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: 'var(--accent)', borderRadius: 3 }} />
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          gap: 10,
+          fontFamily: 'var(--font-mono)',
+          fontSize: 11,
+          fontVariantNumeric: 'tabular-nums',
+          whiteSpace: 'nowrap',
+          justifyContent: 'flex-end',
+        }}
+      >
+        <span style={{ color: 'var(--value-text)' }}>{fmtTokens(model.tokens)}</span>
+        <span style={{ color: 'var(--muted-2)' }}>{model.sessions || 0} sessions</span>
+        <span style={{ color: 'var(--muted-2)' }}>{relTime(model.lastUsed)}</span>
       </div>
     </div>
   );

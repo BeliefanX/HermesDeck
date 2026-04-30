@@ -5,12 +5,31 @@ import { deckApi } from '@/lib/api';
 import type { DeckHealth, DeckProfile, DeckSession, ToolSummary, TokenStats } from '@/lib/types';
 import { sourceMeta, shortTitle, relTime } from '@/lib/format';
 import {
-  Bot, Database, HeartPulse, MessageSquare, Radio, Wrench, ArrowUpRight, Activity, ChevronRight,
-  Hash, Cpu, GitBranch, BarChart3, Server, Sparkles, Plug, Boxes, Terminal, Clock, Layers,
-  Coins, ArrowDownRight, ArrowUpRight as ArrowUR, TrendingUp, DollarSign, Zap, CalendarDays, Flame,
+  MessageSquare, Terminal, Bot, ChevronRight, Activity, Wrench,
 } from 'lucide-react';
+import { Page, Card, Kicker, Tag, MetricCard, BarRow, Sparkline, Btn, SectionHead, Kbd } from '@/components/Brand';
 
 const HOURS = 24;
+
+function fmtTokens(n: number): string {
+  if (!n) return '0';
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return String(n);
+}
+
+function fmtUsd(n: number): string {
+  if (!n) return '$0.00';
+  if (n >= 1000) return `$${(n / 1000).toFixed(1)}k`;
+  if (n >= 100) return `$${n.toFixed(0)}`;
+  return `$${n.toFixed(2)}`;
+}
+
+function pct(part: number, whole: number): number {
+  if (!whole) return 0;
+  return Math.round((part / whole) * 100);
+}
 
 export default function HomePage() {
   const [health, setHealth] = useState<DeckHealth | null>(null);
@@ -41,17 +60,12 @@ export default function HomePage() {
     return () => { alive = false; clearInterval(id); };
   }, []);
 
-  const statusClass = health?.status === 'connected' ? 'ok' : health?.status === 'degraded' ? 'warn' : 'bad';
+  const apiHealthy = health?.apiServer.healthy;
+  const statusTone = health?.status === 'connected' ? 'green' : health?.status === 'degraded' ? 'yellow' : 'red';
   const statusLabel = health?.status === 'connected' ? 'Connected'
     : health?.status === 'degraded' ? 'Degraded'
     : health ? 'Disconnected' : 'Checking';
   const activeProfile = profiles.find((p) => p.active);
-
-  // ── Aggregations ────────────────────────────────────────────────
-  const totalMessages = useMemo(
-    () => sessions.reduce((acc, s) => acc + (s.messageCount || 0), 0),
-    [sessions]
-  );
 
   const lastDayCount = useMemo(() => {
     const cutoff = now - 24 * 3600 * 1000;
@@ -61,40 +75,11 @@ export default function HomePage() {
     }).length;
   }, [sessions, now]);
 
-  const sourceBreakdown = useMemo(() => {
-    const map = new Map<string, number>();
-    sessions.forEach((s) => {
-      const k = (s.source || 'hermes').toLowerCase();
-      map.set(k, (map.get(k) || 0) + 1);
-    });
-    return Array.from(map.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-      .map(([source, count]) => ({ source, count }));
-  }, [sessions]);
-
-  const profileBreakdown = useMemo(() => {
-    const map = new Map<string, number>();
-    sessions.forEach((s) => map.set(s.profileId || 'default', (map.get(s.profileId || 'default') || 0) + 1));
-    return Array.from(map.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([id, count]) => {
-        const p = profiles.find((x) => x.id === id);
-        return { id, name: p?.name || id, active: !!p?.active, count };
-      });
-  }, [sessions, profiles]);
-
-  const toolBreakdown = useMemo(() => {
-    const map = new Map<string, number>();
-    tools.forEach((t) => map.set(t.kind, (map.get(t.kind) || 0) + 1));
-    const order = ['toolset', 'skill', 'mcp', 'unknown'];
-    return order
-      .filter((k) => map.has(k))
-      .map((k) => ({ kind: k, count: map.get(k)! }));
-  }, [tools]);
-
-  // 24h hourly activity bins (based on session updatedAt)
-  const activity = useMemo(() => {
+  const dailyCounts = useMemo(() => {
+    if (tokens?.daily?.length) {
+      return tokens.daily.slice(-14).map((d) => d.sessions || 0);
+    }
+    // Fall back: compute hourly buckets across the last 24h.
     const buckets = Array.from({ length: HOURS }, () => 0);
     const cutoff = now - HOURS * 3600 * 1000;
     sessions.forEach((s) => {
@@ -103,787 +88,380 @@ export default function HomePage() {
       const idx = HOURS - 1 - Math.floor((now - ts) / (3600 * 1000));
       if (idx >= 0 && idx < HOURS) buckets[idx] += 1;
     });
-    const peak = buckets.reduce((m, v) => Math.max(m, v), 0);
-    return { buckets, peak };
-  }, [sessions, now]);
+    return buckets;
+  }, [tokens, sessions, now]);
 
-  const peakHour = useMemo(() => {
-    let max = 0;
-    let idx = -1;
-    activity.buckets.forEach((v, i) => { if (v > max) { max = v; idx = i; } });
-    if (idx < 0) return '—';
-    const d = new Date(now - (HOURS - 1 - idx) * 3600 * 1000);
-    return `${d.getHours().toString().padStart(2, '0')}:00`;
-  }, [activity, now]);
+  const peakSessions = Math.max(...dailyCounts, 0);
+  const avgSessions = dailyCounts.length
+    ? Math.round(dailyCounts.reduce((a, b) => a + b, 0) / dailyCounts.length)
+    : 0;
 
-  const avgMsgsPerSession = sessions.length === 0 ? 0
-    : Math.round((totalMessages / sessions.length) * 10) / 10;
+  const topModels = useMemo(() => {
+    if (tokens?.topModels?.length) {
+      return tokens.topModels.slice(0, 4).map((m) => ({ name: m.model, count: m.tokens, sessions: m.sessions }));
+    }
+    const map = new Map<string, number>();
+    sessions.forEach((s) => {
+      const k = s.model || 'unspecified';
+      map.set(k, (map.get(k) || 0) + (s.messageCount || 1));
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([name, count]) => ({ name, count, sessions: 0 }));
+  }, [tokens, sessions]);
+  const topModelsMax = Math.max(...topModels.map((m) => m.count), 1);
 
-  // ── Render ───────────────────────────────────────────────────────
+  const sourceBreakdown = useMemo(() => {
+    const map = new Map<string, number>();
+    sessions.forEach((s) => {
+      const k = (s.source || 'hermes').toLowerCase();
+      map.set(k, (map.get(k) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([source, count]) => ({ source, count }));
+  }, [sessions]);
+
+  const profileBreakdown = useMemo(() => {
+    const map = new Map<string, number>();
+    sessions.forEach((s) => map.set(s.profileId || 'default', (map.get(s.profileId || 'default') || 0) + 1));
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id, count]) => {
+        const p = profiles.find((x) => x.id === id);
+        return { id, name: p?.name || id, active: !!p?.active, count };
+      });
+  }, [sessions, profiles]);
+
+  const tokens14d = tokens?.totals.total ?? 0;
+  const cost14d = tokens?.totals.cost ?? 0;
+  const sessions24hDelta = tokens?.last24h.sessions ?? lastDayCount;
+
   return (
-    <div className="page grid">
+    <Page>
       {/* Hero */}
-      <section className="card hero-card">
-        <div className="row" style={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      <Card hero padding={22}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div className="hero-kicker">Command deck</div>
-            <h1>Hermes command deck</h1>
-            <p className="muted" style={{ maxWidth: 640, marginTop: 12, fontSize: 14.5 }}>
-              Multi-session chat workspace — profiles, runs, tools and a safe terminal in one place. All data comes from Hermes&rsquo; native state.db and API Server. Zero hard-coded values in the frontend.
+            <Kicker style={{ marginBottom: 8 }}>COMMAND DECK</Kicker>
+            <h1
+              style={{
+                fontSize: 'clamp(24px, 2.8vw, 30px)',
+                lineHeight: 1.12,
+                fontWeight: 650,
+                letterSpacing: '-.035em',
+                color: 'var(--strong-text)',
+                margin: '0 0 8px',
+              }}
+            >
+              Hermes control deck
+            </h1>
+            <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.6, margin: 0, maxWidth: 560 }}>
+              Multi-session chat workbench. Profiles, Runs, Tools and the safe terminal in one console. All data sourced
+              from Hermes-native <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--value-text)' }}>state.db</span>{' '}
+              and API Server — zero hard-coding in the frontend.
             </p>
           </div>
-          <span className={`pill ${statusClass}`} style={{ alignSelf: 'flex-start' }}>
-            <Activity size={12} /> {statusLabel}
-          </span>
+          <Tag variant={statusTone} icon={<Activity size={11} />}>{statusLabel}</Tag>
         </div>
-        <div className="row start" style={{ marginTop: 22, gap: 10, flexWrap: 'wrap' }}>
-          <Link href="/chat" className="btn primary"><MessageSquare size={15} /> Open chat</Link>
-          <Link href="/terminal" className="btn ghost"><Terminal size={15} /> Safe terminal</Link>
-          {activeProfile && <span className="pill" style={{ marginLeft: 'auto' }}>profile · {activeProfile.name}</span>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Link href="/chat" style={{ textDecoration: 'none' }}>
+            <Btn variant="primary" icon={<MessageSquare size={14} />}>Open chat</Btn>
+          </Link>
+          <Link href="/terminal" style={{ textDecoration: 'none' }}>
+            <Btn icon={<Terminal size={14} />}>Open terminal</Btn>
+          </Link>
+          {activeProfile && (
+            <Tag style={{ marginLeft: 'auto' }} icon={<Bot size={11} />}>profile · {activeProfile.name}</Tag>
+          )}
         </div>
-      </section>
+      </Card>
 
-      {/* Metric grid — 6 cards in cols-3 */}
-      <div className="grid cols-3">
-        <Metric
-          icon={<HeartPulse size={18} />}
-          label="Hermes API"
-          value={loading ? <Skel w={80} /> : health?.apiServer.healthy ? 'Healthy' : 'Fallback'}
-          detail={health?.apiServer.baseUrl || '—'}
+      {/* Metrics row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14 }}>
+        <MetricCard
+          kicker="SESSIONS · 24H"
+          value={loading ? '—' : sessions24hDelta}
+          sub={sessions.length ? `of ${sessions.length} total` : 'no data yet'}
         />
-        <Metric
-          icon={<Bot size={18} />}
-          label="Profiles"
-          value={loading ? <Skel w={40} /> : profiles.length}
-          detail={activeProfile?.name ? `active · ${activeProfile.name}` : 'default'}
+        <MetricCard
+          kicker="TOKENS · 14D"
+          value={loading ? '—' : fmtTokens(tokens14d)}
+          sub={tokens ? `${fmtTokens(tokens.last24h.total)} last 24h` : 'in / out'}
         />
-        <Metric
-          icon={<MessageSquare size={18} />}
-          label="Sessions"
-          value={loading ? <Skel w={40} /> : sessions.length}
-          detail={`24h · ${lastDayCount}`}
+        <MetricCard
+          kicker="COST · 14D"
+          value={loading ? '—' : fmtUsd(cost14d)}
+          sub={tokens ? `${fmtUsd(tokens.last24h.cost)} last 24h` : 'model spend'}
+          deltaTone={tokens && tokens.last24h.cost > 0 ? 'yellow' : 'green'}
         />
-        <Metric
-          icon={<Hash size={18} />}
-          label="Total messages"
-          value={loading ? <Skel w={50} /> : totalMessages.toLocaleString()}
-          detail={sessions.length ? `avg ${avgMsgsPerSession} / session` : '—'}
-        />
-        <Metric
-          icon={<Wrench size={18} />}
-          label="Tools / Skills"
-          value={loading ? <Skel w={40} /> : tools.length}
-          detail={toolBreakdown.map((b) => `${b.kind} ${b.count}`).join(' · ') || 'dynamic discovery'}
-        />
-        <Metric
-          icon={<Database size={18} />}
-          label="Dashboard"
-          value={loading ? <Skel w={70} /> : health?.dashboard.healthy ? 'Online' : 'Sidecar'}
-          detail={health?.dashboard.baseUrl || '—'}
+        <MetricCard
+          kicker="TOOLS · MCP"
+          value={loading ? '—' : tools.length}
+          sub={apiHealthy ? `API ${health?.apiServer.baseUrl?.replace(/^https?:\/\//, '')}` : 'API offline'}
         />
       </div>
 
-      {/* 24h activity */}
-      <section className="card">
-        <div className="section-head">
-          <div className="section-title">
-            <span className="section-kicker">24 hour activity</span>
-            <h2>Session activity</h2>
+      {/* 2-col: sparkline + top models */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+        <Card>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+            <Kicker>SESSIONS · {tokens?.daily?.length ? `${dailyCounts.length}D` : '24H'}</Kicker>
+            <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+              {tokens?.daily?.length ? `${dailyCounts.length} days` : '24 hourly buckets'}
+            </span>
           </div>
-          <span className="pill"><BarChart3 size={12} /> hourly buckets</span>
-        </div>
+          {dailyCounts.length > 0 ? (
+            <Sparkline values={dailyCounts} />
+          ) : (
+            <div style={{ height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted-2)', fontSize: 12 }}>
+              No activity yet
+            </div>
+          )}
+          <div
+            style={{
+              display: 'flex',
+              gap: 16,
+              marginTop: 14,
+              paddingTop: 12,
+              borderTop: '1px solid var(--hairline)',
+              flexWrap: 'wrap',
+            }}
+          >
+            <SparkStat label="PEAK" value={peakSessions} />
+            <SparkStat label="AVG" value={avgSessions} />
+            <SparkStat label="LAST 24H" value={lastDayCount} />
+          </div>
+        </Card>
 
-        <div className="spark-chart" aria-label="Sessions updated in the last 24 hours">
-          {activity.buckets.map((v, i) => {
-            const pct = activity.peak === 0 ? 0 : (v / activity.peak) * 100;
-            const isPeak = v > 0 && v === activity.peak;
+        <Card>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+            <Kicker>TOP MODELS · 14D</Kicker>
+            <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+              {topModels.length} models
+            </span>
+          </div>
+          {topModels.length === 0 ? (
+            <div style={{ padding: '18px 0', color: 'var(--muted-2)', fontSize: 12 }}>
+              No model usage yet.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {topModels.map((m) => (
+                <BarRow
+                  key={m.name}
+                  label={
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>
+                      {shortTitle(m.name, 20)}
+                    </span>
+                  }
+                  value={m.count}
+                  max={topModelsMax}
+                  raw={fmtTokens(m.count)}
+                />
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Recent sessions */}
+      <Card>
+        <SectionHead
+          kicker="RECENT SESSIONS"
+          title={<>Recent sessions</>}
+          right={
+            <Link href="/chat" style={{ fontSize: 11.5, color: 'var(--accent)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              View all <ChevronRight size={12} />
+            </Link>
+          }
+        />
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {loading && sessions.length === 0 && Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr auto auto',
+                gap: 12,
+                alignItems: 'center',
+                padding: '10px 0',
+                borderTop: i === 0 ? 'none' : '1px solid var(--hairline)',
+              }}
+            >
+              <div className="skel" style={{ width: '60%', height: 14 }} />
+              <div className="skel" style={{ width: 60, height: 14 }} />
+              <div className="skel" style={{ width: 14, height: 14 }} />
+            </div>
+          ))}
+          {sessions.slice(0, 5).map((s, i) => {
+            const meta = sourceMeta(s.source);
+            const time = relTime(s.updatedAt || s.createdAt);
             return (
-              <div
-                key={i}
-                className={`spark-bar ${v > 0 ? 'has-data' : ''} ${isPeak ? 'peak' : ''}`}
-                style={{ height: `${v > 0 ? Math.max(pct, 12) : 3}%` }}
-                title={`${v} session${v === 1 ? '' : 's'} updated`}
-                aria-hidden
-              />
+              <Link
+                key={s.id}
+                href={`/chat?session=${encodeURIComponent(s.id)}`}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr auto auto',
+                  gap: 12,
+                  alignItems: 'center',
+                  padding: '10px 0',
+                  borderTop: i === 0 ? 'none' : '1px solid var(--hairline)',
+                  textDecoration: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 550,
+                      color: 'var(--strong-text)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {shortTitle(s.title, 56)}
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                    {s.model || '—'} · {meta.short} · {time || 'pending'}
+                  </span>
+                </div>
+                <span style={{ fontSize: 11, color: 'var(--muted-2)', fontFamily: 'var(--font-mono)' }}>
+                  {s.messageCount ?? 0} msgs
+                </span>
+                <ChevronRight size={14} style={{ color: 'var(--muted-2)' }} />
+              </Link>
             );
           })}
-        </div>
-        <div className="spark-axis">
-          <span>−24h</span>
-          <span>−18h</span>
-          <span>−12h</span>
-          <span>−6h</span>
-          <span>now</span>
-        </div>
-
-        <div className="spark-summary">
-          <div>
-            <div className="label">24H SESSIONS</div>
-            <div className="value">{loading ? '—' : lastDayCount}</div>
-            <div className="detail">{sessions.length ? `${Math.round((lastDayCount / sessions.length) * 100)}% of all` : 'no data yet'}</div>
-          </div>
-          <div>
-            <div className="label">PEAK HOUR</div>
-            <div className="value">{peakHour}</div>
-            <div className="detail">{activity.peak ? `${activity.peak} session${activity.peak === 1 ? '' : 's'}` : '—'}</div>
-          </div>
-          <div>
-            <div className="label">TOTAL MESSAGES</div>
-            <div className="value">{loading ? '—' : totalMessages.toLocaleString()}</div>
-            <div className="detail">{sessions.length ? `across ${sessions.length} session${sessions.length === 1 ? '' : 's'}` : '—'}</div>
-          </div>
-        </div>
-      </section>
-
-      {/* Token usage hero card + KPI strip */}
-      <TokenUsageCard tokens={tokens} loading={loading} />
-
-      {/* Token charts: daily trend + weekday/hour heatmap */}
-      <div className="grid cols-2">
-        <TokenDailyChart tokens={tokens} loading={loading} />
-        <TokenHourlyHeatmap tokens={tokens} loading={loading} />
-      </div>
-
-      {/* Top models + sources by token spend */}
-      <div className="grid cols-2">
-        <TopModelsByTokens tokens={tokens} loading={loading} />
-        <TopSourcesByTokens tokens={tokens} loading={loading} />
-      </div>
-
-      {/* Profiles + Recent Sessions */}
-      <div className="grid cols-2">
-        <section className="card">
-          <div className="section-head">
-            <div className="section-title">
-              <span className="section-kicker">Execution contexts</span>
-              <h2>Profiles</h2>
+          {!loading && sessions.length === 0 && (
+            <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 12.5 }}>
+              No sessions yet. Send a message in chat to create your first one.
             </div>
-            <Link href="/profiles" className="pill">{profiles.length} contexts <ChevronRight size={12} /></Link>
-          </div>
-          <div className="list">
-            {loading && profiles.length === 0 && Array.from({ length: 3 }).map((_, i) => (
-              <div className="list-row" key={i}>
-                <div className="meta"><Skel w={120} /><div style={{ height: 6 }} /><Skel w={180} /></div>
-              </div>
-            ))}
-            {profiles.map((p) => (
-              <div className="list-row" key={p.id}>
-                <div className="meta">
-                  <b>
-                    {p.name}
-                    {p.active && <span className="pill ok" style={{ marginLeft: 6 }}>active</span>}
-                  </b>
-                  <div className="muted">
-                    <Cpu size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
-                    {p.model || 'model from Hermes'}
-                    <span style={{ margin: '0 6px', opacity: .5 }}>·</span>
-                    <GitBranch size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
-                    {p.gateway || 'gateway n/a'}
-                  </div>
-                </div>
-                <span className="kbd">{p.id}</span>
-              </div>
-            ))}
-            {!loading && profiles.length === 0 && (
-              <div className="empty-state" style={{ padding: 18 }}>
-                <p className="muted">No profiles found — running with the default context.</p>
-              </div>
-            )}
-          </div>
-        </section>
+          )}
+        </div>
+      </Card>
 
-        <section className="card">
-          <div className="section-head">
-            <div className="section-title">
-              <span className="section-kicker">Recent sessions</span>
-              <h2>Recent sessions</h2>
-            </div>
-            <Link href="/chat" className="pill"><ArrowUpRight size={12} /> Open chat</Link>
-          </div>
-          <div className="list">
-            {loading && sessions.length === 0 && Array.from({ length: 4 }).map((_, i) => (
-              <div className="list-row" key={i}>
-                <div className="meta"><Skel w={180} /><div style={{ height: 6 }} /><Skel w={120} /></div>
+      {/* 2-col: sources + profiles workload */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+        <Card>
+          <SectionHead
+            kicker="SESSIONS BY SOURCE"
+            title="Source distribution"
+            right={<Tag>{sourceBreakdown.length} channels</Tag>}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {sourceBreakdown.length === 0 ? (
+              <div style={{ padding: '12px 0', color: 'var(--muted-2)', fontSize: 12 }}>
+                No source data yet.
               </div>
-            ))}
-            {sessions.slice(0, 6).map((s) => {
-              const meta = sourceMeta(s.source);
-              const time = relTime(s.updatedAt || s.createdAt);
-              return (
-                <div className="list-row" key={s.id}>
-                  <div className="meta" style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
-                    <span className={`tag ${meta.tone}`} title={meta.label}>{meta.short}</span>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <b>{shortTitle(s.title, 40)}</b>
-                      <div className="muted small">
-                        {s.model || '—'}{time && <> · <Clock size={11} style={{ verticalAlign: -1 }} /> {time}</>}
-                      </div>
-                    </div>
-                  </div>
-                  <span className="kbd">{s.messageCount ?? 0}</span>
-                </div>
-              );
-            })}
-            {!loading && sessions.length === 0 && (
-              <div className="empty-state" style={{ padding: 18 }}>
-                <p className="muted">No sessions yet. Send a message in chat to create your first one.</p>
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
-
-      {/* Source distribution + Profile workload */}
-      <div className="grid cols-2">
-        <section className="card">
-          <div className="section-head">
-            <div className="section-title">
-              <span className="section-kicker">Source distribution</span>
-              <h2>Sessions by source</h2>
-            </div>
-            <span className="pill">{sourceBreakdown.length} channels</span>
-          </div>
-          <div className="bar-list">
-            {loading && Array.from({ length: 3 }).map((_, i) => (
-              <div className="bar-row" key={i}>
-                <Skel w={70} />
-                <div className="bar-track"><div className="bar-fill muted" style={{ width: `${30 + i * 18}%` }} /></div>
-                <Skel w={32} />
-              </div>
-            ))}
-            {!loading && sourceBreakdown.length === 0 && (
-              <div className="empty-state" style={{ padding: 18 }}>
-                <p className="muted">No source data yet.</p>
-              </div>
-            )}
-            {!loading && sourceBreakdown.map(({ source, count }) => {
+            ) : sourceBreakdown.map(({ source, count }) => {
               const meta = sourceMeta(source);
-              const pct = sessions.length ? (count / sessions.length) * 100 : 0;
               return (
-                <div className="bar-row" key={source}>
-                  <span className="bar-label">
-                    <span className={`tag ${meta.tone}`} style={{ minWidth: 'auto' }}>{meta.short}</span>
-                  </span>
-                  <div className="bar-track" aria-label={`${meta.label}: ${count} sessions`}>
-                    <div className="bar-fill" style={{ width: `${pct}%` }} />
-                  </div>
-                  <span className="bar-value">{count}<span className="muted" style={{ fontSize: 10 }}>·{Math.round(pct)}%</span></span>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="card">
-          <div className="section-head">
-            <div className="section-title">
-              <span className="section-kicker">Workload by profile</span>
-              <h2>Profile workload</h2>
-            </div>
-            <span className="pill">{profileBreakdown.length} active</span>
-          </div>
-          <div className="bar-list">
-            {loading && Array.from({ length: 3 }).map((_, i) => (
-              <div className="bar-row" key={i}>
-                <Skel w={70} />
-                <div className="bar-track"><div className="bar-fill muted" style={{ width: `${50 - i * 12}%` }} /></div>
-                <Skel w={32} />
-              </div>
-            ))}
-            {!loading && profileBreakdown.length === 0 && (
-              <div className="empty-state" style={{ padding: 18 }}>
-                <p className="muted">No profile workload data yet.</p>
-              </div>
-            )}
-            {!loading && profileBreakdown.map(({ id, name, active, count }) => {
-              const pct = sessions.length ? (count / sessions.length) * 100 : 0;
-              return (
-                <div className="bar-row" key={id}>
-                  <span className="bar-label">
-                    <Bot size={12} color="var(--muted)" />
-                    {name}
-                    {active && <span className="pill ok" style={{ padding: '1px 6px', fontSize: 9 }}>active</span>}
-                  </span>
-                  <div className="bar-track" aria-label={`${name}: ${count} sessions`}>
-                    <div className="bar-fill" style={{ width: `${pct}%` }} />
-                  </div>
-                  <span className="bar-value">{count}<span className="muted" style={{ fontSize: 10 }}>·{Math.round(pct)}%</span></span>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      </div>
-
-      {/* Capabilities + Quick actions */}
-      <div className="grid cols-2">
-        <section className="card">
-          <div className="section-head">
-            <div className="section-title">
-              <span className="section-kicker">Capabilities</span>
-              <h2>Capabilities</h2>
-            </div>
-            <Link href="/tools" className="pill">{tools.length} items <ChevronRight size={12} /></Link>
-          </div>
-          <div className="bar-list">
-            {loading && Array.from({ length: 3 }).map((_, i) => (
-              <div className="bar-row" key={i}>
-                <Skel w={70} />
-                <div className="bar-track"><div className="bar-fill muted" style={{ width: `${60 - i * 14}%` }} /></div>
-                <Skel w={32} />
-              </div>
-            ))}
-            {!loading && toolBreakdown.length === 0 && (
-              <div className="empty-state" style={{ padding: 18 }}>
-                <p className="muted">CLI did not return a tools / skills list.</p>
-              </div>
-            )}
-            {!loading && toolBreakdown.map(({ kind, count }) => {
-              const pct = tools.length ? (count / tools.length) * 100 : 0;
-              return (
-                <div className="bar-row" key={kind}>
-                  <span className="bar-label">
-                    {kind === 'toolset' && <Wrench size={13} color="var(--accent)" />}
-                    {kind === 'skill' && <Sparkles size={13} color="var(--accent)" />}
-                    {kind === 'mcp' && <Plug size={13} color="var(--accent)" />}
-                    {kind === 'unknown' && <Boxes size={13} color="var(--muted)" />}
-                    {kind}
-                  </span>
-                  <div className="bar-track" aria-label={`${kind}: ${count} items`}>
-                    <div className="bar-fill" style={{ width: `${pct}%` }} />
-                  </div>
-                  <span className="bar-value">{count}<span className="muted" style={{ fontSize: 10 }}>·{Math.round(pct)}%</span></span>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="card">
-          <div className="section-head">
-            <div className="section-title">
-              <span className="section-kicker">Quick actions</span>
-              <h2>Quick actions</h2>
-            </div>
-            <span className="pill"><Radio size={11} /> live</span>
-          </div>
-          <div className="action-grid">
-            <Link href="/chat" className="action-card">
-              <span className="action-icon"><MessageSquare size={15} /></span>
-              <span className="action-text">
-                <span className="action-title">New chat</span>
-                <span className="action-sub">SSE · multi-session</span>
-              </span>
-            </Link>
-            <Link href="/profiles" className="action-card">
-              <span className="action-icon"><Bot size={15} /></span>
-              <span className="action-text">
-                <span className="action-title">Switch profile</span>
-                <span className="action-sub">{profiles.length} execution contexts</span>
-              </span>
-            </Link>
-            <Link href="/tools" className="action-card">
-              <span className="action-icon"><Wrench size={15} /></span>
-              <span className="action-text">
-                <span className="action-title">Capabilities</span>
-                <span className="action-sub">tools · skills · MCP</span>
-              </span>
-            </Link>
-            <Link href="/runs" className="action-card">
-              <span className="action-icon"><Layers size={15} /></span>
-              <span className="action-text">
-                <span className="action-title">Run timeline</span>
-                <span className="action-sub">SSE event stream</span>
-              </span>
-            </Link>
-            <Link href="/terminal" className="action-card">
-              <span className="action-icon"><Terminal size={15} /></span>
-              <span className="action-text">
-                <span className="action-title">Safe terminal</span>
-                <span className="action-sub">allowlisted commands</span>
-              </span>
-            </Link>
-            <Link href="/settings" className="action-card">
-              <span className="action-icon"><Server size={15} /></span>
-              <span className="action-text">
-                <span className="action-title">Settings</span>
-                <span className="action-sub">theme / preferences</span>
-              </span>
-            </Link>
-          </div>
-        </section>
-      </div>
-
-      {/* System info */}
-      <section className="card">
-        <div className="section-head">
-          <div className="section-title">
-            <span className="section-kicker">Runtime metadata</span>
-            <h2>System info</h2>
-          </div>
-          <span className="pill"><Server size={12} /> Hermes BFF</span>
-        </div>
-        <div className="kv-list">
-          <div className="kv-row">
-            <span className="kv-key">Hermes Version</span>
-            <span className="kv-val">{loading ? '—' : (health?.version || 'unknown')}</span>
-          </div>
-          <div className="kv-row">
-            <span className="kv-key">API Server</span>
-            <span className="kv-val">
-              {health?.apiServer.baseUrl || '—'}
-              {health?.apiServer.detail && (
-                <span className="muted" style={{ marginLeft: 8, fontSize: 11 }}>· {health.apiServer.detail.slice(0, 60)}</span>
-              )}
-            </span>
-          </div>
-          <div className="kv-row">
-            <span className="kv-key">Dashboard</span>
-            <span className="kv-val">
-              {health?.dashboard.baseUrl || '—'}
-              {health?.dashboard.detail && (
-                <span className="muted" style={{ marginLeft: 8, fontSize: 11 }}>· {health.dashboard.detail}</span>
-              )}
-            </span>
-          </div>
-          <div className="kv-row">
-            <span className="kv-key">Deck Uptime</span>
-            <span className="kv-val">{health?.uptimeSeconds != null ? formatUptime(health.uptimeSeconds) : '—'}</span>
-          </div>
-          <div className="kv-row">
-            <span className="kv-key">Streaming</span>
-            <span className="kv-val text">SSE · response.delta · run-event · done</span>
-          </div>
-          <div className="kv-row">
-            <span className="kv-key">State</span>
-            <span className="kv-val text">~/.hermes/state.db · ~/.hermes/profiles/&lt;id&gt;/state.db</span>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function Metric({ icon, label, value, detail }: {
-  icon: React.ReactNode; label: string; value: React.ReactNode; detail: string;
-}) {
-  return (
-    <div className="card metric-card hover-lift">
-      <div className="metric-top">
-        <span className="metric-icon">{icon}</span>
-        <span className="metric-label">{label}</span>
-      </div>
-      <div>
-        <div className="metric">{value}</div>
-        <div className="muted small" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail}</div>
-      </div>
-    </div>
-  );
-}
-
-function Skel({ w = 80 }: { w?: number }) {
-  return <span className="skel" style={{ display: 'inline-block', width: w, height: 18, verticalAlign: 'middle' }} />;
-}
-
-function formatUptime(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  return `${d}d ${h}h`;
-}
-
-function fmtTokens(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0';
-  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return n.toLocaleString();
-}
-
-function fmtCost(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '$0';
-  if (n >= 100) return `$${n.toFixed(0)}`;
-  if (n >= 1) return `$${n.toFixed(2)}`;
-  return `$${n.toFixed(3)}`;
-}
-
-function TokenUsageCard({ tokens, loading }: { tokens: TokenStats | null; loading: boolean }) {
-  const t = tokens?.totals;
-  const day = tokens?.last24h;
-  const totalDailyTokens = (tokens?.daily || []).reduce((s, d) => s + d.total, 0);
-  const sparkPeak = (tokens?.daily || []).reduce((m, d) => Math.max(m, d.total), 0);
-  const cacheRatio = t && t.input > 0 ? Math.round((t.cacheRead / Math.max(t.input, 1)) * 100) : 0;
-  return (
-    <section className="card token-hero">
-      <div className="token-hero-grid">
-        <div className="token-hero-left">
-          <div className="hero-kicker">Token usage</div>
-          <h2 className="token-hero-total">
-            {loading || !t ? '—' : fmtTokens(t.total)}
-            <span className="token-hero-unit">tokens</span>
-          </h2>
-          <div className="token-hero-meta">
-            <span className="token-meta-pill"><DollarSign size={11} /> total cost <b>{loading || !t ? '—' : fmtCost(t.cost)}</b></span>
-            <span className="token-meta-pill"><Activity size={11} /> {loading || !t ? '—' : t.sessions.toLocaleString()} sessions</span>
-            <span className="token-meta-pill"><Zap size={11} /> {loading || !t ? '—' : t.apiCalls.toLocaleString()} API calls</span>
-          </div>
-
-          <div className="token-split">
-            <div className="token-split-row">
-              <span className="token-split-label"><ArrowDownRight size={12} /> Input</span>
-              <div className="token-split-bar"><div className="fill is-input" style={{ width: t && t.total ? `${(t.input / t.total) * 100}%` : '0%' }} /></div>
-              <span className="token-split-val">{loading || !t ? '—' : fmtTokens(t.input)}</span>
-            </div>
-            <div className="token-split-row">
-              <span className="token-split-label"><ArrowUR size={12} /> Output</span>
-              <div className="token-split-bar"><div className="fill is-output" style={{ width: t && t.total ? `${(t.output / t.total) * 100}%` : '0%' }} /></div>
-              <span className="token-split-val">{loading || !t ? '—' : fmtTokens(t.output)}</span>
-            </div>
-            {t && t.cacheRead > 0 && (
-              <div className="token-split-row">
-                <span className="token-split-label"><Database size={12} /> Cache read</span>
-                <div className="token-split-bar"><div className="fill is-cache" style={{ width: t && t.total ? `${(t.cacheRead / t.total) * 100}%` : '0%' }} /></div>
-                <span className="token-split-val">{fmtTokens(t.cacheRead)} <span className="muted small" style={{ marginLeft: 4 }}>{cacheRatio}%</span></span>
-              </div>
-            )}
-            {t && t.reasoning > 0 && (
-              <div className="token-split-row">
-                <span className="token-split-label"><Sparkles size={12} /> Reasoning</span>
-                <div className="token-split-bar"><div className="fill is-reasoning" style={{ width: t && t.total ? `${(t.reasoning / t.total) * 100}%` : '0%' }} /></div>
-                <span className="token-split-val">{fmtTokens(t.reasoning)}</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="token-hero-right">
-          <div className="token-kpi-row">
-            <div className="token-kpi">
-              <div className="token-kpi-label">Last 24h</div>
-              <div className="token-kpi-value">{loading || !day ? '—' : fmtTokens(day.total)}</div>
-              <div className="token-kpi-detail">{loading || !day ? '—' : `${day.sessions} sessions`}</div>
-            </div>
-            <div className="token-kpi">
-              <div className="token-kpi-label">14d total</div>
-              <div className="token-kpi-value">{loading || !tokens ? '—' : fmtTokens(totalDailyTokens)}</div>
-              <div className="token-kpi-detail">rolling window</div>
-            </div>
-          </div>
-          <div className="token-spark" aria-label="14-day token usage trend">
-            {(tokens?.daily || []).map((d) => {
-              const pct = sparkPeak ? (d.total / sparkPeak) * 100 : 0;
-              return (
-                <div
-                  key={d.date}
-                  className={`token-spark-bar ${d.total > 0 ? 'has-data' : ''} ${d.total === sparkPeak && d.total > 0 ? 'peak' : ''}`}
-                  style={{ height: `${d.total > 0 ? Math.max(pct, 14) : 3}%` }}
-                  title={`${d.date} · ${fmtTokens(d.total)} tokens · ${fmtCost(d.cost)}`}
+                <BarRow
+                  key={source}
+                  label={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 11.5, color: 'var(--text)' }}>{meta.label}</span>
+                    </span>
+                  }
+                  value={count}
+                  max={sessions.length || 1}
+                  raw={`${count} · ${pct(count, sessions.length)}%`}
                 />
               );
             })}
           </div>
-          <div className="token-spark-axis">
-            <span>−14d</span><span>−7d</span><span>now</span>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
+        </Card>
 
-function TokenDailyChart({ tokens, loading }: { tokens: TokenStats | null; loading: boolean }) {
-  const daily = tokens?.daily || [];
-  const peak = daily.reduce((m, d) => Math.max(m, d.input + d.output), 0);
-  const totalCost = daily.reduce((s, d) => s + d.cost, 0);
-  return (
-    <section className="card">
-      <div className="section-head">
-        <div className="section-title">
-          <span className="section-kicker">Token trend</span>
-          <h2>Daily token usage</h2>
-        </div>
-        <span className="pill"><TrendingUp size={12} /> {tokens?.windowDays || 14}d window</span>
-      </div>
-      <div className="stacked-chart" aria-label="Daily input/output token stack">
-        {loading && Array.from({ length: 14 }).map((_, i) => (
-          <div className="stacked-bar-wrap" key={i}><div className="stacked-bar skel-bar" style={{ height: `${20 + (i * 7) % 60}%` }} /></div>
-        ))}
-        {!loading && daily.map((d) => {
-          const total = d.input + d.output;
-          const heightPct = peak ? (total / peak) * 100 : 0;
-          const inputPct = total ? (d.input / total) * 100 : 0;
-          return (
-            <div className="stacked-bar-wrap" key={d.date} title={`${d.date}\nInput ${fmtTokens(d.input)}  Output ${fmtTokens(d.output)}\n${fmtCost(d.cost)}`}>
-              <div className="stacked-bar" style={{ height: `${total > 0 ? Math.max(heightPct, 14) : 3}%` }}>
-                <div className="seg is-input" style={{ height: `${inputPct}%` }} />
-                <div className="seg is-output" style={{ height: `${100 - inputPct}%` }} />
+        <Card>
+          <SectionHead
+            kicker="WORKLOAD BY PROFILE"
+            title="Profile workload"
+            right={<Tag>{profileBreakdown.length} active</Tag>}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {profileBreakdown.length === 0 ? (
+              <div style={{ padding: '12px 0', color: 'var(--muted-2)', fontSize: 12 }}>
+                No profile workload data yet.
               </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="chart-legend">
-        <span className="legend-dot is-input" /> Input
-        <span className="legend-dot is-output" /> Output
-        <span style={{ marginLeft: 'auto' }} className="muted small">Window cost {loading ? '—' : fmtCost(totalCost)}</span>
-      </div>
-    </section>
-  );
-}
-
-function TokenHourlyHeatmap({ tokens, loading }: { tokens: TokenStats | null; loading: boolean }) {
-  const hourly = tokens?.hourly || Array(24).fill(0);
-  const weekday = tokens?.weekday || Array(7).fill(0);
-  const peakHour = hourly.reduce((m, v) => Math.max(m, v), 0);
-  const peakDay = weekday.reduce((m, v) => Math.max(m, v), 0);
-  const peakHourIdx = hourly.indexOf(peakHour);
-  const peakDayIdx = weekday.indexOf(peakDay);
-  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  return (
-    <section className="card">
-      <div className="section-head">
-        <div className="section-title">
-          <span className="section-kicker">Activity rhythm</span>
-          <h2>Activity rhythm</h2>
-        </div>
-        <span className="pill"><CalendarDays size={12} /> hour × weekday</span>
-      </div>
-
-      <div className="rhythm-block">
-        <div className="rhythm-label">Tokens by weekday</div>
-        <div className="weekday-row">
-          {weekday.map((v, i) => {
-            const intensity = peakDay ? v / peakDay : 0;
-            return (
-              <div className="weekday-cell" key={i} title={`${dayNames[i]} · ${fmtTokens(v)}`}>
-                <div className="weekday-bar"><div className="weekday-fill" style={{ opacity: 0.12 + intensity * 0.88 }} /></div>
-                <div className="weekday-name">{dayNames[i]}</div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="muted small" style={{ marginTop: 6 }}>
-          {loading ? '—' : peakDay > 0 ? <>Peak <b>{dayNames[peakDayIdx]}</b> · {fmtTokens(peakDay)} tokens</> : 'No data yet'}
-        </div>
-      </div>
-
-      <div className="rhythm-block">
-        <div className="rhythm-label">Hour-of-day (0–23)</div>
-        <div className="hourly-row" aria-label="Hourly token usage">
-          {hourly.map((v, i) => {
-            const pct = peakHour ? (v / peakHour) * 100 : 0;
-            return (
-              <div
-                key={i}
-                className={`hour-bar ${v > 0 ? 'has-data' : ''} ${v === peakHour && v > 0 ? 'peak' : ''}`}
-                style={{ height: `${v > 0 ? Math.max(pct, 12) : 3}%` }}
-                title={`${i.toString().padStart(2, '0')}:00 · ${fmtTokens(v)}`}
+            ) : profileBreakdown.map(({ id, name, active, count }) => (
+              <BarRow
+                key={id}
+                label={
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Bot size={11} style={{ color: active ? 'var(--accent)' : 'var(--muted)' }} />
+                    <span style={{ fontSize: 11.5 }}>{name}</span>
+                  </span>
+                }
+                value={count}
+                max={sessions.length || 1}
+                raw={`${count} · ${pct(count, sessions.length)}%`}
               />
-            );
-          })}
-        </div>
-        <div className="hourly-axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
-        <div className="muted small" style={{ marginTop: 6 }}>
-          {loading ? '—' : peakHour > 0 ? <>Peak <b>{peakHourIdx.toString().padStart(2, '0')}:00</b> · {fmtTokens(peakHour)} tokens</> : 'No data yet'}
-        </div>
+            ))}
+          </div>
+        </Card>
       </div>
-    </section>
+
+      {/* Capabilities footer */}
+      <Card>
+        <SectionHead
+          kicker="CAPABILITIES"
+          title="Tools, skills and MCP servers"
+          right={
+            <Link href="/tools" style={{ textDecoration: 'none' }}>
+              <Btn size="sm" icon={<Wrench size={12} />}>Browse all</Btn>
+            </Link>
+          }
+        />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {loading && tools.length === 0
+            ? Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="skel" style={{ width: 90, height: 26, borderRadius: 999 }} />
+              ))
+            : tools.length === 0
+            ? <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>Hermes did not return a tools list.</span>
+            : tools.slice(0, 18).map((t, i) => (
+                <Tag key={`${t.name}-${t.kind}-${i}`} variant={t.kind === 'mcp' ? 'cyan' : t.kind === 'skill' ? 'accent' : 'default'}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{t.name}</span>
+                </Tag>
+              ))}
+        </div>
+        {tools.length > 18 && (
+          <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--muted-2)' }}>
+            + {tools.length - 18} more
+          </div>
+        )}
+        {!loading && (
+          <div style={{ marginTop: 12, fontSize: 11, color: 'var(--muted-2)', fontFamily: 'var(--font-mono)' }}>
+            data · <Kbd>{health?.apiServer.baseUrl || '—'}</Kbd>
+          </div>
+        )}
+      </Card>
+    </Page>
   );
 }
 
-function TopModelsByTokens({ tokens, loading }: { tokens: TokenStats | null; loading: boolean }) {
-  const models = tokens?.topModels || [];
-  const peak = models.reduce((m, x) => Math.max(m, x.tokens), 0);
+function SparkStat({ label, value }: { label: string; value: number | string }) {
   return (
-    <section className="card">
-      <div className="section-head">
-        <div className="section-title">
-          <span className="section-kicker">By model</span>
-          <h2>Top Models · 14d</h2>
-        </div>
-        <Link href="/models" className="pill">View all <ChevronRight size={12} /></Link>
+    <div>
+      <Kicker>{label}</Kicker>
+      <div
+        style={{
+          fontSize: 18,
+          fontWeight: 650,
+          color: 'var(--strong-text)',
+          fontVariantNumeric: 'tabular-nums',
+          marginTop: 2,
+        }}
+      >
+        {value}
       </div>
-      <div className="bar-list">
-        {loading && Array.from({ length: 4 }).map((_, i) => (
-          <div className="bar-row" key={i}>
-            <Skel w={80} />
-            <div className="bar-track"><div className="bar-fill muted" style={{ width: `${60 - i * 12}%` }} /></div>
-            <Skel w={36} />
-          </div>
-        ))}
-        {!loading && models.length === 0 && (
-          <div className="empty-state" style={{ padding: 18 }}>
-            <p className="muted">No token usage in this window yet.</p>
-          </div>
-        )}
-        {!loading && models.map((m) => {
-          const pct = peak ? (m.tokens / peak) * 100 : 0;
-          return (
-            <div className="bar-row" key={m.model}>
-              <span className="bar-label" title={m.model}>
-                <Cpu size={12} color="var(--accent)" /> <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.model}</span>
-              </span>
-              <div className="bar-track" aria-label={`${m.model} ${fmtTokens(m.tokens)} tokens`}>
-                <div className="bar-fill" style={{ width: `${pct}%` }} />
-              </div>
-              <span className="bar-value">
-                {fmtTokens(m.tokens)}
-                <span className="muted" style={{ fontSize: 10 }}>{fmtCost(m.cost)}</span>
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function TopSourcesByTokens({ tokens, loading }: { tokens: TokenStats | null; loading: boolean }) {
-  const sources = tokens?.topSources || [];
-  const peak = sources.reduce((m, x) => Math.max(m, x.tokens), 0);
-  return (
-    <section className="card">
-      <div className="section-head">
-        <div className="section-title">
-          <span className="section-kicker">By source</span>
-          <h2>Top sources · 14d</h2>
-        </div>
-        <span className="pill"><Flame size={12} /> by tokens</span>
-      </div>
-      <div className="bar-list">
-        {loading && Array.from({ length: 4 }).map((_, i) => (
-          <div className="bar-row" key={i}>
-            <Skel w={80} />
-            <div className="bar-track"><div className="bar-fill muted" style={{ width: `${60 - i * 12}%` }} /></div>
-            <Skel w={36} />
-          </div>
-        ))}
-        {!loading && sources.length === 0 && (
-          <div className="empty-state" style={{ padding: 18 }}>
-            <p className="muted">No source data in this window yet.</p>
-          </div>
-        )}
-        {!loading && sources.map((s) => {
-          const pct = peak ? (s.tokens / peak) * 100 : 0;
-          const meta = sourceMeta(s.source);
-          return (
-            <div className="bar-row" key={s.source}>
-              <span className="bar-label" title={meta.label}>
-                <span className={`tag ${meta.tone}`} style={{ minWidth: 'auto' }}>{meta.short}</span>
-              </span>
-              <div className="bar-track" aria-label={`${meta.label} ${fmtTokens(s.tokens)} tokens`}>
-                <div className="bar-fill" style={{ width: `${pct}%` }} />
-              </div>
-              <span className="bar-value">
-                {fmtTokens(s.tokens)}
-                <span className="muted" style={{ fontSize: 10 }}>{s.sessions} sessions</span>
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </section>
+    </div>
   );
 }

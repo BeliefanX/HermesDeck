@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react';
 import { deckApi } from '@/lib/api';
 import type { DeckHealth } from '@/lib/types';
-import { Sun, Moon, MonitorSmartphone, Trash2, ShieldCheck, Server, Database, RefreshCw } from 'lucide-react';
+import { Sun, Moon, Monitor, Trash2, ShieldCheck, Server, Database, RefreshCw } from 'lucide-react';
+import { Page, Card, SectionHead, Chip, Btn, Tag, Kicker, Kbd, ListRow } from '@/components/Brand';
 
 type Theme = 'dark' | 'light';
 
@@ -60,94 +61,77 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="page grid">
-      <p className="page-intro">
-        Basics: theme, connection info, local cache. Sensitive config is not exposed in the frontend;
-        future versions will edit it via a guarded BFF.
-      </p>
-
-      <section className="card">
-        <h2>Appearance</h2>
-        <p className="muted small" style={{ marginTop: 6 }}>
+    <Page intro="Basics: theme, connection info, local cache. Sensitive config is not exposed in the frontend; future versions will edit it via a guarded BFF.">
+      <Card>
+        <SectionHead kicker="APPEARANCE" title="Theme" />
+        <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 12px' }}>
           Theme persists in the browser and is replayed by the SSR bootstrap script to avoid flashes.
         </p>
-        <div className="row start" style={{ gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-          <button
-            className={`chip ${theme === 'dark' ? 'active' : ''}`}
-            onClick={() => applyTheme('dark')}
-          >
-            <Moon size={13} /> Dark
-          </button>
-          <button
-            className={`chip ${theme === 'light' ? 'active' : ''}`}
-            onClick={() => applyTheme('light')}
-          >
-            <Sun size={13} /> Light
-          </button>
-          <button className="chip" onClick={applySystemTheme}>
-            <MonitorSmartphone size={13} /> Follow system
-          </button>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <Chip active={theme === 'dark'} onClick={() => applyTheme('dark')} icon={<Moon size={11} />}>Dark</Chip>
+          <Chip active={theme === 'light'} onClick={() => applyTheme('light')} icon={<Sun size={11} />}>Light</Chip>
+          <Chip onClick={applySystemTheme} icon={<Monitor size={11} />}>Follow system</Chip>
         </div>
-      </section>
+      </Card>
 
-      <section className="card">
-        <div className="row">
-          <h2>Backend</h2>
-          <button className="btn sm" onClick={refreshHealth} disabled={refreshing} aria-label="Refresh health">
-            <RefreshCw size={13} className={refreshing ? 'spin' : ''} /> Refresh
-          </button>
+      <Card>
+        <SectionHead
+          kicker="BACKEND"
+          title="Hermes connections"
+          right={
+            <Btn size="sm" icon={<RefreshCw size={12} className={refreshing ? 'spin' : ''} />} onClick={refreshHealth} disabled={refreshing}>
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </Btn>
+          }
+        />
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <ListRow
+            first
+            icon={<Server size={14} />}
+            title="Hermes API Server"
+            sub={health?.apiServer.baseUrl || '—'}
+            right={<Tag variant={health?.apiServer.healthy ? 'green' : 'yellow'}>{health?.apiServer.healthy ? 'Healthy' : 'Fallback'}</Tag>}
+          />
+          <ListRow
+            icon={<Database size={14} />}
+            title="Hermes Dashboard"
+            sub={health?.dashboard.baseUrl || '—'}
+            right={<Tag variant={health?.dashboard.healthy ? 'green' : 'yellow'}>{health?.dashboard.healthy ? 'Seen' : 'Sidecar'}</Tag>}
+          />
         </div>
-        <div className="list" style={{ marginTop: 12 }}>
-          <div className="list-row">
-            <div className="meta" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <span className="metric-icon" style={{ width: 32, height: 32, borderRadius: 10 }}><Server size={15} /></span>
-              <div style={{ minWidth: 0 }}>
-                <b>Hermes API Server</b>
-                <div className="muted small">{health?.apiServer.baseUrl || '—'}</div>
-              </div>
-            </div>
-            <span className={`pill ${health?.apiServer.healthy ? 'ok' : 'warn'}`}>
-              {health?.apiServer.healthy ? 'Healthy' : 'Fallback'}
-            </span>
-          </div>
-          <div className="list-row">
-            <div className="meta" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <span className="metric-icon" style={{ width: 32, height: 32, borderRadius: 10 }}><Database size={15} /></span>
-              <div style={{ minWidth: 0 }}>
-                <b>Hermes Dashboard</b>
-                <div className="muted small">{health?.dashboard.baseUrl || '—'}</div>
-              </div>
-            </div>
-            <span className={`pill ${health?.dashboard.healthy ? 'ok' : 'warn'}`}>
-              {health?.dashboard.healthy ? 'Seen' : 'Sidecar'}
-            </span>
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            background: 'var(--surface-bg)',
+            border: '1px solid var(--line)',
+            borderRadius: 8,
+          }}
+        >
+          <Kicker style={{ marginBottom: 8 }}>ENV VARS · SECRETS REDACTED</Kicker>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--text)' }}>
+            <div>API server: <Kbd>HERMES_API_BASE</Kbd></div>
+            <div>Dashboard: <Kbd>HERMES_DASHBOARD_BASE</Kbd></div>
+            <div>Auth: <Kbd>HERMES_API_KEY</Kbd> · <Kbd>API_SERVER_KEY</Kbd></div>
           </div>
         </div>
-        <div className="surface" style={{ marginTop: 12 }}>
-          <div className="tiny" style={{ marginBottom: 6 }}>ENV VARS · SECRETS REDACTED</div>
-          <div className="small" style={{ display: 'grid', gap: 4 }}>
-            <div>API server: <span className="kbd">HERMES_API_BASE</span></div>
-            <div>Dashboard: <span className="kbd">HERMES_DASHBOARD_BASE</span></div>
-            <div>Auth: <span className="kbd">HERMES_API_KEY</span> · <span className="kbd">API_SERVER_KEY</span></div>
-          </div>
-        </div>
-      </section>
+      </Card>
 
-      <section className="card">
-        <h2>Local cache</h2>
-        <p className="muted small" style={{ marginTop: 6 }}>
-          HermesDeck keeps drafts, the session index and response_id chains in the browser,
-          so offline browsing and multi-profile switching feel snappy.
+      <Card>
+        <SectionHead kicker="LOCAL CACHE" title="Browser-stored state" />
+        <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 14px', maxWidth: 620 }}>
+          HermesDeck keeps drafts, the session index and response_id chains in the browser, so offline browsing and
+          multi-profile switching feel snappy.
         </p>
-        <div className="row" style={{ marginTop: 14, flexWrap: 'wrap', gap: 10 }}>
-          <span className="pill"><ShieldCheck size={13} /> on-device only</span>
-          <span className="pill">~ {(storageUsed / 1024).toFixed(1)} KB</span>
-          <button className="btn danger" onClick={clearChatStorage}>
-            <Trash2 size={14} /> Clear HermesDeck cache
-          </button>
-          {cleared && <span className="pill ok">Cleared</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <Tag icon={<ShieldCheck size={11} />}>on-device only</Tag>
+          <Tag>~ {(storageUsed / 1024).toFixed(1)} KB</Tag>
+          <Btn variant="danger" icon={<Trash2 size={13} />} onClick={clearChatStorage}>
+            Clear HermesDeck cache
+          </Btn>
+          {cleared && <Tag variant="green">Cleared</Tag>}
         </div>
-      </section>
-    </div>
+      </Card>
+    </Page>
   );
 }
