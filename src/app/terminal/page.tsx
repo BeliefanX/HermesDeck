@@ -60,32 +60,8 @@ export default function TerminalPage() {
   }
 
   return (
-    <Page>
-      {/* Hero */}
-      <Card hero padding={22}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <Kicker style={{ marginBottom: 8 }}>SAFE OPS CONSOLE</Kicker>
-            <h1 style={{ fontSize: 'clamp(20px, 2.4vw, 26px)', lineHeight: 1.12, fontWeight: 650, letterSpacing: '-.03em', color: 'var(--strong-text)', margin: '0 0 8px' }}>
-              Not a raw web shell &mdash; a governed terminal
-            </h1>
-            <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, margin: 0, maxWidth: 620 }}>
-              HermesDeck&rsquo;s safe terminal only runs server-side allowlisted actions, executes with{' '}
-              <Kbd>shell:false</Kbd>, and applies timeout, truncation and secret-redaction automatically.
-              Free-form commands are intentionally not accepted &mdash; this is not a remote shell.
-            </p>
-          </div>
-          <Tag variant="green" icon={<ShieldCheck size={11} />}>allowlisted</Tag>
-        </div>
-      </Card>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(240px, 320px) minmax(0, 1fr)',
-          gap: 14,
-        }}
-      >
+    <Page intro="Allowlisted, server-side actions only. Each run uses shell:false with a timeout, output truncation, and automatic secret redaction.">
+      <div className="terminal-layout">
         {/* Allowlist sidebar */}
         <Card padding={14}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>

@@ -1769,15 +1769,17 @@ export default function ChatPage() {
               </div>
             )}
             <div
-              className="composer-row"
+              className="composer-row composer-row-stack"
               style={{
                 display: 'flex',
                 flexDirection: 'column',
+                alignItems: 'stretch',
                 gap: 8,
                 padding: 12,
                 background: 'var(--bg-soft)',
                 border: '1px solid var(--line)',
                 borderRadius: 12,
+                width: '100%',
               }}
             >
               <input
