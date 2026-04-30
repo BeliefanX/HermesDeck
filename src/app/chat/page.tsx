@@ -45,6 +45,7 @@ import {
   Search, Pin, Folder as FolderIcon, FolderPlus, ChevronDown, ChevronLeft, ChevronRight,
   MoreHorizontal, Archive, ArchiveRestore, Inbox, ListFilter, Bot, Network,
 } from 'lucide-react';
+import { Card, Kicker, Tag, Btn, Kbd } from '@/components/Brand';
 
 // Tool names that spawn or interact with a Hermes subagent. Visually distinct
 // from regular tool calls so they're easy to find in long conversations.
@@ -1251,26 +1252,61 @@ export default function ChatPage() {
       const sid = dialog.sessionId;
       const title = dialog.sessionTitle;
       return (
-        <div className="dialog-backdrop" onClick={() => setDialog(null)} role="dialog" aria-modal="true" aria-label="Delete session">
-          <div className="dialog-card" onClick={(e) => e.stopPropagation()}>
-            <div className="dialog-header">
-              <div>
-                <h3>Delete session</h3>
-                <div className="muted small" style={{ marginTop: 4 }}>
-                  This permanently deletes “{shortTitle(title, 40)}” and all of its messages. The matching row in Hermes&rsquo; state.db is also cleared. This cannot be undone.
+        <div
+          className="dialog-backdrop"
+          onClick={() => setDialog(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Delete session"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 80,
+            background: 'rgba(0,0,0,.55)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            className="dialog-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--panel)',
+              border: '1px solid var(--line)',
+              borderRadius: 12,
+              boxShadow: 'var(--shadow-pop)',
+              padding: 18,
+              maxWidth: 480,
+              width: '100%',
+            }}
+          >
+            <div className="dialog-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <Kicker style={{ marginBottom: 4 }}>DESTRUCTIVE</Kicker>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 650, color: 'var(--strong-text)', letterSpacing: '-.02em' }}>Delete session</h3>
+                <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5 }}>
+                  This permanently deletes &ldquo;{shortTitle(title, 40)}&rdquo; and all of its messages. The matching row in Hermes&rsquo; state.db is also cleared. This cannot be undone.
                 </div>
               </div>
-              <button className="btn icon sm" onClick={() => setDialog(null)} aria-label="Close"><X size={14} /></button>
+              <button onClick={() => setDialog(null)} aria-label="Close" style={iconBtnStyle}>
+                <X size={14} />
+              </button>
             </div>
-            <div className="dialog-actions" style={{ marginTop: 14 }}>
-              <button className="btn sm" onClick={() => setDialog(null)}>Cancel</button>
-              <button
-                className="btn sm danger"
+            <div className="dialog-actions" style={{ marginTop: 18, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <Btn size="sm" onClick={() => setDialog(null)}>Cancel</Btn>
+              <Btn
+                size="sm"
+                variant="danger"
                 onClick={() => {
                   setDialog(null);
                   performDeleteSession(sid);
                 }}
-              >Confirm delete</button>
+              >
+                Confirm delete
+              </Btn>
             </div>
           </div>
         </div>
@@ -1280,13 +1316,26 @@ export default function ChatPage() {
   })();
 
   return (
-    <div className="page page-chat" style={{ paddingBottom: 0 }}>
+    <div className="page-chat" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {dragActive && (
         <div className="dropzone-overlay" aria-hidden>
-          <div className="dropzone-card">
-            <Upload size={28} />
-            <div className="dropzone-title">Drop to attach</div>
-            <div className="dropzone-sub">Images, PDF, DOCX, text and code files</div>
+          <div
+            className="dropzone-card"
+            style={{
+              background: 'var(--panel)',
+              border: '1px solid var(--accent-border)',
+              borderRadius: 14,
+              padding: 28,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+              boxShadow: 'var(--shadow-pop)',
+            }}
+          >
+            <Upload size={28} style={{ color: 'var(--accent)' }} />
+            <div style={{ fontSize: 16, fontWeight: 620, color: 'var(--strong-text)' }}>Drop to attach</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>Images, PDF, DOCX, text and code files</div>
           </div>
         </div>
       )}
@@ -1311,159 +1360,287 @@ export default function ChatPage() {
         </button>
       <div className={`chat-layout ${!showSessions ? 'no-sessions' : ''} ${!showTimeline ? 'no-timeline' : ''}`}>
         {/* Sessions panel (desktop) */}
-        <aside className="card chat-panel thread sessions-panel">
-          <div className="panel-header">
+        <aside
+          className="chat-panel sessions-panel"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: 10,
+            minHeight: 0,
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            className="panel-header"
+            style={{
+              padding: '14px 16px 12px',
+              borderBottom: '1px solid var(--hairline)',
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
             <div style={{ minWidth: 0, flex: 1 }}>
-              <h2>Sessions</h2>
-              <div className="tiny">Hermes sessions · synced across devices</div>
+              <Kicker style={{ marginBottom: 4 }}>CONVERSATIONS</Kicker>
+              <h2 style={{ margin: 0, fontSize: 14, fontWeight: 620, color: 'var(--strong-text)', letterSpacing: '-.012em' }}>Sessions</h2>
+              <div style={{ fontSize: 11, color: 'var(--muted-2)', marginTop: 2 }}>Synced across devices</div>
             </div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-              <button
-                className="btn icon sm primary"
-                onClick={newChat}
-                aria-label="New chat"
-                title="New chat"
-              >
-                <Plus size={14} />
-              </button>
-            </div>
+            <Btn
+              size="sm"
+              variant="primary"
+              icon={<Plus size={12} />}
+              onClick={newChat}
+            >
+              New
+            </Btn>
           </div>
-          <div className="sessions-toolbar">
-            <select className="select" value={profile} onChange={(e) => setProfile(e.target.value)} aria-label="Select profile">
+          <div className="sessions-toolbar" style={{ padding: '10px 12px', borderBottom: '1px solid var(--hairline)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <select
+              className="select"
+              value={profile}
+              onChange={(e) => setProfile(e.target.value)}
+              aria-label="Select profile"
+              style={selectStyle}
+            >
               {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}{p.active ? ' · active' : ''}</option>)}
             </select>
-            <div className="input-group sessions-search">
-              <span className="icon"><Search size={13} /></span>
+            <div
+              className="input-group sessions-search"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                height: 30,
+                padding: '0 10px',
+                background: 'var(--bg-soft)',
+                border: '1px solid var(--line)',
+                borderRadius: 8,
+              }}
+            >
+              <Search size={12} style={{ color: 'var(--muted-2)', flexShrink: 0 }} />
               <input
-                className="input"
-                placeholder={showArchived ? 'Search archived…' : 'Search sessions or #tags'}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                placeholder={showArchived ? 'Search archived…' : 'Search sessions or #tags'}
                 aria-label="Search sessions"
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  color: 'var(--text)',
+                  fontSize: 12.5,
+                  fontFamily: 'var(--font-sans)',
+                }}
               />
               {search && (
                 <button
-                  className="sessions-search-clear"
                   onClick={() => setSearch('')}
                   aria-label="Clear search"
                   title="Clear search"
                   type="button"
+                  style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 0, display: 'inline-flex' }}
                 >
                   <X size={11} />
                 </button>
               )}
             </div>
-            <div className="sessions-tabs" role="tablist" aria-label="View">
-              <button
-                role="tab"
-                aria-selected={!showArchived}
-                className={`sessions-tab ${!showArchived ? 'active' : ''}`}
-                onClick={() => setShowArchived(false)}
-              >All</button>
-              <button
-                role="tab"
-                aria-selected={showArchived}
-                className={`sessions-tab ${showArchived ? 'active' : ''}`}
-                onClick={() => setShowArchived(true)}
-              >
-                {showArchived ? <ArchiveRestore size={11} /> : <Archive size={11} />}
+            <div className="sessions-tabs" role="tablist" aria-label="View" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <TabBtn active={!showArchived} onClick={() => setShowArchived(false)}>All</TabBtn>
+              <TabBtn active={showArchived} onClick={() => setShowArchived(true)} icon={showArchived ? <ArchiveRestore size={11} /> : <Archive size={11} />}>
                 Archived
-              </button>
+              </TabBtn>
               <button
                 className="sessions-folder-add"
                 onClick={() => setDialog({ kind: 'newFolder' })}
                 aria-label="New folder"
                 title="New folder"
                 type="button"
+                style={iconBtnStyle}
               >
                 <FolderPlus size={12} />
               </button>
-              <div className="sessions-source-wrap">{renderSourceFilter()}</div>
+              <div className="sessions-source-wrap" style={{ position: 'relative', marginLeft: 'auto' }}>{renderSourceFilter()}</div>
             </div>
           </div>
-          <div className="panel-body">
+          <div className="panel-body" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
             {SessionList}
           </div>
         </aside>
 
         {/* Thread */}
-        <section className="card chat-panel thread">
-          <div className="panel-header">
-            <div className="row start" style={{ gap: 8, flex: 1, minWidth: 0 }}>
-              {/* Mobile-only quick actions: open sessions sheet + new chat */}
+        <section
+          className="chat-panel thread"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: 10,
+            minHeight: 0,
+            overflow: 'hidden',
+            position: 'relative',
+          }}
+        >
+          <div
+            className="panel-header"
+            style={{
+              padding: '12px 16px',
+              borderBottom: '1px solid var(--hairline)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              flexShrink: 0,
+              minHeight: 56,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+              {/* Mobile-only quick actions */}
               <button
                 className="btn icon sm panel-collapse chat-mobile-only"
                 onClick={() => setSessionsOpen(true)}
                 aria-label="Sessions list"
                 title="Sessions list"
+                style={iconBtnStyle}
               >
-                <Layers size={15} />
+                <Layers size={14} />
               </button>
               <button
                 className="btn icon sm panel-collapse chat-mobile-only"
                 onClick={newChat}
                 aria-label="New chat"
                 title="New chat"
+                style={iconBtnStyle}
               >
-                <Plus size={15} />
+                <Plus size={14} />
               </button>
               {!showSessions && (
-                <button className="btn icon sm" onClick={newChat} aria-label="New chat" title="New chat">
+                <button onClick={newChat} aria-label="New chat" title="New chat" style={iconBtnStyle}>
                   <Plus size={14} />
                 </button>
               )}
               <div style={{ minWidth: 0, flex: 1 }}>
-                <h2 style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{activeTitle}</h2>
-                <div className="muted small" style={{ marginTop: 4 }}>
-                  Profile <span className="kbd">{profile}</span>
-                  {responseIds[active] && <span className="pill ok" style={{ marginLeft: 6 }}>linked</span>}
+                <h2 style={{ margin: 0, fontSize: 13.5, fontWeight: 620, color: 'var(--strong-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {activeTitle || 'New chat'}
+                </h2>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  profile · <Kbd>{profile}</Kbd>
+                  {responseIds[active] && <Tag variant="green">linked</Tag>}
                 </div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
               <button
                 type="button"
-                className={`btn icon sm ${showToolDetails ? 'primary' : ''}`}
                 onClick={() => setShowToolDetails((v) => !v)}
                 aria-label={showToolDetails ? 'Hide tool calls' : 'Show tool calls'}
                 title={showToolDetails ? 'Hide tool calls / subagent internals' : 'Show tool calls / subagent internals (debug)'}
                 aria-pressed={showToolDetails}
+                style={{
+                  ...iconBtnStyle,
+                  background: showToolDetails ? 'var(--accent)' : 'var(--panel-2)',
+                  color: showToolDetails ? '#08090c' : 'var(--text)',
+                  borderColor: showToolDetails ? 'var(--accent-border)' : 'var(--line)',
+                }}
               >
                 <Wrench size={13} />
               </button>
               {busy ? (
-                <button className="btn sm" onClick={() => abortRef.current?.abort()} aria-label="Stop generation">
-                  <Square size={13} /> Stop
-                </button>
+                <Btn size="sm" icon={<Square size={11} />} onClick={() => abortRef.current?.abort()}>Stop</Btn>
               ) : (
-                <span className="pill ok"><Sparkles size={12} /> ready</span>
+                <Tag variant="green" icon={<Sparkles size={10} />}>ready</Tag>
               )}
             </div>
           </div>
 
-          <div className="messages" ref={messagesRef}>
+          <div className="messages" ref={messagesRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 22px 8px', minHeight: 0 }}>
             {activeMessages.length === 0 && (
-              <div className="empty-state">
-                <div className="metric-icon" style={{ width: 44, height: 44, borderRadius: 14 }}>
+              <div
+                className="empty-state"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  textAlign: 'center',
+                  gap: 12,
+                  padding: '48px 16px',
+                  maxWidth: 560,
+                  margin: '0 auto',
+                }}
+              >
+                <div
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 14,
+                    background: 'var(--accent-soft)',
+                    border: '1px solid var(--accent-border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--accent)',
+                  }}
+                >
                   <MessageSquare size={20} />
                 </div>
-                <h2>Start a Hermes session</h2>
-                <p className="muted small">
-                  Pick a profile and send a message. HermesDeck stores sessions locally and chains follow-ups via response_id.
+                <Kicker>NEW CONVERSATION</Kicker>
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 650, color: 'var(--strong-text)', letterSpacing: '-.025em' }}>
+                  Start a Hermes session
+                </h2>
+                <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, margin: 0, maxWidth: 460 }}>
+                  Pick a profile and send a message. HermesDeck stores sessions locally and chains follow-ups via{' '}
+                  <Kbd>response_id</Kbd>.
                 </p>
-                <div className="suggest">
+                <div className="suggest" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 4 }}>
                   {SUGGESTIONS.map((s) => (
-                    <button key={s} className="chip" onClick={() => send(s)}>{s}</button>
+                    <button
+                      key={s}
+                      onClick={() => send(s)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        height: 30,
+                        padding: '0 12px',
+                        borderRadius: 999,
+                        background: 'var(--panel-2)',
+                        border: '1px solid var(--line)',
+                        color: 'var(--text)',
+                        fontFamily: 'var(--font-sans)',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        transition: 'all 200ms cubic-bezier(.2,.7,.2,1)',
+                      }}
+                    >
+                      {s}
+                    </button>
                   ))}
                 </div>
               </div>
             )}
             {!showToolDetails && hiddenToolCount > 0 && (
-              <div className="tool-hidden-bar" role="note">
-                <span className="muted small">{hiddenToolCount} tool calls / subagent internals hidden</span>
-                <button type="button" className="btn sm" onClick={() => setShowToolDetails(true)}>
-                  <Wrench size={12} /> Show
-                </button>
+              <div
+                className="tool-hidden-bar"
+                role="note"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  padding: '8px 12px',
+                  background: 'var(--surface-bg)',
+                  border: '1px solid var(--hairline)',
+                  borderRadius: 8,
+                  marginBottom: 14,
+                }}
+              >
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>{hiddenToolCount} tool calls / subagent internals hidden</span>
+                <Btn size="sm" icon={<Wrench size={11} />} onClick={() => setShowToolDetails(true)}>Show</Btn>
               </div>
             )}
             {visibleMessages.map((m, idx) => {
@@ -1522,35 +1699,91 @@ export default function ChatPage() {
               );
             })}
             {error && (
-              <div className="surface" style={{ borderColor: 'rgba(255,102,122,.36)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 10,
+                  alignItems: 'flex-start',
+                  padding: 12,
+                  background: 'rgba(239,68,68,.06)',
+                  border: '1px solid rgba(239,68,68,.36)',
+                  borderRadius: 10,
+                  marginBottom: 14,
+                }}
+              >
                 <AlertTriangle size={16} color="var(--red)" style={{ flexShrink: 0, marginTop: 2 }} />
-                <div style={{ minWidth: 0 }}>
-                  <b style={{ color: 'var(--red)' }}>Request failed</b>
-                  <div className="tiny" style={{ marginTop: 4, color: 'var(--muted)' }}>{error}</div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--red)' }}>Request failed</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>{error}</div>
                 </div>
-                <button className="btn sm" onClick={() => setError('')} aria-label="Dismiss error"><X size={13} /></button>
+                <button
+                  onClick={() => setError('')}
+                  aria-label="Dismiss error"
+                  style={{ ...iconBtnStyle, height: 24, width: 24, padding: 0, flexShrink: 0 }}
+                >
+                  <X size={12} />
+                </button>
               </div>
             )}
             {showJumpToBottom && (
               <button
-                className="btn sm scroll-to-bottom"
+                className="scroll-to-bottom"
                 onClick={() => { stickToBottomRef.current = true; scrollToBottom(true); }}
                 aria-label="Scroll to latest"
+                style={{
+                  position: 'absolute',
+                  bottom: 110,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  height: 28,
+                  padding: '0 12px',
+                  borderRadius: 999,
+                  background: 'var(--panel-2)',
+                  border: '1px solid var(--line)',
+                  color: 'var(--muted)',
+                  fontSize: 11.5,
+                  fontFamily: 'var(--font-sans)',
+                  cursor: 'pointer',
+                  boxShadow: 'var(--shadow-pop)',
+                  zIndex: 4,
+                }}
               >
-                <ArrowDown size={14} /> Jump to latest
+                <ArrowDown size={12} /> Jump to latest
               </button>
             )}
           </div>
 
-          <div className="composer">
+          <div
+            className="composer"
+            style={{
+              borderTop: '1px solid var(--hairline)',
+              padding: '12px 16px 14px',
+              background: 'var(--panel)',
+              flexShrink: 0,
+            }}
+          >
             {attachments.length > 0 && (
-              <div className="composer-atts" role="list" aria-label="Pending attachments">
+              <div className="composer-atts" role="list" aria-label="Pending attachments" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                 {attachments.map((a) => (
                   <AttachmentChip key={a.id} item={a} onRemove={() => removeAttachment(a.id)} />
                 ))}
               </div>
             )}
-            <div className="composer-row">
+            <div
+              className="composer-row"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                padding: 12,
+                background: 'var(--bg-soft)',
+                border: '1px solid var(--line)',
+                borderRadius: 12,
+              }}
+            >
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1563,17 +1796,7 @@ export default function ChatPage() {
                   e.target.value = '';
                 }}
               />
-              <button
-                type="button"
-                className="btn icon composer-attach-btn"
-                onClick={() => fileInputRef.current?.click()}
-                aria-label="Add attachment"
-                title="Add files or images"
-                disabled={busy}
-              >
-                <Paperclip size={15} />
-              </button>
-              <div className="composer-textarea-wrap">
+              <div className="composer-textarea-wrap" style={{ position: 'relative', minWidth: 0 }}>
                 {slashRange && (
                   <SlashCommandMenu
                     commands={slashCommands}
@@ -1587,6 +1810,19 @@ export default function ChatPage() {
                 <textarea
                   ref={taRef}
                   className="textarea"
+                  placeholder="Ask Hermes anything. Use / for commands…"
+                  style={{
+                    width: '100%',
+                    resize: 'none',
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: 'var(--text)',
+                    fontFamily: 'var(--font-sans)',
+                    fontSize: 14,
+                    lineHeight: 1.55,
+                    minHeight: 22,
+                  }}
                   value={input}
                   onChange={(e) => handleInputChange(e.target.value, e.target.selectionStart ?? 0)}
                   onSelect={(e) => {
@@ -1649,35 +1885,78 @@ export default function ChatPage() {
                   aria-label="Message composer"
                 />
               </div>
-              <button
-                className="btn primary"
-                disabled={busy || !input.trim()}
-                onClick={() => send()}
-                aria-label="Send message"
-              >
-                <Send size={15} /> Send
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Add attachment"
+                  title="Add files or images"
+                  disabled={busy}
+                  style={iconBtnStyle}
+                >
+                  <Paperclip size={13} />
+                </button>
+                <span style={{ flex: 1, fontSize: 11, color: 'var(--muted-2)', fontFamily: 'var(--font-mono)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  profile · <span style={{ color: 'var(--accent)' }}>{profile}</span>
+                </span>
+                <Btn
+                  variant="primary"
+                  size="sm"
+                  icon={<Send size={12} />}
+                  onClick={() => send()}
+                  disabled={busy || !input.trim()}
+                >
+                  Send
+                </Btn>
+              </div>
             </div>
             {pasteHint && (
-              <div className="composer-hint" role="status" aria-live="polite">{pasteHint}</div>
+              <div
+                className="composer-hint"
+                role="status"
+                aria-live="polite"
+                style={{ marginTop: 6, fontSize: 11, color: 'var(--muted-2)', fontFamily: 'var(--font-mono)' }}
+              >
+                {pasteHint}
+              </div>
             )}
           </div>
         </section>
 
         {/* Run timeline (desktop) */}
-        <aside className="card chat-panel thread right-panel">
-          <div className="panel-header">
+        <aside
+          className="chat-panel right-panel"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            borderRadius: 10,
+            minHeight: 0,
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            className="panel-header"
+            style={{
+              padding: '14px 16px 12px',
+              borderBottom: '1px solid var(--hairline)',
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
             <div style={{ minWidth: 0, flex: 1 }}>
-              <h2>Run timeline</h2>
-              <div className="tiny">Newest first · text chunks auto-merged</div>
+              <Kicker style={{ marginBottom: 4 }}>RUN TIMELINE</Kicker>
+              <h2 style={{ margin: 0, fontSize: 14, fontWeight: 620, color: 'var(--strong-text)', letterSpacing: '-.012em' }}>Live events</h2>
+              <div style={{ fontSize: 11, color: 'var(--muted-2)', marginTop: 2 }}>Newest first · deltas merged</div>
             </div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-              {timeline.length > 0 && (
-                <button className="btn sm" onClick={clearTimeline} aria-label="Clear timeline">Clear</button>
-              )}
-            </div>
+            {timeline.length > 0 && (
+              <Btn size="sm" variant="ghost" onClick={clearTimeline} aria-label="Clear timeline">Clear</Btn>
+            )}
           </div>
-          <div className="panel-body">
+          <div className="panel-body" style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: 14 }}>
             <TimelineView items={timeline} busy={busy} />
           </div>
         </aside>
@@ -1692,59 +1971,67 @@ export default function ChatPage() {
       />
       <div className={`sheet ${sessionsOpen ? 'open' : ''}`} role="dialog" aria-label="Sessions list">
         <div className="sheet-handle" />
-        <div className="sheet-header">
-          <div>
-            <h2>Sessions</h2>
-            <div className="tiny">Profile <span className="kbd">{profile}</span></div>
+        <div className="sheet-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '14px 16px 12px', borderBottom: '1px solid var(--hairline)', gap: 10 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <Kicker style={{ marginBottom: 4 }}>CONVERSATIONS</Kicker>
+            <h2 style={{ margin: 0, fontSize: 14, fontWeight: 620, color: 'var(--strong-text)' }}>Sessions</h2>
+            <div style={{ fontSize: 11, color: 'var(--muted-2)', marginTop: 2 }}>profile · <Kbd>{profile}</Kbd></div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              className="btn icon sm primary"
-              onClick={newChat}
-              aria-label="New chat"
-              title="New chat"
-            >
-              <Plus size={13} />
+            <Btn size="sm" variant="primary" icon={<Plus size={11} />} onClick={newChat}>New</Btn>
+            <button onClick={() => setSessionsOpen(false)} aria-label="Close" style={iconBtnStyle}>
+              <X size={14} />
             </button>
-            <button className="btn icon" onClick={() => setSessionsOpen(false)} aria-label="Close"><X size={16} /></button>
           </div>
         </div>
-        <div className="sessions-toolbar mobile">
-          <select className="select" value={profile} onChange={(e) => setProfile(e.target.value)} aria-label="Select profile">
+        <div className="sessions-toolbar mobile" style={{ padding: '10px 12px', borderBottom: '1px solid var(--hairline)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <select className="select" value={profile} onChange={(e) => setProfile(e.target.value)} aria-label="Select profile" style={selectStyle}>
             {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}{p.active ? ' · active' : ''}</option>)}
           </select>
-          <div className="input-group sessions-search">
-            <span className="icon"><Search size={13} /></span>
+          <div
+            className="input-group sessions-search"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              height: 30,
+              padding: '0 10px',
+              background: 'var(--bg-soft)',
+              border: '1px solid var(--line)',
+              borderRadius: 8,
+            }}
+          >
+            <Search size={12} style={{ color: 'var(--muted-2)', flexShrink: 0 }} />
             <input
-              className="input"
               placeholder={showArchived ? 'Search archived…' : 'Search sessions or #tags'}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                color: 'var(--text)',
+                fontSize: 12.5,
+                fontFamily: 'var(--font-sans)',
+              }}
             />
           </div>
-          <div className="sessions-tabs" role="tablist">
-            <button
-              role="tab"
-              aria-selected={!showArchived}
-              className={`sessions-tab ${!showArchived ? 'active' : ''}`}
-              onClick={() => setShowArchived(false)}
-            >All</button>
-            <button
-              role="tab"
-              aria-selected={showArchived}
-              className={`sessions-tab ${showArchived ? 'active' : ''}`}
-              onClick={() => setShowArchived(true)}
-            >Archived</button>
+          <div className="sessions-tabs" role="tablist" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <TabBtn active={!showArchived} onClick={() => setShowArchived(false)}>All</TabBtn>
+            <TabBtn active={showArchived} onClick={() => setShowArchived(true)}>Archived</TabBtn>
             <button
               className="sessions-folder-add"
               onClick={() => setDialog({ kind: 'newFolder' })}
               aria-label="New folder"
               title="New folder"
               type="button"
+              style={iconBtnStyle}
             >
               <FolderPlus size={12} />
             </button>
-            <div className="sessions-source-wrap">{renderSourceFilter()}</div>
+            <div className="sessions-source-wrap" style={{ position: 'relative', marginLeft: 'auto' }}>{renderSourceFilter()}</div>
           </div>
         </div>
         <div className="sheet-body">{SessionList}</div>
@@ -1754,19 +2041,108 @@ export default function ChatPage() {
   );
 }
 
+// ─── Inline shell helpers (chat page only) ───────────────────────────────
+
+const selectStyle: React.CSSProperties = {
+  height: 30,
+  padding: '0 10px',
+  borderRadius: 8,
+  border: '1px solid var(--line)',
+  background: 'var(--bg-soft)',
+  color: 'var(--text)',
+  fontFamily: 'var(--font-sans)',
+  fontSize: 12.5,
+  cursor: 'pointer',
+  outline: 'none',
+  width: '100%',
+};
+
+const iconBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 28,
+  height: 28,
+  borderRadius: 8,
+  background: 'var(--panel-2)',
+  border: '1px solid var(--line)',
+  color: 'var(--muted)',
+  cursor: 'pointer',
+  flexShrink: 0,
+  transition: 'all 200ms cubic-bezier(.2,.7,.2,1)',
+};
+
+function TabBtn({
+  active, onClick, icon, children,
+}: {
+  active: boolean; onClick: () => void; icon?: React.ReactNode; children: React.ReactNode;
+}) {
+  return (
+    <button
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        height: 26,
+        padding: '0 10px',
+        borderRadius: 999,
+        background: active ? 'var(--accent-soft)' : 'transparent',
+        color: active ? 'var(--accent)' : 'var(--muted)',
+        border: `1px solid ${active ? 'var(--accent-border)' : 'var(--line)'}`,
+        fontFamily: 'var(--font-sans)',
+        fontSize: 11.5,
+        fontWeight: 500,
+        cursor: 'pointer',
+        transition: 'all 200ms cubic-bezier(.2,.7,.2,1)',
+      }}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
 function TimelineView({ items, busy }: { items: TimelineItem[]; busy: boolean }) {
   if (items.length === 0) {
     return (
-      <div className="tl-empty">
-        <Radio size={20} />
-        <div className="muted small">{busy ? 'Waiting for first Hermes event…' : 'Tool calls, status, and stream events will show up here'}</div>
+      <div
+        className="tl-empty"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          textAlign: 'center',
+          gap: 8,
+          padding: '36px 12px',
+          color: 'var(--muted)',
+        }}
+      >
+        <Radio size={20} style={{ color: 'var(--muted-2)' }} />
+        <div style={{ fontSize: 12, color: 'var(--muted)', maxWidth: 220 }}>
+          {busy ? 'Waiting for first Hermes event…' : 'Tool calls, status, and stream events will show up here'}
+        </div>
       </div>
     );
   }
   return (
-    <div className="tl-list">
+    <div className="tl-list" style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ position: 'absolute', left: 7, top: 6, bottom: 6, width: 1, background: 'var(--hairline)' }} />
       {items.map((it) => {
-        const cls = it.kind === 'tool' ? 'tl-tool' : it.kind === 'error' ? 'tl-error' : it.kind === 'done' ? 'tl-done' : '';
+        const tone =
+          it.kind === 'tool' ? 'var(--accent)' :
+          it.kind === 'error' ? 'var(--red)' :
+          it.kind === 'done' ? 'var(--green)' :
+          it.kind === 'message' ? 'var(--accent)' :
+          'var(--muted-2)';
+        const ringColor =
+          it.kind === 'tool' ? 'rgba(56,189,248,.18)' :
+          it.kind === 'error' ? 'rgba(239,68,68,.18)' :
+          it.kind === 'done' ? 'rgba(34,197,94,.18)' :
+          it.kind === 'message' ? 'rgba(56,189,248,.16)' :
+          'rgba(150,150,160,.16)';
         const Icon =
           it.kind === 'tool' ? Wrench :
           it.kind === 'error' ? AlertCircle :
@@ -1774,19 +2150,56 @@ function TimelineView({ items, busy }: { items: TimelineItem[]; busy: boolean })
           it.kind === 'message' ? MessageSquare :
           Activity;
         return (
-          <div key={it.id} className={`tl-item ${cls}`}>
-            <span className="tl-icon"><Icon size={14} /></span>
-            <div className="tl-body">
-              <div className="tl-title">
+          <div key={it.id} className="tl-item" style={{ position: 'relative', paddingLeft: 24, paddingBottom: 14 }}>
+            <span
+              style={{
+                position: 'absolute',
+                left: 3,
+                top: 4,
+                width: 9,
+                height: 9,
+                borderRadius: '50%',
+                background: tone,
+                boxShadow: `0 0 0 3px ${ringColor}`,
+              }}
+            />
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 2 }}>
+              <Kicker>
+                <Icon size={9} style={{ verticalAlign: -1, marginRight: 4 }} />
                 {it.title}
-                {!!it.count && it.count > 1 && <span className="tl-counter" style={{ marginLeft: 8 }}>×{it.count}</span>}
-              </div>
-              {it.summary && <div className="tl-sum">{it.summary}</div>}
+                {!!it.count && it.count > 1 && (
+                  <span style={{ marginLeft: 6, color: 'var(--muted-2)' }}>×{it.count}</span>
+                )}
+              </Kicker>
+              <span style={{ fontSize: 10, color: 'var(--muted-2)', fontFamily: 'var(--font-mono)' }}>
+                {new Date(it.ts).toLocaleTimeString()}
+              </span>
             </div>
-            <span className="tl-time">{new Date(it.ts).toLocaleTimeString()}</span>
+            {it.summary && (
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.45, fontFamily: 'var(--font-mono)' }}>
+                {it.summary}
+              </div>
+            )}
           </div>
         );
       })}
+      {busy && (
+        <div style={{ position: 'relative', paddingLeft: 24 }}>
+          <span
+            style={{
+              position: 'absolute',
+              left: 3,
+              top: 4,
+              width: 9,
+              height: 9,
+              borderRadius: '50%',
+              background: 'transparent',
+              border: '2px dashed var(--muted-2)',
+            }}
+          />
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>Streaming…</div>
+        </div>
+      )}
     </div>
   );
 }
