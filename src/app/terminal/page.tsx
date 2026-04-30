@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { Copy, Play, ShieldCheck, Terminal, Trash2, ChevronDown } from 'lucide-react';
+import { Copy, Play, ShieldCheck, Terminal as TerminalIcon, Trash2, ChevronDown, AlertCircle } from 'lucide-react';
 import { deckApi } from '@/lib/api';
 import type { DeckProfile, TerminalAction, TerminalRunResult } from '@/lib/types';
+import { Page, Card, Kicker, Tag, Btn, Kbd } from '@/components/Brand';
 
 type RunEntry = TerminalRunResult & { id: string };
 
@@ -59,122 +60,290 @@ export default function TerminalPage() {
   }
 
   return (
-    <div className="page terminal-page">
-      <section className="card terminal-hero">
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="compact-title">SAFE OPS CONSOLE</div>
-          <h2 style={{ fontSize: 18, marginBottom: 8, color: 'var(--strong-text)' }}>Not a raw web shell — a controlled terminal</h2>
-          <p className="muted small">
-            HermesDeck&rsquo;s safe terminal only runs server-allowlisted actions with <span className="kbd">shell:false</span>,
-            with automatic timeout, output truncation, and secret redaction.
-          </p>
+    <Page>
+      {/* Hero */}
+      <Card hero padding={22}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <Kicker style={{ marginBottom: 8 }}>SAFE OPS CONSOLE</Kicker>
+            <h1 style={{ fontSize: 'clamp(20px, 2.4vw, 26px)', lineHeight: 1.12, fontWeight: 650, letterSpacing: '-.03em', color: 'var(--strong-text)', margin: '0 0 8px' }}>
+              Not a raw web shell &mdash; a governed terminal
+            </h1>
+            <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, margin: 0, maxWidth: 620 }}>
+              HermesDeck&rsquo;s safe terminal only runs server-side allowlisted actions, executes with{' '}
+              <Kbd>shell:false</Kbd>, and applies timeout, truncation and secret-redaction automatically.
+              Free-form commands are intentionally not accepted &mdash; this is not a remote shell.
+            </p>
+          </div>
+          <Tag variant="green" icon={<ShieldCheck size={11} />}>allowlisted</Tag>
         </div>
-        <span className="pill ok"><ShieldCheck size={13} /> allowlisted</span>
-      </section>
+      </Card>
 
-      <div className="terminal-layout">
-        <aside className="card terminal-actions">
-          <div className="compact-title">Actions</div>
-          {Object.entries(grouped).map(([category, items]) => (
-            <div key={category} className="terminal-group">
-              <div className="terminal-group-title">{category}</div>
-              {items.map((a) => (
-                <button
-                  key={a.id}
-                  className={`session-item ${selected === a.id ? 'active' : ''}`}
-                  onClick={() => setSelected(a.id)}
-                >
-                  <div className="session-title">{a.label}</div>
-                  <div className="tiny" style={{ marginTop: 4, fontFamily: "'JetBrains Mono', monospace" }}>{a.commandPreview}</div>
-                </button>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(240px, 320px) minmax(0, 1fr)',
+          gap: 14,
+        }}
+      >
+        {/* Allowlist sidebar */}
+        <Card padding={14}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <Kicker>ACTIONS</Kicker>
+            <Tag variant="green" icon={<ShieldCheck size={11} />}>{actions.length} verbs</Tag>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {Object.entries(grouped).map(([category, items]) => (
+              <div key={category} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ fontSize: 10, color: 'var(--muted-2)', textTransform: 'uppercase', letterSpacing: '.12em', padding: '4px 4px 2px', fontWeight: 500 }}>
+                  {category}
+                </div>
+                {items.map((a) => {
+                  const active = selected === a.id;
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={() => setSelected(a.id)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        gap: 3,
+                        padding: '8px 10px',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        background: active ? 'var(--accent-soft)' : 'transparent',
+                        borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
+                        border: 'none',
+                        textAlign: 'left',
+                        transition: 'all 200ms cubic-bezier(.2,.7,.2,1)',
+                        width: '100%',
+                      }}
+                    >
+                      <span style={{ fontSize: 12.5, fontWeight: 550, color: active ? 'var(--accent)' : 'var(--strong-text)' }}>
+                        {a.label}
+                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+                        {a.commandPreview}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          <div
+            style={{
+              marginTop: 12,
+              paddingTop: 12,
+              borderTop: '1px solid var(--hairline)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}
+          >
+            <PolicyRow label="timeout" value={`${(timeoutMs / 1000).toFixed(0)}s`} />
+            <PolicyRow label="shell" value="false" tone="green" />
+            <PolicyRow label="profile" value={profile} mono />
+          </div>
+        </Card>
+
+        {/* Output panel */}
+        <Card padding={0}>
+          {/* Toolbar */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '10px 14px',
+              borderBottom: '1px solid var(--hairline)',
+              flexWrap: 'wrap',
+            }}
+          >
+            <TerminalIcon size={14} style={{ color: 'var(--muted)' }} />
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--value-text)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+              {selectedAction?.commandPreview || 'select an action'}
+            </span>
+            <select
+              value={profile}
+              onChange={(e) => setProfile(e.target.value)}
+              style={selectStyle}
+              aria-label="Profile"
+            >
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}{p.active ? ' · active' : ''}</option>
               ))}
-            </div>
-          ))}
-        </aside>
-
-        <main className="card terminal-main">
-          <div className="terminal-control-grid">
-            <label>
-              <div className="tiny">ACTION</div>
-              <select className="select" value={selected} onChange={(e) => setSelected(e.target.value)}>
-                {actions.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
-              </select>
-            </label>
-            <label>
-              <div className="tiny">PROFILE</div>
-              <select className="select" value={profile} onChange={(e) => setProfile(e.target.value)}>
-                {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}{p.active ? ' · active' : ''}</option>)}
-              </select>
-            </label>
-            <label>
-              <div className="tiny">TIMEOUT</div>
-              <select className="select" value={timeoutMs} onChange={(e) => setTimeoutMs(Number(e.target.value))}>
-                <option value={3000}>3s</option>
-                <option value={8000}>8s</option>
-                <option value={12000}>12s</option>
-                <option value={15000}>15s</option>
-              </select>
-            </label>
+            </select>
+            <select
+              value={timeoutMs}
+              onChange={(e) => setTimeoutMs(Number(e.target.value))}
+              style={selectStyle}
+              aria-label="Timeout"
+            >
+              <option value={3000}>3s</option>
+              <option value={8000}>8s</option>
+              <option value={12000}>12s</option>
+              <option value={15000}>15s</option>
+            </select>
+            <Btn
+              size="sm"
+              variant="primary"
+              icon={<Play size={12} />}
+              onClick={() => run()}
+              disabled={!selected || busy}
+            >
+              {busy ? 'Running…' : 'Run'}
+            </Btn>
+            <Btn size="sm" variant="ghost" icon={<Trash2 size={12} />} onClick={() => setRuns([])}>
+              Clear
+            </Btn>
           </div>
 
           {selectedAction && (
-            <div className="surface terminal-preview">
-              <div style={{ minWidth: 0 }}>
-                <b>{selectedAction.label}</b>
-                <p className="muted small" style={{ marginTop: 4 }}>{selectedAction.description}</p>
+            <div
+              style={{
+                padding: '10px 14px',
+                borderBottom: '1px solid var(--hairline)',
+                background: 'var(--surface-bg)',
+                display: 'flex',
+                gap: 12,
+                alignItems: 'flex-start',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--strong-text)' }}>{selectedAction.label}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>{selectedAction.description}</div>
               </div>
-              <code>{selectedAction.commandPreview}</code>
+              <Kbd>{selectedAction.commandPreview}</Kbd>
             </div>
           )}
 
-          <div className="row terminal-toolbar">
-            <button className="btn primary" disabled={!selected || busy} onClick={() => run()}>
-              <Play size={15} />{busy ? 'Running…' : 'Run'}
-            </button>
-            <button className="btn" onClick={() => setRuns([])}><Trash2 size={14} /> Clear output</button>
-            {error && <span className="pill bad">{error}</span>}
-          </div>
+          {error && (
+            <div
+              style={{
+                padding: '10px 14px',
+                borderBottom: '1px solid var(--hairline)',
+                color: 'var(--red)',
+                fontSize: 12.5,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'rgba(239,68,68,.06)',
+              }}
+            >
+              <AlertCircle size={14} /> {error}
+            </div>
+          )}
 
-          <div className="terminal-output-list">
+          {/* Output area */}
+          <div
+            style={{
+              padding: 14,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12,
+              lineHeight: 1.55,
+              minHeight: 280,
+              background: 'var(--bg-soft)',
+              borderRadius: '0 0 10px 10px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14,
+            }}
+          >
             {runs.length === 0 ? (
-              <div className="empty-state">
-                <Terminal size={22} />
-                <h2>Awaiting run</h2>
-                <p className="muted small">
-                  Pick an action and run it; output appears here. Free-form commands are intentionally
-                  not accepted — the WebUI never becomes a remote shell.
-                </p>
-              </div>
-            ) : runs.map((r) => (
-              <article className={`terminal-output ${r.ok ? '' : 'failed'}`} key={r.id}>
-                <div className="row">
-                  <div style={{ minWidth: 0 }}>
-                    <b>{r.label}</b>
-                    <div className="tiny" style={{ marginTop: 3, fontFamily: "'JetBrains Mono', monospace", color: 'var(--muted-2)' }}>
-                      {r.commandPreview} · {r.durationMs}ms · exit {r.exitCode ?? 'n/a'}{r.truncated ? ' · truncated' : ''}
-                    </div>
-                  </div>
-                  <button
-                    className="btn sm"
-                    onClick={() => copy(r.id, [r.stdout, r.stderr, r.error].filter(Boolean).join('\n'))}
-                    aria-label="Copy output"
-                  >
-                    <Copy size={13} /> {copied === r.id ? 'Copied' : 'Copy'}
-                  </button>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '36px 12px', color: 'var(--muted)', textAlign: 'center' }}>
+                <TerminalIcon size={22} />
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--strong-text)' }}>Awaiting run</div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted-2)', maxWidth: 360 }}>
+                  Pick an action and run it &mdash; output appears here. Free-form commands are intentionally not accepted; the WebUI never becomes a remote shell.
                 </div>
-                {r.error && <pre className="terminal-error">{r.error}</pre>}
-                {r.stdout && <pre>{r.stdout}</pre>}
-                {r.stderr && <pre className="terminal-stderr">{r.stderr}</pre>}
-                {!r.error && !r.stdout && !r.stderr && (
-                  <div className="muted small" style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <ChevronDown size={13} /> no output
+              </div>
+            ) : (
+              runs.map((r) => (
+                <article key={r.id} style={{ borderLeft: `2px solid ${r.ok ? 'var(--green)' : 'var(--red)'}`, paddingLeft: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--strong-text)', fontFamily: 'var(--font-sans)' }}>{r.label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted-2)', marginTop: 2 }}>
+                        {r.commandPreview} · {r.durationMs}ms · exit {r.exitCode ?? 'n/a'}{r.truncated ? ' · truncated' : ''}
+                      </div>
+                    </div>
+                    <Btn
+                      size="sm"
+                      variant="ghost"
+                      icon={<Copy size={11} />}
+                      onClick={() => copy(r.id, [r.stdout, r.stderr, r.error].filter(Boolean).join('\n'))}
+                    >
+                      {copied === r.id ? 'Copied' : 'Copy'}
+                    </Btn>
                   </div>
-                )}
-              </article>
-            ))}
+                  {r.error && (
+                    <pre style={{ margin: 0, color: 'var(--red)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{r.error}</pre>
+                  )}
+                  {r.stdout && (
+                    <pre style={{ margin: 0, color: 'var(--value-text)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{r.stdout}</pre>
+                  )}
+                  {r.stderr && (
+                    <pre style={{ margin: '6px 0 0', color: 'var(--yellow)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{r.stderr}</pre>
+                  )}
+                  {!r.error && !r.stdout && !r.stderr && (
+                    <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-sans)' }}>
+                      <ChevronDown size={12} /> no output
+                    </div>
+                  )}
+                </article>
+              ))
+            )}
+            {busy && (
+              <div style={{ display: 'inline-flex', gap: 4, alignItems: 'center', color: 'var(--muted)' }}>
+                <span style={{ display: 'inline-block', width: 6, height: 14, background: 'var(--accent)', animation: 'hd-blink 1s steps(2,start) infinite' }} />
+              </div>
+            )}
           </div>
-        </main>
+        </Card>
       </div>
+
+      <style jsx>{`
+        @keyframes hd-blink { 50% { opacity: 0; } }
+      `}</style>
+    </Page>
+  );
+}
+
+const selectStyle: React.CSSProperties = {
+  height: 28,
+  padding: '0 8px',
+  borderRadius: 6,
+  border: '1px solid var(--line)',
+  background: 'var(--panel-2)',
+  color: 'var(--text)',
+  fontFamily: 'var(--font-sans)',
+  fontSize: 11.5,
+  cursor: 'pointer',
+  outline: 'none',
+  flexShrink: 0,
+};
+
+function PolicyRow({ label, value, tone, mono }: { label: string; value: string; tone?: 'green'; mono?: boolean }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)' }}>
+      <span>{label}</span>
+      <span
+        style={{
+          fontFamily: mono === false ? undefined : 'var(--font-mono)',
+          color: tone === 'green' ? 'var(--green)' : 'var(--value-text)',
+          maxWidth: 140,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {value}
+      </span>
     </div>
   );
 }
