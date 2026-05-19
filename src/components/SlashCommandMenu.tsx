@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Sparkles, Zap } from 'lucide-react';
 import type { SlashCommand } from '@/lib/prompts';
+import { useT } from '@/lib/i18n';
 
 interface Props {
   commands: SlashCommand[];
@@ -13,6 +14,24 @@ interface Props {
 }
 
 export function SlashCommandMenu({ commands, query, selectedIndex, onHover, onPick, onClose }: Props) {
+  const t = useT({
+    zh: {
+      ariaList: '斜杠命令',
+      ariaClose: '关闭命令面板',
+      empty: '没有匹配的命令',
+      header: '斜杠命令 · ↑↓ 选择 · Enter 确认 · Esc 取消',
+      actionPill: '动作',
+      close: '关闭',
+    },
+    en: {
+      ariaList: 'Slash commands',
+      ariaClose: 'Close command palette',
+      empty: 'No matching command',
+      header: 'Slash commands · ↑↓ select · Enter confirm · Esc cancel',
+      actionPill: 'action',
+      close: 'Close',
+    },
+  });
   const listRef = useRef<HTMLDivElement>(null);
 
   // Scroll the highlighted item into view when navigating with arrow keys.
@@ -27,9 +46,9 @@ export function SlashCommandMenu({ commands, query, selectedIndex, onHover, onPi
 
   if (!visible.length) {
     return (
-      <div className="slash-menu" role="listbox" aria-label="Slash commands">
+      <div className="slash-menu" role="listbox" aria-label={t.ariaList}>
         <div className="slash-empty">
-          No matching command
+          {t.empty}
           {query && <span className="muted small"> · /{query}</span>}
         </div>
       </div>
@@ -37,9 +56,9 @@ export function SlashCommandMenu({ commands, query, selectedIndex, onHover, onPi
   }
 
   return (
-    <div className="slash-menu" role="listbox" aria-label="Slash commands" ref={listRef}>
+    <div className="slash-menu" role="listbox" aria-label={t.ariaList} ref={listRef}>
       <div className="slash-header">
-        <span className="muted tiny">Slash commands · ↑↓ select · Enter confirm · Esc cancel</span>
+        <span className="muted tiny">{t.header}</span>
       </div>
       {visible.map((cmd, i) => {
         const Icon = cmd.kind === 'action' ? Zap : Sparkles;
@@ -65,7 +84,7 @@ export function SlashCommandMenu({ commands, query, selectedIndex, onHover, onPi
               </div>
               <div className="slash-desc">{cmd.description}</div>
             </div>
-            {cmd.kind === 'action' && <span className="pill ok slash-pill">action</span>}
+            {cmd.kind === 'action' && <span className="pill ok slash-pill">{t.actionPill}</span>}
           </button>
         );
       })}
@@ -74,9 +93,9 @@ export function SlashCommandMenu({ commands, query, selectedIndex, onHover, onPi
         className="slash-close"
         onClick={onClose}
         onMouseDown={(e) => e.preventDefault()}
-        aria-label="Close command palette"
+        aria-label={t.ariaClose}
       >
-        Close
+        {t.close}
       </button>
     </div>
   );

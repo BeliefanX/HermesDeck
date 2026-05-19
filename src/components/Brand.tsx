@@ -1,8 +1,5 @@
 'use client';
 import { type CSSProperties, type ReactNode } from 'react';
-import {
-  Star, Cpu, Plug, Wrench, Sparkles, Boxes, ChevronRight,
-} from 'lucide-react';
 
 // Shared design-system primitives — one-to-one with docs/design-handoff/ui_kits/webui/Primitives.jsx
 // Inline-styled with CSS variables so themes (data-theme="dark|light") swap without rebuilds.
@@ -61,31 +58,53 @@ export function Card({
   padding = 18,
   style,
   onClick,
+  ariaLabel,
 }: {
   children: ReactNode;
   hero?: boolean;
   padding?: number;
   style?: CSSProperties;
   onClick?: () => void;
+  ariaLabel?: string;
 }) {
   const heroBg = hero
     ? 'radial-gradient(120% 80% at 100% 0%, rgba(56,189,248,.10) 0%, transparent 55%), var(--panel)'
     : 'var(--panel)';
+  // Promote the wrapper to a semantic <button> when an onClick is supplied so
+  // keyboard users can actually activate the card. Falls back to a plain div
+  // when there's no interaction — preserves the original styling unchanged.
+  const sharedStyle: CSSProperties = {
+    padding,
+    border: '1px solid var(--line)',
+    borderRadius: hero ? 14 : 10,
+    background: heroBg,
+    cursor: onClick ? 'pointer' : 'default',
+    transition: `all 200ms ${EASE}`,
+    position: 'relative',
+    overflow: 'hidden',
+    ...style,
+  };
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={ariaLabel}
+        style={{
+          ...sharedStyle,
+          textAlign: 'inherit' as CSSProperties['textAlign'],
+          font: 'inherit',
+          color: 'inherit',
+          width: '100%',
+          display: 'block',
+        }}
+      >
+        {children}
+      </button>
+    );
+  }
   return (
-    <div
-      onClick={onClick}
-      style={{
-        padding,
-        border: '1px solid var(--line)',
-        borderRadius: hero ? 14 : 10,
-        background: heroBg,
-        cursor: onClick ? 'pointer' : 'default',
-        transition: `all 200ms ${EASE}`,
-        position: 'relative',
-        overflow: 'hidden',
-        ...style,
-      }}
-    >
+    <div style={sharedStyle}>
       {children}
     </div>
   );
@@ -154,13 +173,11 @@ export function MetricCard({
   kicker,
   value,
   delta,
-  deltaTone = 'green',
   sub,
 }: {
   kicker: string;
   value: ReactNode;
   delta?: ReactNode;
-  deltaTone?: Tone;
   sub?: ReactNode;
 }) {
   return (
@@ -180,7 +197,7 @@ export function MetricCard({
       </div>
       {(delta || sub) && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
-          {delta ? <Tag variant={deltaTone} style={{ fontSize: 10 }}>{delta}</Tag> : null}
+          {delta ? <Tag variant="green" style={{ fontSize: 10 }}>{delta}</Tag> : null}
           {sub ? <span style={{ fontSize: 11, color: 'var(--muted)' }}>{sub}</span> : null}
         </div>
       )}
@@ -392,6 +409,7 @@ export function ListRow({
   right,
   first = false,
   onClick,
+  ariaLabel,
 }: {
   icon: ReactNode;
   title: ReactNode;
@@ -399,10 +417,20 @@ export function ListRow({
   right?: ReactNode;
   first?: boolean;
   onClick?: () => void;
+  ariaLabel?: string;
 }) {
   return (
     <div
       onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? ariaLabel : undefined}
+      onKeyDown={onClick ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      } : undefined}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -451,12 +479,3 @@ export function ListRow({
   );
 }
 
-export const KIND_ICON_MAP = {
-  toolset: <Wrench size={14} />,
-  skill: <Sparkles size={14} />,
-  mcp: <Plug size={14} />,
-  unknown: <Boxes size={14} />,
-} as const;
-
-// Re-exports so pages don't need to import lucide individually for simple things
-export { Star as StarIcon, Cpu as CpuIcon, ChevronRight as ChevronRightIcon };

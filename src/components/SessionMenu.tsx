@@ -1,9 +1,10 @@
 'use client';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  Pin, PinOff, Pencil, FolderInput, FolderMinus, Tag, Archive, ArchiveRestore, Trash2,
+  Pin, PinOff, Pencil, FolderInput, FolderMinus, Tag as TagIcon, Archive, ArchiveRestore, Trash2, Eraser,
 } from 'lucide-react';
 import type { Folder } from '@/lib/session-meta';
+import { useT } from '@/lib/i18n';
 
 export interface SessionMenuActions {
   onTogglePin: () => void;
@@ -12,7 +13,10 @@ export interface SessionMenuActions {
   onCreateFolderAndMove: () => void;
   onEditTags: () => void;
   onToggleArchive: () => void;
+  /** Permanently remove the session + messages from Hermes' state.db. */
   onDelete?: () => void;
+  /** Drop only Deck-local metadata (pin/folder/tags/title) without touching Hermes. */
+  onRemoveDeckMeta?: () => void;
 }
 
 interface Props {
@@ -21,6 +25,8 @@ interface Props {
   folderId?: string;
   folders: Folder[];
   canDelete: boolean;
+  /** True when the session has any deck-local metadata that could be cleared. */
+  hasDeckMeta?: boolean;
   actions: SessionMenuActions;
   onClose: () => void;
   /** Anchor element (the kebab button). Used to compute viewport coordinates. */
@@ -30,7 +36,39 @@ interface Props {
 const GAP = 4;
 const PAD = 8;
 
-export function SessionMenu({ pinned, archived, folderId, folders, canDelete, actions, onClose, anchor }: Props) {
+export function SessionMenu({ pinned, archived, folderId, folders, canDelete, hasDeckMeta, actions, onClose, anchor }: Props) {
+  const t = useT({
+    zh: {
+      sectionLabel: '仅限 Deck 元数据',
+      pin: '置顶（本地）',
+      unpin: '取消置顶（本地）',
+      rename: '重命名（本地）',
+      editTags: '编辑标签（本地）',
+      moveToNewFolder: '移动到新文件夹…',
+      moveToPrefix: '移动到',
+      current: '当前',
+      removeFromFolder: '从文件夹移出',
+      archive: '归档',
+      unarchive: '取消归档',
+      removeDeckMeta: '仅清除 Deck 元数据',
+      deleteFromHermes: '从 Hermes 历史中删除…',
+    },
+    en: {
+      sectionLabel: 'Deck-only metadata',
+      pin: 'Pin (local)',
+      unpin: 'Unpin (local)',
+      rename: 'Rename (local)',
+      editTags: 'Edit tags (local)',
+      moveToNewFolder: 'Move to new folder…',
+      moveToPrefix: 'Move to',
+      current: 'current',
+      removeFromFolder: 'Remove from folder',
+      archive: 'Archive',
+      unarchive: 'Unarchive',
+      removeDeckMeta: 'Remove Deck metadata only',
+      deleteFromHermes: 'Delete from Hermes history…',
+    },
+  });
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; right: number; maxH: number } | null>(null);
 
@@ -128,13 +166,14 @@ export function SessionMenu({ pinned, archived, folderId, folders, canDelete, ac
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {item(pinned ? <PinOff size={13} /> : <Pin size={13} />, pinned ? 'Unpin' : 'Pin', actions.onTogglePin)}
-      {item(<Pencil size={13} />, 'Rename', actions.onRename)}
-      {item(<Tag size={13} />, 'Edit tags', actions.onEditTags)}
+      <div className="session-menu-section-label">{t.sectionLabel}</div>
+      {item(pinned ? <PinOff size={13} /> : <Pin size={13} />, pinned ? t.unpin : t.pin, actions.onTogglePin)}
+      {item(<Pencil size={13} />, t.rename, actions.onRename)}
+      {item(<TagIcon size={13} />, t.editTags, actions.onEditTags)}
 
       <div className="session-menu-sep" />
 
-      {item(<FolderInput size={13} />, 'Move to new folder…', actions.onCreateFolderAndMove)}
+      {item(<FolderInput size={13} />, t.moveToNewFolder, actions.onCreateFolderAndMove)}
       {folders.length > 0 && folders.map((f) => (
         <button
           key={f.id}
@@ -144,20 +183,30 @@ export function SessionMenu({ pinned, archived, folderId, folders, canDelete, ac
           onClick={(e) => { e.stopPropagation(); actions.onMoveToFolder(f.id); }}
         >
           <span className="session-menu-icon"><FolderInput size={13} /></span>
-          <span>Move to “{f.name}”</span>
-          {folderId === f.id && <span className="muted tiny" style={{ marginLeft: 'auto' }}>current</span>}
+          <span>{t.moveToPrefix} “{f.name}”</span>
+          {folderId === f.id && <span className="muted tiny" style={{ marginLeft: 'auto' }}>{t.current}</span>}
         </button>
       ))}
-      {folderId && item(<FolderMinus size={13} />, 'Remove from folder', () => actions.onMoveToFolder(null))}
+      {folderId && item(<FolderMinus size={13} />, t.removeFromFolder, () => actions.onMoveToFolder(null))}
 
       <div className="session-menu-sep" />
 
       {item(
         archived ? <ArchiveRestore size={13} /> : <Archive size={13} />,
-        archived ? 'Unarchive' : 'Archive',
+        archived ? t.unarchive : t.archive,
         actions.onToggleArchive,
       )}
-      {canDelete && actions.onDelete && item(<Trash2 size={13} />, 'Delete locally', actions.onDelete, { danger: true })}
+      {hasDeckMeta && actions.onRemoveDeckMeta && item(
+        <Eraser size={13} />,
+        t.removeDeckMeta,
+        actions.onRemoveDeckMeta,
+      )}
+      {canDelete && actions.onDelete && item(
+        <Trash2 size={13} />,
+        t.deleteFromHermes,
+        actions.onDelete,
+        { danger: true },
+      )}
     </div>
   );
 }

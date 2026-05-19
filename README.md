@@ -1,48 +1,107 @@
 # HermesDeck
 
-HermesDeck is a clean Hermes-native WebUI. It uses ClawDeck and open-webui as product references only; runtime code is not based on OpenClaw/ClawDeck.
+> Hermes-native WebUI · 多会话聊天 · Profile / Run / Tool 一等公民 · 安全运维终端 · PWA。
 
-## Run
+HermesDeck 是 [Hermes Agent](https://github.com/) 的原生控制台。它把 Hermes
+的 API Server、状态库（`~/.hermes/state.db`）、Profile 体系与 CLI 工具整合
+成一个浏览器即可访问的工作台：可以多会话聊天、流式查看每一次 Run、按
+Profile 切换执行上下文、浏览能力清单（toolsets / skills / MCP）、在受
+限白名单内运行 Hermes 维护命令、嵌入 tmux 实时终端，并支持 PWA 安装。
+
+> ClawDeck 与 open-webui 仅作为产品参考；运行时代码完全为 Hermes 重写。
+
+---
+
+## 技术栈
+
+| 层 | 选择 |
+| --- | --- |
+| Runtime / Framework | Next.js 16 (App Router) · React 19 · TypeScript（strict） |
+| 客户端状态 | React Hooks · Zustand · localStorage（按 Profile 命名空间） |
+| 流式协议 | Server-Sent Events（in-memory 重放 Hub） |
+| 后端封装 | Next Route Handlers（BFF）+ 内嵌 Python 脚本读取 sqlite |
+| 终端 | tmux + node-pty（可选）+ Hermes 安全 Action 白名单 |
+| PWA | `next/manifest` · `public/sw.js` · `/offline` 降级页 |
+| 文档处理 | `pdf-parse` · `mammoth`（DOCX）· `remark-gfm` · `mermaid` · `katex` |
+
+---
+
+## 快速开始
 
 ```bash
+git clone <repo> ~/HermesDeck
 cd ~/HermesDeck
 npm install
-PORT=6117 npm run dev
-# or after build
-npm run build
-PORT=6117 npm start
+cp .env.example .env.local        # 按需填入 Hermes API_BASE / KEY
+npm run dev                        # http://localhost:6118
+# 或正式启动
+npm run build && npm start
 ```
 
-Open: http://10.10.10.253:6117/
+启动时如未发现 `~/.hermesdeck/auth.json`，会一次性在终端打印出 `admin` 的
+随机密码。登录后请在 **Settings → 账号** 中修改用户名 / 密码。
 
-## PWA / Mobile
+> 端口约定：进程绑定在 `6118`；`6117` 被一个轻量 301 重定向占位（旧 PWA
+> 安装锁定在该端口，参见 [scripts/redirect-6117.mjs](scripts/redirect-6117.mjs)）。
 
-HermesDeck includes a PWA manifest, service worker, offline fallback page, mobile icons, mobile bottom navigation, safe-area support, and phone-friendly chat layout.
+---
 
-Verification:
+## 主要功能
+
+- **多会话聊天**：左栏会话索引（pin / 文件夹 / 归档 / 标签 / 搜索 / 来源
+  过滤 / 子代理折叠），中栏流式时间线，右栏 Run 时间线 / Inspector。
+  支持图片 + DOCX/PDF/纯文本附件，斜杠命令（`/new`、`/regen`、`/stop`、
+  `/clear` 与若干提示模板）。
+- **刷新可恢复的流**：所有聊天 SSE 走服务端 in-memory Hub；浏览器刷新
+  后用 `?since=<seq>` 重新订阅，丢失的事件由缓冲区回放或回退到落库消息。
+- **Profile 切换**：顶部 ProfileChip 全局切换，每个 Profile 自带独立的
+  `state.db`、模型默认值、`agent.reasoning_effort` 等。
+- **Run 时间线**：从 `messages` 表反推每一次「用户问 → 助手答 + 工具调用」
+  为一条 Run，列表 + 详情（Summary / Timeline / Raw）。
+- **Tools 注册表**：合并 `hermes tools list`（toolsets / MCP）与
+  `hermes skills list`，按任务分类、状态、来源筛选；技能支持在线编辑
+  `SKILL.md`（realpath + 原子写 + mtime 乐观锁）。
+- **安全终端**：白名单化的 `runTerminalAction`（`hermes --version`、
+  `tools list`、`skills list`、Deck 健康检查等）+ 可选的 tmux + node-pty
+  实时 PTY（`HERMESDECK_LIVE_TERMINAL=1` 启用）。
+- **PWA & 移动端**：Manifest、Service Worker、离线降级页、底部导航、
+  iOS 键盘 inset 适配。
+- **i18n**：界面中英双语切换；浏览器存储优先，回退 `navigator.language`。
+
+---
+
+## 文档索引
+
+| 文档 | 内容 |
+| --- | --- |
+| [docs/architecture.md](docs/architecture.md) | 架构、模块、数据流、Hub/SSE、Python 子进程协议 |
+| [docs/api.md](docs/api.md) | 每条 `/api/deck/*` 路由的契约、错误码、限速 |
+| [docs/configuration.md](docs/configuration.md) | 环境变量、Hermes 连接、认证存储、PWA 资源 |
+| [docs/development.md](docs/development.md) | 本地开发、脚本、调试、PWA 验证、Lint/Typecheck |
+| [docs/deployment.md](docs/deployment.md) | 反向代理、HTTPS、Cookie Secure、PWA 安装 |
+| [docs/glossary.md](docs/glossary.md) | Profile / Session / Run / Trace / Toolset 等概念 |
+| [docs/pwa-mobile.md](docs/pwa-mobile.md) | 历史保留：手机端安装条件 |
+| [docs/hermesdeck-refactor-plan.md](docs/hermesdeck-refactor-plan.md) | 重构方向与验收清单 |
+| [REBUILD_PLAN.md](REBUILD_PLAN.md) | 历史保留：Phase 0–6 实施计划 |
+
+---
+
+## 常用脚本
 
 ```bash
-npm run verify:pwa
-npm run typecheck -- --pretty false
-npm run build
-curl -I http://127.0.0.1:6117/manifest.webmanifest
-curl -I http://127.0.0.1:6117/sw.js
+npm run dev         # next dev + 6117 重定向辅助进程
+npm run build       # next build
+npm start           # next start + 6117 重定向辅助进程（HERMESDECK_LIVE_TERMINAL=1）
+npm run typecheck   # tsc --noEmit
+npm run lint        # next lint
+npm run verify:pwa  # 检查 manifest / sw.js / icons / CSS 关键 token
 ```
 
-Important: browser PWA install and service worker registration require a secure context. `http://10.10.10.253:6117` works as a mobile web UI, but true PWA installation requires HTTPS or localhost. See `docs/pwa-mobile.md` for deployment notes.
+详细脚本见 [docs/development.md](docs/development.md#scripts)。
 
-## Backend model
+---
 
-- Primary chat/runtime: Hermes API Server (`/v1/responses`, `/v1/chat/completions`, `/v1/runs`).
-- Admin/history/config: Hermes native dashboard/session/config APIs or local Hermes state inspection.
-- CLI is used only for local profile discovery and fallback when the API server is not available.
+## 反馈
 
-Environment overrides:
-
-```bash
-HERMES_API_BASE=http://127.0.0.1:8642
-HERMES_API_KEY=***
-HERMES_DASHBOARD_BASE=http://127.0.0.1:9120
-```
-
-Legacy prototype backup: `~/HermesDeck-legacy-clawfork`.
+- 问题 / 改进建议：在仓库内开 issue 或在 PR 里附改动说明。
+- 安全反馈：直接联系仓库 owner，不要在 issue 公开 PoC。

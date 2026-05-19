@@ -1,10 +1,9 @@
 import { NextRequest } from 'next/server';
+import { guardMutating } from '@/lib/server/csrf';
+import { MAX_ATTACHMENT_BYTES, MAX_TEXT_CHARS } from '@/lib/attachments';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB hard cap on the route
-const MAX_TEXT_CHARS = 200_000;
 
 function clipText(text: string) {
   if (text.length <= MAX_TEXT_CHARS) return { text, truncated: false };
@@ -19,6 +18,9 @@ function jsonError(message: string, status = 400) {
 }
 
 export async function POST(req: NextRequest) {
+  const guard = guardMutating(req);
+  if (!guard.ok) return guard.response;
+
   let form: FormData;
   try {
     form = await req.formData();
@@ -28,7 +30,7 @@ export async function POST(req: NextRequest) {
   const file = form.get('file');
   if (!(file instanceof File)) return jsonError('missing "file" field', 400);
   if (file.size === 0) return jsonError('empty file', 400);
-  if (file.size > MAX_FILE_SIZE) return jsonError(`file exceeds ${MAX_FILE_SIZE} bytes`, 413);
+  if (file.size > MAX_ATTACHMENT_BYTES) return jsonError(`file exceeds ${MAX_ATTACHMENT_BYTES} bytes`, 413);
 
   const buf = Buffer.from(await file.arrayBuffer());
   const name = file.name || 'upload';

@@ -42,6 +42,11 @@ function summarizeArgs(value: unknown): string {
   }
 }
 
+// Monotonic counter for timeline item ids. Two events arriving in the same
+// millisecond would otherwise rely on a random suffix to avoid a duplicate
+// React key — a counter makes the id collision-free by construction.
+let interpretSeq = 0;
+
 /**
  * Interpret one raw stream event into a timeline item, or `null` when the
  * event should be silently merged into the previous delta aggregate.
@@ -51,7 +56,7 @@ export function interpret(
 ): { item: TimelineItem | null; mergeDelta: boolean } {
   const type = String(raw.type || 'event');
   const ts = raw.ts ?? Date.now();
-  const id = `${ts}-${Math.random().toString(36).slice(2, 8)}`;
+  const id = `${ts}-${(interpretSeq++).toString(36)}`;
   const payload = raw.payload ?? {};
 
   // status.* — phase markers from BFF

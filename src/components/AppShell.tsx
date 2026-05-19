@@ -1,36 +1,147 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState, type ComponentType } from 'react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import {
-  Bot, Cpu, Home, Menu, MessageSquare, Moon, PanelLeftClose, PanelLeftOpen,
+  BookOpen, Bot, FileCog, Globe, Home, KanbanSquare, Menu, MessageSquare, Moon, PanelLeftClose, PanelLeftOpen,
   Radio, Search, Settings, Sun, Terminal, Wrench, X,
 } from 'lucide-react';
+import { CommandPalette } from './CommandPalette';
+import { ProfileChip } from './ProfileChip';
+import { deckApi } from '@/lib/api';
+import type { HealthStatus } from '@/lib/types';
+import { useT, useLang, toggleLang } from '@/lib/i18n';
 
 const SIDEBAR_KEY = 'hermesdeck-sidebar-collapsed';
 
 type IconType = ComponentType<{ size?: number | string; className?: string }>;
-type NavItem = { href: string; label: string; icon: IconType; kicker: string };
+type NavKey = 'home' | 'chat' | 'profiles' | 'config' | 'runs' | 'kanban' | 'tools' | 'lcm' | 'terminal' | 'settings';
+type NavItem = { href: string; key: NavKey; icon: IconType };
 
 const NAV: NavItem[] = [
-  { href: '/',         label: 'Home',     icon: Home,          kicker: 'COMMAND DECK' },
-  { href: '/chat',     label: 'Chat',     icon: MessageSquare, kicker: 'CONVERSATIONS' },
-  { href: '/profiles', label: 'Profiles', icon: Bot,           kicker: 'EXECUTION CONTEXTS' },
-  { href: '/models',   label: 'Models',   icon: Cpu,           kicker: 'MODEL CATALOG' },
-  { href: '/runs',     label: 'Runs',     icon: Radio,         kicker: 'RUN TIMELINE' },
-  { href: '/tools',    label: 'Tools',    icon: Wrench,        kicker: 'TOOLSETS · MCP' },
-  { href: '/terminal', label: 'Terminal', icon: Terminal,      kicker: 'SAFE OPS CONSOLE' },
-  { href: '/settings', label: 'Settings', icon: Settings,      kicker: 'SETTINGS' },
+  { href: '/',         key: 'home',     icon: Home },
+  { href: '/chat',     key: 'chat',     icon: MessageSquare },
+  { href: '/profiles', key: 'profiles', icon: Bot },
+  { href: '/config',   key: 'config',   icon: FileCog },
+  { href: '/runs',     key: 'runs',     icon: Radio },
+  { href: '/kanban',   key: 'kanban',   icon: KanbanSquare },
+  { href: '/tools',    key: 'tools',    icon: Wrench },
+  { href: '/lcm',      key: 'lcm',      icon: BookOpen },
+  { href: '/terminal', key: 'terminal', icon: Terminal },
+  { href: '/settings', key: 'settings', icon: Settings },
 ];
 
 const MOBILE_PRIMARY: ReadonlySet<string> = new Set(['/', '/chat', '/profiles', '/terminal']);
 
+// Routes that don't read the active profile — hide the switcher there to avoid
+// implying a selection has any effect on the page.
+const PROFILE_CHIP_HIDDEN: ReadonlySet<string> = new Set(['/tools', '/settings', '/terminal']);
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname() || '/';
+  // The /login route renders full-bleed without sidebar/topbar chrome.
+  const bare = path === '/login';
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [mounted, setMounted] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [apiStatus, setApiStatus] = useState<HealthStatus | 'checking'>('checking');
+  const lang = useLang();
+
+  // Reflect real Hermes API health in the sidebar footer dot — previously it
+  // was hardcoded green, which contradicted the dashboard hero whenever Hermes
+  // was actually down or degraded.
+  useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      deckApi.health()
+        .then((h) => { if (alive) setApiStatus(h.status); })
+        .catch(() => { if (alive) setApiStatus('unreachable'); });
+    };
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
+  const t = useT({
+    zh: {
+      navHome:     { label: '主页',     kicker: '指挥台' },
+      navChat:     { label: '对话',     kicker: '会话列表' },
+      navProfiles: { label: '配置',     kicker: '配置 · 模型' },
+      navConfig:   { label: 'Agent 配置', kicker: 'SOUL · 记忆 · YAML' },
+      navRuns:     { label: '运行',     kicker: '运行时间线' },
+      navKanban:   { label: '看板',     kicker: '多 Agent 任务' },
+      navTools:    { label: '工具',     kicker: '工具集 · MCP' },
+      navLcm:      { label: 'LCM',      kicker: '上下文管理' },
+      navTerminal: { label: '终端',     kicker: '安全运维控制台' },
+      navSettings: { label: '设置',     kicker: '偏好设置' },
+      brandSubtitle: '控制台 · v1',
+      apiOnline: '在线',
+      apiDegraded: '降级',
+      apiOffline: '离线',
+      apiChecking: '检测中',
+      apiLabel: 'API',
+      footerHint: '配置、运行与工具事件均为一等公民。',
+      expandSidebar: '展开侧栏',
+      collapseSidebar: '收起侧栏',
+      primaryNav: '主导航',
+      pages: '页面',
+      mobileNav: '移动端导航',
+      moreNav: '更多',
+      moreSheetLabel: '更多导航',
+      close: '关闭',
+      searchPlaceholder: '搜索会话、配置、工具、运行……',
+      cmdPaletteAriaLabel: '打开命令面板',
+      cmdPaletteTitle: '打开命令面板（⌘K）',
+      lightMode: '切换到浅色模式',
+      darkMode: '切换到深色模式',
+      langSwitchTitle: '切换到 English',
+      langSwitchAria: '切换到英文',
+    },
+    en: {
+      navHome:     { label: 'Home',     kicker: 'COMMAND DECK' },
+      navChat:     { label: 'Chat',     kicker: 'CONVERSATIONS' },
+      navProfiles: { label: 'Profiles', kicker: 'PROFILES · MODELS' },
+      navConfig:   { label: 'Agent Config', kicker: 'SOUL · MEMORY · YAML' },
+      navRuns:     { label: 'Runs',     kicker: 'RUN TIMELINE' },
+      navKanban:   { label: 'Kanban',   kicker: 'MULTI-AGENT BOARD' },
+      navTools:    { label: 'Tools',    kicker: 'TOOLSETS · MCP' },
+      navLcm:      { label: 'LCM',      kicker: 'LOSSLESS CONTEXT' },
+      navTerminal: { label: 'Terminal', kicker: 'SAFE OPS CONSOLE' },
+      navSettings: { label: 'Settings', kicker: 'SETTINGS' },
+      brandSubtitle: 'CONTROL · v1',
+      apiOnline: 'online',
+      apiDegraded: 'degraded',
+      apiOffline: 'offline',
+      apiChecking: 'checking…',
+      apiLabel: 'API',
+      footerHint: 'Profiles, runs and tool events are first-class.',
+      expandSidebar: 'Expand sidebar',
+      collapseSidebar: 'Collapse sidebar',
+      primaryNav: 'Primary navigation',
+      pages: 'Pages',
+      mobileNav: 'Mobile navigation',
+      moreNav: 'More',
+      moreSheetLabel: 'More navigation',
+      close: 'Close',
+      searchPlaceholder: 'Search sessions, profiles, tools, runs…',
+      cmdPaletteAriaLabel: 'Open command palette',
+      cmdPaletteTitle: 'Open command palette (⌘K)',
+      lightMode: 'Switch to light mode',
+      darkMode: 'Switch to dark mode',
+      langSwitchTitle: 'Switch to 中文',
+      langSwitchAria: 'Switch to Chinese',
+    },
+  });
+
+  // Build the localised nav once per language change rather than on every render.
+  const navItems = useMemo(
+    () => NAV.map((n) => ({
+      ...n,
+      label: t[`nav${n.key.charAt(0).toUpperCase() + n.key.slice(1)}` as keyof typeof t] as { label: string; kicker: string },
+    })),
+    [t],
+  );
 
   useEffect(() => {
     const current = (document.documentElement.dataset.theme as 'dark' | 'light') || 'dark';
@@ -39,6 +150,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (localStorage.getItem(SIDEBAR_KEY) === '1') setCollapsed(true);
     } catch {}
     setMounted(true);
+  }, []);
+
+  // iOS PWA keyboard handling: when the OS keyboard slides up, position:fixed
+  // elements stay in the *layout viewport* and end up hidden behind it. We
+  // measure the gap via the visualViewport API and expose it as `--kb-inset`
+  // on <html>, which the chat composer / mobile-nav CSS can subtract from
+  // their `bottom` offset so they stay glued to the keyboard's top edge.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement;
+    const sync = () => {
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      root.style.setProperty('--kb-inset', `${Math.round(inset)}px`);
+    };
+    sync();
+    vv.addEventListener('resize', sync);
+    vv.addEventListener('scroll', sync);
+    return () => {
+      vv.removeEventListener('resize', sync);
+      vv.removeEventListener('scroll', sync);
+      root.style.removeProperty('--kb-inset');
+    };
   }, []);
 
   useEffect(() => { setMoreOpen(false); }, [path]);
@@ -58,15 +193,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     });
   }
 
-  const active = NAV.find((n) => n.href === path) || NAV[0];
+  const active = navItems.find((n) => n.href === path) || navItems[0];
   const ActiveIcon = active.icon;
-  const mobilePrimary = NAV.filter((n) => MOBILE_PRIMARY.has(n.href));
-  const mobileOverflow = NAV.filter((n) => !MOBILE_PRIMARY.has(n.href));
+  const mobilePrimary = navItems.filter((n) => MOBILE_PRIMARY.has(n.href));
+  const mobileOverflow = navItems.filter((n) => !MOBILE_PRIMARY.has(n.href));
+
+  // The chat page goes full-bleed on mobile and merges its own header with the
+  // global app-bar. Tagging the root lets CSS hide redundant chrome there.
+  const routeKey = path === '/chat' ? 'chat' : (path.split('/')[1] || 'home');
+  const showProfileChip = !PROFILE_CHIP_HIDDEN.has(path);
+
+  const apiDot =
+    apiStatus === 'connected' ? 'var(--green)' :
+    apiStatus === 'degraded' ? 'var(--yellow)' :
+    apiStatus === 'unreachable' ? 'var(--red)' :
+    'var(--muted-2)';
+  const apiRing =
+    apiStatus === 'connected' ? 'rgba(34,197,94,.18)' :
+    apiStatus === 'degraded' ? 'rgba(234,179,8,.18)' :
+    apiStatus === 'unreachable' ? 'rgba(239,68,68,.18)' :
+    'rgba(150,150,160,.16)';
+  const apiStatusLabel =
+    apiStatus === 'connected' ? t.apiOnline :
+    apiStatus === 'degraded' ? t.apiDegraded :
+    apiStatus === 'unreachable' ? t.apiOffline :
+    t.apiChecking;
+
+  if (bare) return <>{children}</>;
 
   return (
-    <div className={`app ${collapsed ? 'sidebar-collapsed' : ''}`}>
+    <div className={`app ${collapsed ? 'sidebar-collapsed' : ''}`} data-route={routeKey}>
       {/* Desktop sidebar */}
-      <aside className="sidebar" aria-label="Primary navigation">
+      <aside className="sidebar" aria-label={t.primaryNav}>
         <div className="brand" style={{ alignItems: 'center' }}>
           <div className="brand-badge" aria-hidden>
             <img className="brand-mark" src="/icons/icon-192.png" alt="" />
@@ -74,21 +232,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {!collapsed && (
             <div className="brand-text">
               <div className="brand-title">HermesDeck</div>
-              <div className="brand-subtitle">CONTROL · v1</div>
+              <div className="brand-subtitle">{t.brandSubtitle}</div>
             </div>
           )}
         </div>
 
-        <nav className="nav" aria-label="Pages">
-          {NAV.map(({ href, label, icon: Icon }) => {
+        <nav className="nav" aria-label={t.pages}>
+          {navItems.map(({ href, label, icon: Icon }) => {
             const isActive = path === href;
             return (
               <Link
                 key={href}
                 href={href}
                 className={isActive ? 'active' : ''}
-                aria-label={label}
-                title={collapsed ? label : undefined}
+                aria-label={label.label}
+                title={collapsed ? label.label : undefined}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -108,7 +266,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 }}
               >
                 <Icon size={14} className={isActive ? 'icon-active' : ''} />
-                <span className="nav-label">{label}</span>
+                <span className="nav-label">{label.label}</span>
               </Link>
             );
           })}
@@ -120,21 +278,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{
                   display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
-                  background: 'var(--green)', boxShadow: '0 0 0 3px rgba(34,197,94,.18)',
+                  background: apiDot, boxShadow: `0 0 0 3px ${apiRing}`,
                 }} />
-                <span className="value" style={{ fontFamily: 'var(--font-sans)', fontSize: 11 }}>API</span>
-                <span className="tiny" style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>online</span>
+                <span className="value" style={{ fontFamily: 'var(--font-sans)', fontSize: 11 }}>{t.apiLabel}</span>
+                <span className="tiny" style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>{apiStatusLabel}</span>
               </div>
               <div className="tiny" style={{ marginTop: 6 }}>
-                Profiles, runs and tool events are first-class.
+                {t.footerHint}
               </div>
             </div>
           )}
           <button
             className="sidebar-toggle"
             onClick={toggleCollapsed}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={collapsed ? t.expandSidebar : t.collapseSidebar}
+            title={collapsed ? t.expandSidebar : t.collapseSidebar}
             suppressHydrationWarning
           >
             {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
@@ -148,16 +306,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="topbar" role="banner">
           <div className="topbar-left">
             <ActiveIcon size={15} className="topbar-active-icon" />
-            <div className="topbar-title">
-              <span className="crumb">{active.kicker}</span>
-              <h1>{active.label}</h1>
+            <div className="topbar-title topbar-title-row">
+              <h1>{active.label.label}</h1>
+              {showProfileChip && <ProfileChip />}
             </div>
           </div>
           <div className="topbar-meta" style={{ flex: 1, justifyContent: 'flex-end', maxWidth: '100%' }}>
-            <div
+            <div id="topbar-page-slot" style={{ display: 'flex', alignItems: 'center', gap: 8 }} />
+            <button
+              type="button"
               className="topbar-search"
-              role="search"
-              aria-label="Search"
+              aria-label={t.cmdPaletteAriaLabel}
+              title={t.cmdPaletteTitle}
+              onClick={() => {
+                // Single source of truth — CommandPalette listens for this event.
+                window.dispatchEvent(new CustomEvent('hermesdeck:open-palette'));
+              }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -170,6 +334,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 background: 'var(--bg-soft)',
                 border: '1px solid var(--line)',
                 borderRadius: 8,
+                color: 'var(--text)',
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                textAlign: 'left',
               }}
             >
               <Search size={13} style={{ color: 'var(--muted-2)', flexShrink: 0 }} />
@@ -181,13 +349,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 textOverflow: 'ellipsis',
                 flex: 1,
                 minWidth: 0,
-              }}>Search sessions, tools…</span>
+              }}>{t.searchPlaceholder}</span>
               <span className="kbd" style={{ marginLeft: 'auto', flexShrink: 0 }}>⌘K</span>
-            </div>
+            </button>
+            <button
+              className="btn icon ghost"
+              onClick={toggleLang}
+              aria-label={t.langSwitchAria}
+              title={t.langSwitchTitle}
+              suppressHydrationWarning
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 11 }}
+            >
+              <Globe size={14} />
+              <span>{lang === 'zh' ? 'EN' : '中'}</span>
+            </button>
             <button
               className="btn icon ghost"
               onClick={toggleTheme}
-              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={theme === 'dark' ? t.lightMode : t.darkMode}
               suppressHydrationWarning
             >
               {mounted ? (theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />) : <Moon size={15} />}
@@ -201,16 +380,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="brand-badge" aria-hidden>
               <img className="brand-mark" src="/icons/icon-192.png" alt="" />
             </div>
-            <div style={{ minWidth: 0 }}>
-              <div className="ab-title">{active.label}</div>
-              <div className="ab-sub">{active.kicker}</div>
+            <div className="ab-title-row">
+              <div className="ab-title">{active.label.label}</div>
+              {showProfileChip && <ProfileChip />}
             </div>
           </div>
           <div className="ab-actions">
             <button
               className="btn icon"
+              onClick={() => window.dispatchEvent(new CustomEvent('hermesdeck:open-palette'))}
+              aria-label={t.cmdPaletteAriaLabel}
+              title={t.cmdPaletteTitle}
+            >
+              <Search size={15} />
+            </button>
+            <button
+              className="btn icon"
+              onClick={toggleLang}
+              aria-label={t.langSwitchAria}
+              title={t.langSwitchTitle}
+              suppressHydrationWarning
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 11 }}
+            >
+              <Globe size={14} />
+              <span>{lang === 'zh' ? 'EN' : '中'}</span>
+            </button>
+            <button
+              className="btn icon"
               onClick={toggleTheme}
-              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={theme === 'dark' ? t.lightMode : t.darkMode}
               suppressHydrationWarning
             >
               {mounted ? (theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />) : <Moon size={15} />}
@@ -221,23 +419,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
+      {/* Command palette (⌘K / Ctrl+K) */}
+      <CommandPalette />
+
       {/* Mobile bottom nav */}
-      <nav className="mobile-nav" aria-label="Mobile navigation">
+      <nav className="mobile-nav" aria-label={t.mobileNav}>
         {mobilePrimary.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={path === href ? 'active' : ''} aria-label={label}>
+          <Link key={href} href={href} className={path === href ? 'active' : ''} aria-label={label.label}>
             <Icon size={19} />
-            <span className="mobile-nav-label">{label}</span>
+            <span className="mobile-nav-label">{label.label}</span>
           </Link>
         ))}
         <button
           type="button"
           className={moreOpen ? 'active' : ''}
           onClick={() => setMoreOpen((v) => !v)}
-          aria-label="More"
+          aria-label={t.moreNav}
           aria-expanded={moreOpen}
         >
           <Menu size={19} />
-          <span className="mobile-nav-label">More</span>
+          <span className="mobile-nav-label">{t.moreNav}</span>
         </button>
       </nav>
 
@@ -247,16 +448,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         onClick={() => setMoreOpen(false)}
         aria-hidden
       />
-      <div className={`sheet ${moreOpen ? 'open' : ''}`} role="dialog" aria-label="More navigation">
+      <div className={`sheet ${moreOpen ? 'open' : ''}`} role="dialog" aria-label={t.moreSheetLabel}>
         <div className="sheet-handle" />
         <div className="sheet-header">
-          <h2>More</h2>
-          <button className="btn icon" onClick={() => setMoreOpen(false)} aria-label="Close">
+          <h2>{t.moreNav}</h2>
+          <button className="btn icon" onClick={() => setMoreOpen(false)} aria-label={t.close}>
             <X size={16} />
           </button>
         </div>
         <div className="sheet-body">
-          {mobileOverflow.map(({ href, label, icon: Icon, kicker }) => (
+          {mobileOverflow.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -268,8 +469,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <Icon size={15} />
                 </span>
                 <div>
-                  <b>{label}</b>
-                  <div className="muted small">{kicker}</div>
+                  <b>{label.label}</b>
+                  <div className="muted small">{label.kicker}</div>
                 </div>
               </div>
             </Link>

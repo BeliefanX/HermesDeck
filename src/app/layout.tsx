@@ -1,9 +1,12 @@
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import 'katex/dist/katex.min.css';
 import 'highlight.js/styles/github-dark.css';
 import './globals.css';
 import { AppShell } from '@/components/AppShell';
+import { GlobalErrorSink } from '@/components/GlobalErrorSink';
 import { PWARegister } from '@/components/PWARegister';
+import { ProfileProvider } from '@/lib/profile-context';
 
 export const metadata: Metadata = {
   title: { default: 'HermesDeck', template: '%s · HermesDeck' },
@@ -42,11 +45,18 @@ const themeBootstrap = `(function(){try{var t=localStorage.getItem('hermesdeck-t
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
-      </head>
       <body>
-        <AppShell>{children}</AppShell>
+        {/* Theme bootstrap must run before hydration so the first paint uses
+           the correct background; next/script with strategy="beforeInteractive"
+           injects it into the document head and avoids the React 19 warning
+           that fires for inline <script> children inside React components. */}
+        <Script id="theme-bootstrap" strategy="beforeInteractive">
+          {themeBootstrap}
+        </Script>
+        <GlobalErrorSink />
+        <ProfileProvider>
+          <AppShell>{children}</AppShell>
+        </ProfileProvider>
         <PWARegister />
       </body>
     </html>

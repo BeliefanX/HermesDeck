@@ -1,11 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 
 export function PWARegister() {
   const [updateReady, setUpdateReady] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  // Only reload when the user clicks the update banner. The default
+  // controllerchange behavior would auto-reload on every SW activation, which
+  // can wipe a half-typed message or interrupt a streaming response.
+  const userInitiatedUpdate = useRef(false);
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
@@ -24,7 +28,10 @@ export function PWARegister() {
       return;
     }
 
-    const onControllerChange = () => window.location.reload();
+    const onControllerChange = () => {
+      if (!userInitiatedUpdate.current) return;
+      window.location.reload();
+    };
 
     navigator.serviceWorker
       .register('/sw.js', { scope: '/' })
@@ -52,16 +59,30 @@ export function PWARegister() {
 
   if (!updateReady || dismissed) return null;
 
+  const applyUpdate = () => {
+    userInitiatedUpdate.current = true;
+    navigator.serviceWorker
+      .getRegistration()
+      .then((r) => {
+        const waiting = r?.waiting;
+        if (!waiting) {
+          // Nothing waiting — drop the flag so a future background activation
+          // doesn't trigger an unwanted auto-reload after the user dismissed
+          // an earlier banner.
+          userInitiatedUpdate.current = false;
+          return;
+        }
+        waiting.postMessage({ type: 'SKIP_WAITING' });
+      })
+      .catch(() => { userInitiatedUpdate.current = false; });
+  };
+
   return (
     <div className="pwa-update" role="status" aria-live="polite">
       <button
         type="button"
         className="pwa-update-action"
-        onClick={() =>
-          navigator.serviceWorker
-            .getRegistration()
-            .then((r) => r?.waiting?.postMessage({ type: 'SKIP_WAITING' }))
-        }
+        onClick={applyUpdate}
         aria-label="A new version is ready — click to update"
       >
         <span className="pwa-update-dot" aria-hidden />

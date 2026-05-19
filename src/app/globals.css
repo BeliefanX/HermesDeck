@@ -72,7 +72,9 @@
   /* layout */
   --side-w:248px;
   --topbar-h:56px;
-  --mobile-app-bar-h:52px;
+  /* Must equal the real rendered app-bar height (40px action buttons + 8+8
+     padding + 1px border) — the fixed .page-chat reads it for its `top`. */
+  --mobile-app-bar-h:57px;
   --mobile-nav-h:64px;
 
   /* safe areas */
@@ -80,6 +82,12 @@
   --safe-right:env(safe-area-inset-right,0px);
   --safe-bottom:env(safe-area-inset-bottom,0px);
   --safe-left:env(safe-area-inset-left,0px);
+
+  /* iOS soft-keyboard overlap. Set by AppShell via the visualViewport API.
+     0px when no keyboard is open. Mobile composers / fixed bottom nav read
+     this so they stay glued to the keyboard's top edge instead of getting
+     hidden behind it. */
+  --kb-inset:0px;
 }
 
 :root[data-theme="light"]{
@@ -672,7 +680,10 @@ p{line-height:1.6}
    ───────────────────────────────────────────── */
 .chat-layout{
   display:grid;
-  grid-template-columns:248px minmax(520px,1.45fr) 280px;
+  /* Track widths read from custom properties so the user-resizable handle
+     can drive column 1 by overriding --sessions-w on .chat-layout-wrap.
+     Defaults inherit from .chat-layout-wrap below (248 / 280). */
+  grid-template-columns:var(--sessions-w) minmax(520px,1.45fr) var(--right-w);
   gap:0;
   height:calc(100dvh - var(--topbar-h) - 20px);
   width:100%;
@@ -682,12 +693,10 @@ p{line-height:1.6}
   overflow:hidden;
   background:var(--card-bg);
   box-shadow:var(--shadow-card);
-  --sessions-w:248px;
-  --right-w:280px;
   transition:grid-template-columns var(--t-3) var(--ease-out);
 }
-.chat-layout.no-sessions{grid-template-columns:0 minmax(520px,1.45fr) 280px;--sessions-w:0px}
-.chat-layout.no-timeline{grid-template-columns:248px minmax(520px,1.45fr) 0;--right-w:0px}
+.chat-layout.no-sessions{grid-template-columns:0 minmax(520px,1.45fr) var(--right-w);--sessions-w:0px}
+.chat-layout.no-timeline{grid-template-columns:var(--sessions-w) minmax(520px,1.45fr) 0;--right-w:0px}
 .chat-layout.no-sessions.no-timeline{grid-template-columns:0 minmax(0,1fr) 0;--sessions-w:0px;--right-w:0px}
 
 /* Wrapper hosts the layout + the absolutely-positioned edge toggles, so the
@@ -732,6 +741,56 @@ p{line-height:1.6}
 .edge-toggle:active{filter:brightness(.95)}
 .edge-toggle.edge-left{left:var(--sessions-w)}
 .edge-toggle.edge-right{right:var(--right-w);transform:translate(50%,-50%)}
+
+/* Vertical drag handles straddling the sessions/thread and thread/context
+   dividers. Sit a hair below the edge-toggle (z-index 10) so the toggle button
+   stays clickable even when the resizer hover area overlaps it. */
+.session-resizer,
+.timeline-resizer{
+  position:absolute;
+  top:0;bottom:0;
+  width:8px;
+  cursor:col-resize;
+  z-index:5;
+  background:transparent;
+}
+.session-resizer{
+  left:var(--sessions-w);
+  transform:translateX(-50%);
+  transition:background var(--t-2) var(--ease),left var(--t-3) var(--ease-out);
+}
+.timeline-resizer{
+  right:var(--right-w);
+  transform:translateX(50%);
+  transition:background var(--t-2) var(--ease),right var(--t-3) var(--ease-out);
+}
+.session-resizer::before,
+.timeline-resizer::before{
+  content:"";
+  position:absolute;
+  top:0;bottom:0;left:50%;
+  width:1px;
+  background:transparent;
+  transform:translateX(-50%);
+  transition:background var(--t-2) var(--ease);
+}
+.session-resizer:hover,
+.timeline-resizer:hover{background:rgba(0,0,0,.02)}
+.session-resizer:hover::before,
+.session-resizer.dragging::before,
+.timeline-resizer:hover::before,
+.timeline-resizer.dragging::before{background:var(--accent)}
+.session-resizer.dragging,
+.timeline-resizer.dragging{background:var(--accent-soft)}
+.session-resizer:focus-visible,
+.timeline-resizer:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* While dragging, kill the layout transition so the panel tracks the
+   pointer 1:1 instead of easing toward the new width. */
+.chat-layout-wrap.resizing > .chat-layout{transition:none}
+.chat-layout-wrap.resizing .session-resizer,
+.chat-layout-wrap.resizing .timeline-resizer,
+.chat-layout-wrap.resizing .edge-toggle{transition:none}
+
 .thread{display:flex;flex-direction:column;min-height:0}
 .chat-panel{
   padding:0;overflow:hidden;
@@ -808,7 +867,7 @@ p{line-height:1.6}
   color:var(--strong-text);
   box-shadow:inset 2px 0 0 var(--accent);
 }
-.session-title{font-size:13px;font-weight:550;color:var(--strong-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+.session-title{font-size:13px;font-weight:400;color:var(--strong-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
 .session-meta{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;overflow:hidden;min-width:0}
 .session-meta .tiny{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 
@@ -1129,9 +1188,27 @@ p{line-height:1.6}
 
 /* Mobile-only chat header buttons (sessions sheet + new chat). Hidden on desktop. */
 .chat-mobile-only{display:none}
+.chat-desktop-only{display:inline-flex}
+/* Small pulsing green dot — replaces the "Ready to send" tag on mobile to free
+   up panel-header space. Inline-block so it sits inline with sibling buttons. */
+.ready-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--green,#22c55e);
+  box-shadow:0 0 0 3px rgba(34,197,94,.18);
+  flex-shrink:0;
+  animation:ready-pulse 2.4s cubic-bezier(.4,0,.6,1) infinite;
+}
+@keyframes ready-pulse{
+  0%,100%{box-shadow:0 0 0 3px rgba(34,197,94,.18)}
+  50%{box-shadow:0 0 0 5px rgba(34,197,94,.05)}
+}
 
 /* mobile-nav reset on desktop */
 .mobile-nav{display:none}
+
+/* Level-1 mobile chat list page — only rendered at the mobile breakpoint;
+   desktop always uses the resizable 3-panel .chat-layout. */
+.chat-mobile-list{display:none}
 
 /* Bottom sheet (mobile drawer) */
 .sheet-backdrop{
@@ -1177,11 +1254,25 @@ p{line-height:1.6}
   .chat-layout-wrap.no-sessions{--sessions-w:0px}
   .chat-layout>.chat-panel.thread.right-panel{display:none}
   .edge-toggle.edge-right{display:none}
+  /* Resizers only make sense at desktop widths where the layout reads from
+     --sessions-w / --right-w. Below this, the media-query hard-codes tracks. */
+  .session-resizer,
+  .timeline-resizer{display:none}
   .grid.cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (max-width:1100px){
-  .chat-layout{grid-template-columns:1fr;height:auto;--sessions-w:0px}
-  .chat-layout-wrap{height:auto;--sessions-w:0px}
+  /* Force single-column on mobile/tablet regardless of show-sessions /
+     show-timeline modifier classes (otherwise the desktop track widths from
+     .no-timeline / .no-sessions leak through and the thread renders at 248px). */
+  .chat-layout,
+  .chat-layout.no-sessions,
+  .chat-layout.no-timeline,
+  .chat-layout.no-sessions.no-timeline{grid-template-columns:1fr;height:auto;--sessions-w:0px;--right-w:0px}
+  /* Don't fall back to height:auto on mobile — .page-chat is a position:fixed
+     flex column and the wrap must claim flex:1 / min-height:0 so the composer
+     stays pinned to the bottom. height:auto turned the wrap into a content-
+     sized box, and the composer floated halfway up the screen in PWA mode. */
+  .chat-layout-wrap{flex:1;min-height:0;height:auto;--sessions-w:0px}
   .chat-layout>.chat-panel.thread.sessions-panel{display:none}
   .edge-toggle{display:none}
   .terminal-layout{grid-template-columns:1fr}
@@ -1199,6 +1290,34 @@ p{line-height:1.6}
   .app{grid-template-columns:1fr;padding-bottom:calc(var(--mobile-nav-h) + var(--safe-bottom))}
   .sidebar{display:none}
   .topbar{display:none}
+
+  /* The mobile chat is a two-level flow. Level 1 (the session list) keeps the
+     restored app-bar + bottom-nav. Level 2 (the thread) is immersive: its own
+     header absorbs the safe-top and the composer is the bottom edge, so both
+     global chrome bars are suppressed and .page-chat fills the screen. */
+  html[data-chat-mobile-view="thread"] .app-bar{display:none}
+  html[data-chat-mobile-view="thread"] .mobile-nav{display:none}
+  html[data-chat-mobile-view="thread"] .app[data-route="chat"] .page-chat{top:0;bottom:0}
+
+  /* When the chat textarea is focused (typically => OS keyboard up) we slide
+     the bottom nav off-screen and reclaim its 64+safe-bottom for the message
+     area. The keyboard already replaces the nav as the visual bottom edge. */
+  html[data-composer-focus="1"] .mobile-nav{
+    transform:translateY(calc(100% + var(--safe-bottom)));
+    pointer-events:none;
+  }
+  /* When the OS keyboard is up, hoist the chat container above the keyboard
+     by var(--kb-inset). Falls back to 0 on Android Chrome (which already
+     resizes the layout viewport) and on devices without visualViewport. */
+  html[data-composer-focus="1"] .app[data-route="chat"] .page-chat{
+    bottom:var(--kb-inset, 0px);
+  }
+  html[data-composer-focus="1"] .app[data-route="chat"]{
+    padding-bottom:0;
+  }
+  .mobile-nav{
+    transition:transform 220ms cubic-bezier(.2,.7,.2,1);
+  }
 
   /* App bar — sticky header with notch breathing room and full-bleed actions row */
   .app-bar{
@@ -1311,6 +1430,43 @@ p{line-height:1.6}
     overflow:hidden;
     display:flex;flex-direction:column;
   }
+
+  /* Two-level gate: the .chat-layout-wrap (which on mobile renders only the
+     thread column) is the level-2 view; .chat-mobile-list is level 1. Exactly
+     one is displayed, keyed off the <html> data-attr the chat page flips. */
+  .chat-layout-wrap{display:none}
+  .chat-mobile-list{display:flex;flex-direction:column;flex:1;min-height:0;background:var(--bg)}
+  html[data-chat-mobile-view="thread"] .chat-layout-wrap{display:flex}
+  html[data-chat-mobile-view="thread"] .chat-mobile-list{display:none}
+
+  /* Level-1 list page — pinned toolbar over a scrollable session list. */
+  .chat-mobile-list-toolbar{
+    flex-shrink:0;
+    display:flex;flex-direction:column;gap:8px;
+    padding:10px calc(12px + var(--safe-right)) 10px calc(12px + var(--safe-left));
+    border-bottom:1px solid var(--hairline);
+  }
+  .chat-mobile-list-row{display:flex;align-items:center;gap:8px}
+  .chat-mobile-newbtn{
+    flex-shrink:0;
+    display:inline-flex;align-items:center;gap:5px;
+    height:38px;padding:0 14px;
+    border-radius:var(--r-3);
+    background:var(--accent);color:#08090c;
+    border:1px solid var(--accent-border);
+    font-family:var(--font-sans);font-size:13px;font-weight:600;
+    cursor:pointer;
+    transition:filter var(--t-2) var(--ease);
+  }
+  .chat-mobile-newbtn:active{filter:brightness(.93)}
+  .chat-mobile-list-body{
+    flex:1;min-height:0;overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;
+    padding:6px calc(8px + var(--safe-right)) 10px calc(8px + var(--safe-left));
+  }
+  .chat-mobile-list-body .session-list{gap:3px}
+  .chat-mobile-list-body .session-item{min-height:60px;padding:12px}
   .chat-layout{
     grid-template-columns:1fr;grid-template-rows:1fr;
     gap:0;
@@ -1343,16 +1499,27 @@ p{line-height:1.6}
     /* Don't add safe-bottom here — .page-chat already reserves nav-h + safe-bottom
        at the screen bottom, so the composer sits flush against that reserved zone.
        Adding safe-bottom again leaves a 34px gap on phones with home indicator. */
-    padding:10px calc(10px + var(--safe-right)) 10px calc(10px + var(--safe-left));
-    gap:8px;
+    padding:6px calc(8px + var(--safe-right)) 8px calc(8px + var(--safe-left));
+    gap:4px;
     background:var(--bg);
     border-top:1px solid var(--line);
   }
-  .composer .textarea{min-height:44px;max-height:140px;font-size:16px;border-radius:var(--r-3)}
-  .composer .btn.primary{min-width:60px;min-height:44px;padding:0 14px;border-radius:var(--r-3)}
+  /* Level-2 thread view has no bottom-nav beneath the composer, so .page-chat
+     reaches the screen edge — the composer must pad past the home indicator
+     itself. (iOS zeroes safe-area-inset-bottom while the keyboard is up.)
+     !important to beat the inline `padding` shorthand ChatComposer sets. */
+  html[data-chat-mobile-view="thread"] .composer{
+    padding-bottom:calc(8px + var(--safe-bottom)) !important;
+  }
+  /* Flat composer: tighten the inner card box on mobile so the textarea sits
+     close to the controls without the old 12px nested padding stealing space. */
+  .composer.composer-flat .composer-row.composer-row-stack{padding:6px 8px;gap:4px}
+  .composer .textarea{min-height:40px;max-height:120px;font-size:16px;border-radius:var(--r-3)}
+  .composer .btn.primary{min-width:56px;min-height:40px;padding:0 12px;border-radius:var(--r-3)}
 
   /* Mobile-only chat header buttons (sessions sheet + new chat). 36×36 minimum. */
   .chat-mobile-only{display:inline-flex}
+  .chat-desktop-only{display:none}
   .btn.icon.sm.panel-collapse.chat-mobile-only,
   .btn.icon.sm.panel-expand.chat-mobile-only{
     width:36px;min-width:36px;height:36px;
@@ -1451,6 +1618,42 @@ p{line-height:1.6}
   .action-card .action-sub{font-size:10px}
   /* App-bar: tighter padding on phones to keep brand visible */
   .app-bar{padding-left:calc(12px + var(--safe-left));padding-right:calc(12px + var(--safe-right))}
+}
+
+/* ─────────────────────────────────────────────
+   PWA standalone — Safari/Chrome/Edge address bar is gone, so we have a few
+   extra px to play with. Densify mobile chrome a bit further (smaller nav,
+   tighter panel-header) and drop the redundant text labels in the bottom nav.
+   Only kicks in alongside the mobile breakpoint.
+   ───────────────────────────────────────────── */
+@media (max-width:880px) and (display-mode:standalone){
+  :root{
+    /* app-bar height is not densified here — the 40px action buttons set a
+       hard floor of 57px; a smaller value just desyncs .page-chat's `top`. */
+    --mobile-nav-h:56px;
+  }
+  /* Bottom nav: icon-only — labels become a tooltip via aria-label only */
+  .mobile-nav-label{display:none}
+  .mobile-nav a,.mobile-nav button{min-height:44px;gap:0}
+  .mobile-nav{padding-top:4px}
+
+  /* Panel header: tighter on chat (uses !important to beat the React inline
+     padding/min-height that absorb the safe-top inset). */
+  .chat-panel .panel-header{padding:8px 12px}
+  .app[data-route="chat"] .chat-thread-header{
+    padding:calc(8px + var(--safe-top)) 14px 8px !important;
+    min-height:calc(48px + var(--safe-top)) !important;
+  }
+
+  /* Composer: shave a couple px off vertical padding */
+  .composer{padding:4px calc(8px + var(--safe-right)) 6px calc(8px + var(--safe-left))}
+  .composer .textarea{min-height:36px}
+}
+/* iOS PWA reports legacy display-mode value — match both */
+@media (max-width:880px) and (display-mode:fullscreen){
+  :root{--mobile-nav-h:56px}
+  .mobile-nav-label{display:none}
+  .mobile-nav a,.mobile-nav button{min-height:44px;gap:0}
 }
 
 /* spinner */
@@ -1828,6 +2031,19 @@ p{line-height:1.6}
 }
 .att-remove:hover{background:var(--glass);color:var(--strong-text)}
 
+/* Download / action button on a read-only attachment chip — shown when the
+   chip carries a downloadable artifact (model-emitted image, file, etc.) */
+.att-action{
+  width:22px;height:22px;
+  display:grid;place-items:center;flex-shrink:0;
+  color:var(--muted);border-radius:var(--r-1);
+  text-decoration:none;
+  transition:background var(--t-2) var(--ease),color var(--t-2) var(--ease);
+}
+.att-action:hover{background:var(--glass);color:var(--strong-text)}
+.msg.user .att-chip.read-only .att-action{color:rgba(255,255,255,.78)}
+.msg.user .att-chip.read-only .att-action:hover{background:rgba(255,255,255,.14);color:#fff}
+
 /* Read-only chips inside a sent message bubble */
 .msg-attachments{
   display:flex;gap:6px;flex-wrap:wrap;
@@ -2096,6 +2312,51 @@ p{line-height:1.6}
 .session-menu-item.active .session-menu-icon{color:inherit}
 .session-menu-sep{
   height:1px;background:var(--line);margin:3px 4px;
+}
+.session-menu-section-label{
+  padding:4px 10px 2px;font-size:9.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted-2);font-weight:600;
+}
+
+/* Single-line topbar title row: page title + ProfileChip side-by-side.
+   The chip used to sit in the kicker/sub line — collapsing to one row makes
+   the active agent the second-most prominent element after the page title. */
+.topbar-title-row{flex-direction:row;align-items:center;gap:10px}
+.ab-title-row{display:flex;align-items:center;gap:8px;min-width:0;flex:1;flex-wrap:nowrap}
+.ab-title-row .ab-title{flex-shrink:1;min-width:0}
+
+/* Profile chip — sized to read as a real button next to the page title.
+   Desktop popover anchors against it; on mobile it opens a bottom sheet. */
+.profile-chip{
+  display:inline-flex;align-items:center;gap:6px;
+  height:30px;padding:0 10px;
+  background:var(--bg-soft);border:1px solid var(--line);
+  border-radius:var(--r-2);
+  color:var(--strong-text);font-family:var(--font-sans);
+  font-size:13px;line-height:1;letter-spacing:-.005em;
+  cursor:pointer;flex-shrink:0;
+  transition:background var(--t-2) var(--ease),border-color var(--t-2) var(--ease),color var(--t-2) var(--ease);
+}
+.profile-chip:hover{background:var(--glass);border-color:var(--line-strong)}
+.profile-chip:active{background:var(--glass-strong)}
+.profile-chip[aria-expanded="true"]{
+  background:var(--accent-soft);
+  border-color:rgba(56,189,248,.55);
+  color:var(--strong-text);
+}
+.profile-chip-icon{color:var(--accent);flex-shrink:0}
+.profile-chip-name{
+  max-width:160px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-weight:550;
+}
+.profile-chip-caret{color:var(--muted-2);flex-shrink:0;margin-left:1px}
+.profile-chip:hover .profile-chip-caret{color:var(--text)}
+.profile-popover{min-width:260px;max-width:340px}
+@media (max-width:880px){
+  .profile-chip{height:28px;padding:0 9px;font-size:12.5px;gap:5px}
+  .profile-chip-name{max-width:110px}
+  .profile-sheet{max-height:70vh}
 }
 
 /* ─────────────────────────────────────────────
@@ -2439,3 +2700,114 @@ p{line-height:1.6}
   .stacked-chart{height:120px}
   .token-split-row{grid-template-columns:minmax(70px,90px) minmax(0,1fr) minmax(70px,auto);gap:10px}
 }
+
+/* ─────────────────────────────────────────────
+   Inline markdown images & full-screen lightbox
+   ───────────────────────────────────────────── */
+
+/* Markdown image button — wraps any `![](...)` inside an assistant turn so it
+   becomes click-to-zoom. Constrains width so an oversized data URL never
+   blows up the chat layout. */
+.md-img-btn{
+  display:block;padding:0;margin:8px 0;
+  border:1px solid var(--hairline);
+  background:var(--bg-soft);
+  border-radius:var(--r-2);
+  cursor:zoom-in;
+  overflow:hidden;
+  max-width:min(420px,100%);
+  transition:border-color var(--t-2) var(--ease),transform var(--t-2) var(--ease);
+}
+.md-img-btn:hover{border-color:var(--line-strong)}
+.md-img{
+  display:block;
+  max-width:100%;
+  height:auto;
+  border-radius:inherit;
+}
+
+/* Lightbox — full-screen image preview */
+.lightbox-backdrop{
+  position:fixed;inset:0;z-index:300;
+  display:grid;place-items:center;
+  background:rgba(8,9,12,.80);
+  backdrop-filter:blur(4px);
+  -webkit-backdrop-filter:blur(4px);
+  /* Respect notch + home-indicator on iOS PWA so the image isn't clipped
+     behind the status bar or the close button isn't pushed off-screen. */
+  padding:calc(24px + var(--safe-top)) calc(24px + var(--safe-right))
+          calc(24px + var(--safe-bottom)) calc(24px + var(--safe-left));
+  cursor:zoom-out;
+  animation:fadeIn .15s var(--ease);
+}
+:root[data-theme="light"] .lightbox-backdrop{background:rgba(15,23,42,.55)}
+.lightbox-img{
+  max-width:min(96vw,1600px);
+  /* 90dvh on PWA accounts for the dynamic viewport height (no address bar). */
+  max-height:min(90dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 48px));
+  object-fit:contain;
+  border-radius:var(--r-2);
+  box-shadow:var(--shadow-pop);
+  background:var(--bg-soft);
+  cursor:default;
+}
+.lightbox-toolbar{
+  position:fixed;
+  top:calc(18px + var(--safe-top));
+  right:calc(18px + var(--safe-right));
+  display:flex;gap:6px;
+  z-index:301;
+}
+.lightbox-toolbar .btn.icon.sm{
+  background:var(--card-bg-strong);
+  border:1px solid var(--line);
+}
+
+/* Make sure read-only chip labels for files don't get cropped — they tend to
+   carry longer names like "report-2026-04.pdf". */
+.att-chip.is-file .att-name{max-width:200px}
+
+/* ─────────────────────────────────────────────
+   Login page — full-bleed sign-in screen
+   ───────────────────────────────────────────── */
+.login-shell{
+  min-height:100dvh;
+  display:flex;align-items:center;justify-content:center;
+  padding:32px 16px;
+  background:
+    radial-gradient(80% 60% at 70% 0%, rgba(56,189,248,.12) 0%, transparent 60%),
+    radial-gradient(60% 50% at 10% 100%, rgba(168,85,247,.10) 0%, transparent 60%),
+    var(--bg);
+}
+.login-card{
+  width:100%;max-width:380px;
+  padding:28px;border-radius:16px;
+  background:var(--panel);border:1px solid var(--line);
+  box-shadow:0 20px 60px rgba(0,0,0,.35);
+  display:flex;flex-direction:column;gap:20px;
+}
+.login-brand{display:flex;align-items:center;gap:12px}
+.login-brand img{border-radius:12px;background:var(--panel-2);padding:4px;border:1px solid var(--line)}
+.login-title{font-size:18px;font-weight:600;color:var(--strong-text);letter-spacing:-.01em}
+.login-subtitle{font-size:12.5px;color:var(--muted);margin-top:2px}
+.login-form{display:flex;flex-direction:column;gap:14px}
+.login-field{display:flex;flex-direction:column;gap:6px}
+.login-field>span{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted-2);font-weight:500}
+.login-input{
+  display:flex;align-items:center;gap:8px;
+  height:38px;padding:0 12px;
+  background:var(--bg-soft);border:1px solid var(--line);border-radius:9px;
+  transition:border-color 200ms cubic-bezier(.2,.7,.2,1), background 200ms;
+}
+.login-input:focus-within{border-color:rgba(56,189,248,.6);background:var(--panel-2)}
+.login-input>svg{color:var(--muted-2);flex-shrink:0}
+.login-input>input{
+  flex:1;min-width:0;border:none;outline:none;background:transparent;
+  font:inherit;font-size:13.5px;color:var(--text);
+}
+.login-error{
+  font-size:12.5px;color:#ef4444;
+  background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);
+  border-radius:8px;padding:8px 10px;
+}
+.login-hint{font-size:11.5px;color:var(--muted-2);text-align:center;line-height:1.6}

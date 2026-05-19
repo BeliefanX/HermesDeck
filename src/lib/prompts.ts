@@ -7,6 +7,8 @@
  * - `action` — fires a control-plane action (new chat, regenerate, stop,
  *   clear current). The slash token is removed; nothing is inserted.
  */
+import { useMemo } from 'react';
+import { useT } from './i18n';
 
 export type SlashAction = 'new' | 'clear' | 'regen' | 'stop';
 
@@ -32,93 +34,134 @@ export type SlashCommand =
     };
 
 /**
- * Built-in catalog. Keys must be unique and lowercase; matching is
- * case-insensitive on prefix.
+ * React hook that returns the slash-command catalog localized to the current
+ * language. Components use this directly; there is no static catalog because
+ * every label/description text is translatable.
  */
-export const BUILTIN_COMMANDS: SlashCommand[] = [
-  { kind: 'action', key: 'new',     label: 'New chat',     description: 'Open a fresh local conversation',        action: 'new' },
-  { kind: 'action', key: 'clear',   label: 'Clear thread', description: 'Clear messages (keep the session)',      action: 'clear' },
-  { kind: 'action', key: 'regen',   label: 'Regenerate',   description: 'Re-answer the last user message',        action: 'regen' },
-  { kind: 'action', key: 'stop',    label: 'Stop',         description: 'Abort the in-flight streaming response', action: 'stop' },
+export function useLocalizedCommands(): SlashCommand[] {
+  const t = useT({
+    zh: {
+      // action labels + descriptions
+      newLabel: '新建对话',     newDesc: '开启全新本地会话',
+      clearLabel: '清空消息',   clearDesc: '清除消息（保留会话）',
+      regenLabel: '重新生成',   regenDesc: '重新回答上一条用户消息',
+      stopLabel: '停止',         stopDesc: '中止正在流式输出的响应',
+      // prompts
+      summarizeLabel: '总结',
+      summarizeDesc: '总结上方对话或附件',
+      summarizeTpl: '请总结上方内容,列出要点和结论。{cursor}',
 
-  {
-    kind: 'prompt',
-    key: 'summarize',
-    label: 'Summarize',
-    description: 'Summarize the conversation or attachments above',
-    template: 'Please summarize the content above, listing the key points and conclusions. {cursor}',
-  },
-  {
-    kind: 'prompt',
-    key: 'translate-en',
-    label: 'Translate to English',
-    description: 'Translate the following text into English',
-    template: 'Please translate the following text into natural, idiomatic English:\n\n{cursor}',
-  },
-  {
-    kind: 'prompt',
-    key: 'translate-zh',
-    label: 'Translate to Chinese',
-    description: 'Translate the following text into Chinese',
-    template: '请将下面的内容翻译成自然、地道的中文：\n\n{cursor}',
-  },
-  {
-    kind: 'prompt',
-    key: 'explain',
-    label: 'Explain code',
-    description: 'Explain how the code below works',
-    template: 'Please explain how the code below works, including key logic, possible side effects, and performance characteristics:\n\n```\n{cursor}\n```',
-  },
-  {
-    kind: 'prompt',
-    key: 'fix',
-    label: 'Fix bug',
-    description: 'Identify and fix bugs in the code',
-    template: 'The code below may contain a bug. Please help me find the issue and provide a fixed version:\n\n```\n{cursor}\n```',
-  },
-  {
-    kind: 'prompt',
-    key: 'test',
-    label: 'Write tests',
-    description: 'Generate unit tests for the code',
-    template: 'Please write unit tests for the code below, covering edge cases:\n\n```\n{cursor}\n```',
-  },
-  {
-    kind: 'prompt',
-    key: 'refactor',
-    label: 'Refactor code',
-    description: 'Improve readability and structure',
-    template: 'Please refactor the code below to improve readability, naming, and structure while preserving behavior:\n\n```\n{cursor}\n```',
-  },
-  {
-    kind: 'prompt',
-    key: 'docstring',
-    label: 'Add comments',
-    description: 'Add comments or docstrings',
-    template: 'Please add appropriate comments or docstrings to the code below, only where they add real clarity:\n\n```\n{cursor}\n```',
-  },
-  {
-    kind: 'prompt',
-    key: 'improve',
-    label: 'Improve writing',
-    description: 'Polish the text below',
-    template: 'Please polish the text below so it reads more clearly and naturally, while keeping the original meaning:\n\n{cursor}',
-  },
-  {
-    kind: 'prompt',
-    key: 'brainstorm',
-    label: 'Brainstorm',
-    description: 'Explore ideas around a topic',
-    template: 'Please brainstorm around the topic below — give 5–8 angles, each with a short explanation:\n\n{cursor}',
-  },
-  {
-    kind: 'prompt',
-    key: 'plan',
-    label: 'Plan steps',
-    description: 'Break a goal into actionable steps',
-    template: 'Please break the goal below into a clear, actionable step-by-step plan:\n\n{cursor}',
-  },
-];
+      transEnLabel: '翻译为英文',
+      transEnDesc: '将下方文本翻译为英文',
+      transEnTpl: '请将下面的文本翻译为自然、地道的英文:\n\n{cursor}',
+
+      transZhLabel: '翻译为中文',
+      transZhDesc: '将下方文本翻译为中文',
+      transZhTpl: '请将下面的内容翻译成自然、地道的中文：\n\n{cursor}',
+
+      explainLabel: '解释代码',
+      explainDesc: '解释下方代码的工作方式',
+      explainTpl: '请解释下方代码的工作方式,包括关键逻辑、可能的副作用以及性能特征:\n\n```\n{cursor}\n```',
+
+      fixLabel: '修复 Bug',
+      fixDesc: '识别并修复代码中的 Bug',
+      fixTpl: '下面的代码可能存在 Bug。请帮我找出问题并提供修复后的版本:\n\n```\n{cursor}\n```',
+
+      testLabel: '编写测试',
+      testDesc: '为代码生成单元测试',
+      testTpl: '请为下方代码编写单元测试,覆盖边界情况:\n\n```\n{cursor}\n```',
+
+      refactorLabel: '重构代码',
+      refactorDesc: '提升可读性与结构',
+      refactorTpl: '请在保持行为不变的前提下,重构下方代码以提升可读性、命名和结构:\n\n```\n{cursor}\n```',
+
+      docstringLabel: '添加注释',
+      docstringDesc: '为代码添加注释或文档字符串',
+      docstringTpl: '请为下方代码添加恰当的注释或文档字符串,仅在能真正提升清晰度的地方添加:\n\n```\n{cursor}\n```',
+
+      improveLabel: '润色文本',
+      improveDesc: '让下方文本更通顺',
+      improveTpl: '请润色下方文本,使其在保持原意的同时读起来更清晰、自然:\n\n{cursor}',
+
+      brainstormLabel: '头脑风暴',
+      brainstormDesc: '围绕主题发散思路',
+      brainstormTpl: '请围绕下方主题进行头脑风暴 —— 给出 5 至 8 个角度,每个附简短说明:\n\n{cursor}',
+
+      planLabel: '拆解步骤',
+      planDesc: '把目标拆为可执行步骤',
+      planTpl: '请将下方目标拆解为清晰、可执行的分步计划:\n\n{cursor}',
+    },
+    en: {
+      newLabel: 'New chat',     newDesc: 'Open a fresh local conversation',
+      clearLabel: 'Clear thread', clearDesc: 'Clear messages (keep the session)',
+      regenLabel: 'Regenerate', regenDesc: 'Re-answer the last user message',
+      stopLabel: 'Stop',         stopDesc: 'Abort the in-flight streaming response',
+
+      summarizeLabel: 'Summarize',
+      summarizeDesc: 'Summarize the conversation or attachments above',
+      summarizeTpl: 'Please summarize the content above, listing the key points and conclusions. {cursor}',
+
+      transEnLabel: 'Translate to English',
+      transEnDesc: 'Translate the following text into English',
+      transEnTpl: 'Please translate the following text into natural, idiomatic English:\n\n{cursor}',
+
+      transZhLabel: 'Translate to Chinese',
+      transZhDesc: 'Translate the following text into Chinese',
+      transZhTpl: '请将下面的内容翻译成自然、地道的中文：\n\n{cursor}',
+
+      explainLabel: 'Explain code',
+      explainDesc: 'Explain how the code below works',
+      explainTpl: 'Please explain how the code below works, including key logic, possible side effects, and performance characteristics:\n\n```\n{cursor}\n```',
+
+      fixLabel: 'Fix bug',
+      fixDesc: 'Identify and fix bugs in the code',
+      fixTpl: 'The code below may contain a bug. Please help me find the issue and provide a fixed version:\n\n```\n{cursor}\n```',
+
+      testLabel: 'Write tests',
+      testDesc: 'Generate unit tests for the code',
+      testTpl: 'Please write unit tests for the code below, covering edge cases:\n\n```\n{cursor}\n```',
+
+      refactorLabel: 'Refactor code',
+      refactorDesc: 'Improve readability and structure',
+      refactorTpl: 'Please refactor the code below to improve readability, naming, and structure while preserving behavior:\n\n```\n{cursor}\n```',
+
+      docstringLabel: 'Add comments',
+      docstringDesc: 'Add comments or docstrings',
+      docstringTpl: 'Please add appropriate comments or docstrings to the code below, only where they add real clarity:\n\n```\n{cursor}\n```',
+
+      improveLabel: 'Improve writing',
+      improveDesc: 'Polish the text below',
+      improveTpl: 'Please polish the text below so it reads more clearly and naturally, while keeping the original meaning:\n\n{cursor}',
+
+      brainstormLabel: 'Brainstorm',
+      brainstormDesc: 'Explore ideas around a topic',
+      brainstormTpl: 'Please brainstorm around the topic below — give 5–8 angles, each with a short explanation:\n\n{cursor}',
+
+      planLabel: 'Plan steps',
+      planDesc: 'Break a goal into actionable steps',
+      planTpl: 'Please break the goal below into a clear, actionable step-by-step plan:\n\n{cursor}',
+    },
+  });
+
+  return useMemo<SlashCommand[]>(() => [
+    { kind: 'action', key: 'new',   label: t.newLabel,   description: t.newDesc,   action: 'new' },
+    { kind: 'action', key: 'clear', label: t.clearLabel, description: t.clearDesc, action: 'clear' },
+    { kind: 'action', key: 'regen', label: t.regenLabel, description: t.regenDesc, action: 'regen' },
+    { kind: 'action', key: 'stop',  label: t.stopLabel,  description: t.stopDesc,  action: 'stop' },
+
+    { kind: 'prompt', key: 'summarize',    label: t.summarizeLabel, description: t.summarizeDesc, template: t.summarizeTpl },
+    { kind: 'prompt', key: 'translate-en', label: t.transEnLabel,   description: t.transEnDesc,   template: t.transEnTpl },
+    { kind: 'prompt', key: 'translate-zh', label: t.transZhLabel,   description: t.transZhDesc,   template: t.transZhTpl },
+    { kind: 'prompt', key: 'explain',      label: t.explainLabel,   description: t.explainDesc,   template: t.explainTpl },
+    { kind: 'prompt', key: 'fix',          label: t.fixLabel,       description: t.fixDesc,       template: t.fixTpl },
+    { kind: 'prompt', key: 'test',         label: t.testLabel,      description: t.testDesc,      template: t.testTpl },
+    { kind: 'prompt', key: 'refactor',     label: t.refactorLabel,  description: t.refactorDesc,  template: t.refactorTpl },
+    { kind: 'prompt', key: 'docstring',    label: t.docstringLabel, description: t.docstringDesc, template: t.docstringTpl },
+    { kind: 'prompt', key: 'improve',      label: t.improveLabel,   description: t.improveDesc,   template: t.improveTpl },
+    { kind: 'prompt', key: 'brainstorm',   label: t.brainstormLabel,description: t.brainstormDesc,template: t.brainstormTpl },
+    { kind: 'prompt', key: 'plan',         label: t.planLabel,      description: t.planDesc,      template: t.planTpl },
+  ], [t]);
+}
 
 /** Strip the leading `/foo` token from the input. */
 export function extractSlashQuery(text: string, caret: number): null | { start: number; end: number; query: string } {

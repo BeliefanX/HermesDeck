@@ -1,7 +1,13 @@
 'use client';
-import { useState, type ReactNode } from 'react';
+import { memo, useState, type ReactNode } from 'react';
 import { Check, Copy } from 'lucide-react';
-import { MermaidBlock } from './MermaidBlock';
+import { MermaidBlock as MermaidBlockBase } from './MermaidBlock';
+
+// Memoized at the call site rather than inside MermaidBlock.tsx — Turbopack's
+// HMR boundary chokes on `'use client'` files whose only export is a memo()
+// expression. Memo is what we actually want: chat thread re-renders shouldn't
+// re-run mermaid.render() unless the chart string changes.
+const MermaidBlock = memo(MermaidBlockBase);
 
 interface Props {
   language: string;

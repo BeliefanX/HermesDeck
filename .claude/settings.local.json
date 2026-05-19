@@ -4,8 +4,8 @@
       "Bash(grep -n -E \"^\\\\.btn[\\\\s,{.:]\" /Users/fanxuxin/HermesDeck/src/app/globals.css)",
       "Bash(mkdir -p /tmp/hd-design)",
       "Read(//tmp/**)",
-      "Bash(rm -rf ./*)",
-      "Bash(unzip -q \"/Users/fanxuxin/Downloads/HermesDeck Design System.zip\")"
+      "Bash(unzip -q \"/Users/fanxuxin/Downloads/HermesDeck Design System.zip\")",
+      "Bash(curl -sS http://127.0.0.1:6117/api/deck/auth/session)"
     ]
   }
 }

@@ -1,1 +1,44 @@
-{"name":"hermesdeck","version":"1.0.0","private":true,"description":"Hermes-native WebUI with multi-session chat and profile/run awareness.","scripts":{"dev":"next dev -H 0.0.0.0 -p ${PORT:-6117}","build":"next build","start":"next start -H 0.0.0.0 -p ${PORT:-6117}","typecheck":"tsc --noEmit","lint":"next lint","verify:pwa":"node scripts/verify-pwa.mjs"},"dependencies":{"@types/node":"latest","@types/react":"latest","@types/react-dom":"latest","highlight.js":"^11.11.1","katex":"^0.16.45","lucide-react":"latest","mammoth":"^1.12.0","mermaid":"^11.14.0","next":"latest","pdf-parse":"^2.4.5","react":"latest","react-dom":"latest","react-markdown":"^10.1.0","rehype-highlight":"^7.0.2","rehype-katex":"^7.0.1","remark-breaks":"^4.0.0","remark-gfm":"^4.0.1","remark-math":"^6.0.0","typescript":"latest","zustand":"latest"}}
+{
+  "name": "hermesdeck",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hermes-native WebUI with multi-session chat and profile/run awareness.",
+  "scripts": {
+    "dev": "node scripts/free-port.mjs 6118 && HERMESDECK_LIVE_TERMINAL=${HERMESDECK_LIVE_TERMINAL:-1} node scripts/dev-with-redirect.mjs",
+    "build": "next build",
+    "start": "node scripts/free-port.mjs 6118 && HERMESDECK_LIVE_TERMINAL=${HERMESDECK_LIVE_TERMINAL:-1} node scripts/dev-with-redirect.mjs --start",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "verify:pwa": "node scripts/verify-pwa.mjs",
+    "postinstall": "node scripts/fix-pty-helper.mjs"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-unicode11": "^0.9.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/xterm": "^6.0.0",
+    "highlight.js": "^11.11.1",
+    "katex": "^0.16.45",
+    "lucide-react": "^1.11.0",
+    "mammoth": "^1.12.0",
+    "mermaid": "^11.14.0",
+    "next": "^16.2.4",
+    "node-pty": "^1.1.0",
+    "pdf-parse": "^2.4.5",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-katex": "^7.0.1",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.3"
+  }
+}

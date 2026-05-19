@@ -4,6 +4,9 @@ export const MAX_FILE_SIZE = 20 * 1024 * 1024;       // 20MB total file cap (pre
 export const MAX_IMAGE_SIZE = 20 * 1024 * 1024;      // 20MB original image cap; we compress before sending
 export const MAX_TEXT_CHARS = 200_000;               // mirrors the server route
 export const SMART_PASTE_THRESHOLD = 1500;           // chars; above this, paste becomes attachment
+// Server-side hard cap on POST /api/deck/uploads/parse. Slightly above the
+// client cap so the user gets a friendlier client-side error first.
+export const MAX_ATTACHMENT_BYTES = 22 * 1024 * 1024;
 
 // The Hermes API Server caps the entire request body at 1 MB
 // (`MAX_REQUEST_BYTES` in api_server.py). The body is JSON, so the data URL
@@ -292,6 +295,18 @@ export function attachmentToPayload(item: AttachmentItem): DeckAttachment {
       size: item.size,
       kind: 'image',
       dataUrl: item.dataUrl,
+      url: item.url,
+    };
+  }
+  if (item.kind === 'file') {
+    return {
+      id: item.id,
+      name: item.name,
+      mime: item.mime,
+      size: item.size,
+      kind: 'file',
+      dataUrl: item.dataUrl,
+      url: item.url,
     };
   }
   return {

@@ -1,9 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { runTerminalAction } from '@/lib/server/hermes';
+import { guardMutating } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const guard = guardMutating(req);
+  if (!guard.ok) return guard.response;
   try {
     const body = await req.json().catch(() => ({}));
     const result = await runTerminalAction(body);

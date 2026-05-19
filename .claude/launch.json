@@ -5,7 +5,19 @@
       "name": "hermesdeck",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 6117
+      "port": 6118
+    },
+    {
+      "name": "hermesdeck-live",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "HERMESDECK_LIVE_TERMINAL=1 npm run dev"],
+      "port": 6118
+    },
+    {
+      "name": "hermesdeck-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 6118
     }
   ]
 }
