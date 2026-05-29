@@ -1,10 +1,13 @@
 import { watchBoardEvents } from '@/lib/server/hermes';
+import { requireAuth } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
 const BOARD_SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 export async function GET(req: Request) {
+  const auth = requireAuth(req);
+  if (!auth.ok) return auth.response;
   const url = new URL(req.url);
   const board = url.searchParams.get('board') || 'default';
   if (!BOARD_SLUG_RE.test(board)) {

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { readMarkdownFile, writeMarkdownFile } from '@/lib/server/hermes';
-import { guardMutating, requireAuth } from '@/lib/server/csrf';
+import { guardMutating, guardRequestBody, readLimitedJson, requireAuth } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +51,8 @@ export async function GET(req: Request, ctx: RouteCtx) {
 export async function PUT(req: Request, ctx: RouteCtx) {
   const guard = guardMutating(req);
   if (!guard.ok) return guard.response;
+  const bodyGuard = guardRequestBody(req, { contentTypes: ['application/json'], maxBytes: 2_100_000 });
+  if (!bodyGuard.ok) return bodyGuard.response;
   const params = await ctx.params;
   if (!params || !TASK_ID_RE.test(params.id)) {
     return NextResponse.json({ error: 'invalid_task_id' }, { status: 400 });
@@ -59,9 +61,9 @@ export async function PUT(req: Request, ctx: RouteCtx) {
   const board = url.searchParams.get('board') || 'default';
   if (!BOARD_SLUG_RE.test(board)) return NextResponse.json({ error: 'invalid_board' }, { status: 400 });
 
-  let body: unknown;
-  try { body = await req.json(); }
-  catch { return NextResponse.json({ error: 'invalid_json' }, { status: 400 }); }
+  const parsed = await readLimitedJson(req, 2_100_000);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.value;
 
   const relPath = (body as { path?: unknown })?.path;
   const content = (body as { content?: unknown })?.content;

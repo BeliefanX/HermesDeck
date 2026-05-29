@@ -10,7 +10,7 @@ Hermes-native WebUI for power users — multi-session AI chat with profile/run a
 
 ## Sources
 
-- **Codebase** — `src/` (Next.js App Router · TypeScript · zustand) — read-only via the local mount.
+- **Codebase** — `src/` (Next.js App Router · TypeScript) — read-only via the local mount.
   - `src/app/globals.css` — the canonical token + component CSS (~2440 lines). All visual decisions in this design system are extracted from here.
   - `src/app/layout.tsx` — root layout, metadata, theme bootstrap script.
   - `src/components/AppShell.tsx` — sidebar / topbar / mobile-nav scaffolding, bilingual nav labels, lucide icons.

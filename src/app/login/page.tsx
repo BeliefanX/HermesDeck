@@ -1,5 +1,6 @@
 'use client';
 import { Suspense, useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { LogIn, Lock, User } from 'lucide-react';
 import { Btn } from '@/components/Brand';
@@ -104,7 +105,7 @@ function LoginForm() {
     <div className="login-shell">
       <div className="login-card">
         <div className="login-brand">
-          <img src="/icons/icon-192.png" alt="" width={48} height={48} />
+          <Image src="/icons/icon-192.png" alt="" width={48} height={48} />
           <div>
             <div className="login-title">{t.title}</div>
             <div className="login-subtitle">{t.subtitle}</div>

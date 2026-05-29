@@ -51,6 +51,9 @@ export function safeParseStored(profile = 'default'): PersistedChatState | null 
     // without a profileId are treated as the legacy state's profile, or default
     // if the old state did not record one, so a sparse profile (alpha-labs) does
     // not inherit default-profile leftovers.
+    // Legacy retention / sunset: this read path is intentionally preserved while
+    // `hermesdeck.chat.v1` may exist in users' browsers; remove only after a
+    // migration window where scoped keys have been written for all active users.
     const legacy = parseStored(localStorage.getItem(STORAGE_KEY));
     if (!legacy) return null;
     const migrated = stripLegacyLocal(legacy, target, { assumeMissingProfileIsTarget: false });
@@ -64,7 +67,8 @@ export function safeParseStored(profile = 'default'): PersistedChatState | null 
 // One-time migration: drop legacy `local:` placeholder/draft sessions that lived
 // only in browser storage. Backed sessions all have UUID-style IDs now. Also
 // scope the recovered payload to one Hermes profile so cached state cannot leak
-// across profile switches.
+// across profile switches. Keep this guard alongside the legacy global-cache
+// read above; otherwise old draft rows can reappear when users jump versions.
 export function stripLegacyLocal(
   state: PersistedChatState,
   profile = 'default',

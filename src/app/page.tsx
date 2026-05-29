@@ -16,37 +16,15 @@ import {
 import { Globe } from 'lucide-react';
 import { useT } from '@/lib/i18n';
 import { useActiveProfile } from '@/lib/profile-context';
-
-const HOURS = 24;
-
-function fmtTokens(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0';
-  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return n.toLocaleString();
-}
-
-function fmtCost(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '$0';
-  if (n >= 100) return `$${n.toFixed(0)}`;
-  if (n >= 1) return `$${n.toFixed(2)}`;
-  return `$${n.toFixed(3)}`;
-}
-
-function formatUptime(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  return `${d}d ${h}h`;
-}
-
-function pct(part: number, whole: number): number {
-  if (!whole) return 0;
-  return Math.round((part / whole) * 100);
-}
+import {
+  DASHBOARD_ACTIVITY_HOURS,
+  buildSessionAggregates,
+  buildToolBreakdown,
+  fmtCost,
+  fmtTokens,
+  formatUptime,
+  pct,
+} from './_lib/dashboard';
 
 export default function HomePage() {
   const t = useT({
@@ -360,24 +338,27 @@ export default function HomePage() {
       inflight?.abort();
       const ac = new AbortController();
       inflight = ac;
-      const [h, s, tl, k, st] = await Promise.allSettled([
-        deckApi.health(ac.signal),
-        // The recent-sessions sample (heatmap, spark stats, recent list) is
-        // always the *active* profile's threads — never silently 'default'.
-        // The scope toggle drives only the aggregate `stats` request below.
-        deckApi.sessions(activeProfile || 'default', ac.signal),
-        deckApi.tools(ac.signal),
-        deckApi.tokens(14, ac.signal),
-        deckApi.stats(profileForScope, ac.signal),
-      ]);
-      if (!alive || mySeq !== seq) return;
-      if (h.status === 'fulfilled') setHealth(h.value);
-      if (s.status === 'fulfilled') setSessions(s.value.sessions);
-      if (tl.status === 'fulfilled') setTools(tl.value.tools);
-      if (k.status === 'fulfilled') setTokens(k.value);
-      if (st.status === 'fulfilled') setStats(st.value);
-      setNow(Date.now());
-      setLoading(false);
+      try {
+        const [h, s, tl, k, st] = await Promise.allSettled([
+          deckApi.health(ac.signal),
+          // The recent-sessions sample (heatmap, spark stats, recent list) is
+          // always the *active* profile's threads — never silently 'default'.
+          // The scope toggle drives only the aggregate `stats` request below.
+          deckApi.sessions(activeProfile || 'default', ac.signal),
+          deckApi.tools(ac.signal),
+          deckApi.tokens(14, ac.signal),
+          deckApi.stats(profileForScope, ac.signal),
+        ]);
+        if (!alive || mySeq !== seq) return;
+        if (h.status === 'fulfilled') setHealth(h.value);
+        if (s.status === 'fulfilled') setSessions(s.value.sessions);
+        if (tl.status === 'fulfilled') setTools(tl.value.tools);
+        if (k.status === 'fulfilled') setTokens(k.value);
+        if (st.status === 'fulfilled') setStats(st.value);
+        setNow(Date.now());
+      } finally {
+        if (alive && mySeq === seq) setLoading(false);
+      }
     }
     load();
     let id: ReturnType<typeof setInterval> | null = null;
@@ -418,30 +399,7 @@ export default function HomePage() {
   // and peak). For dashboards with many sessions that's wasteful; one pass
   // does it all and the dependent useMemos slot off pre-aggregated fields.
   const sessionAggregates = useMemo(() => {
-    const cutoff24h = now - 24 * 3600 * 1000;
-    const cutoffWindow = now - HOURS * 3600 * 1000;
-    let totalMessages = 0;
-    let lastDayCount = 0;
-    const sourceMap = new Map<string, number>();
-    const profileMap = new Map<string, number>();
-    const buckets = Array.from({ length: HOURS }, () => 0);
-    for (const s of sessions) {
-      totalMessages += s.messageCount || 0;
-      const ts = Date.parse(s.updatedAt || s.createdAt || '');
-      if (Number.isFinite(ts)) {
-        if (ts >= cutoff24h) lastDayCount += 1;
-        if (ts >= cutoffWindow) {
-          const idx = HOURS - 1 - Math.floor((now - ts) / (3600 * 1000));
-          if (idx >= 0 && idx < HOURS) buckets[idx] += 1;
-        }
-      }
-      const sk = (s.source || 'hermes').toLowerCase();
-      sourceMap.set(sk, (sourceMap.get(sk) || 0) + 1);
-      const pk = s.profileId || 'default';
-      profileMap.set(pk, (profileMap.get(pk) || 0) + 1);
-    }
-    const peak = buckets.reduce((m, v) => Math.max(m, v), 0);
-    return { totalMessages, lastDayCount, sourceMap, profileMap, buckets, peak };
+    return buildSessionAggregates(sessions, now, DASHBOARD_ACTIVITY_HOURS);
   }, [sessions, now]);
 
   const totalMessages = sessionAggregates.totalMessages;
@@ -462,20 +420,18 @@ export default function HomePage() {
       }),
     [sessionAggregates, profiles],
   );
-  const toolBreakdown = useMemo(() => {
-    const map = new Map<string, number>();
-    tools.forEach((t) => map.set(t.kind, (map.get(t.kind) || 0) + 1));
-    const order = ['toolset', 'skill', 'mcp', 'unknown'];
-    return order.filter((k) => map.has(k)).map((k) => ({ kind: k, count: map.get(k)! }));
-  }, [tools]);
-  const activity = { buckets: sessionAggregates.buckets, peak: sessionAggregates.peak };
+  const toolBreakdown = useMemo(() => buildToolBreakdown(tools), [tools]);
+  const activity = useMemo(
+    () => ({ buckets: sessionAggregates.buckets, peak: sessionAggregates.peak }),
+    [sessionAggregates.buckets, sessionAggregates.peak],
+  );
 
   const peakHour = useMemo(() => {
     let max = 0;
     let idx = -1;
     activity.buckets.forEach((v, i) => { if (v > max) { max = v; idx = i; } });
     if (idx < 0) return t.dash;
-    const d = new Date(now - (HOURS - 1 - idx) * 3600 * 1000);
+    const d = new Date(now - (DASHBOARD_ACTIVITY_HOURS - 1 - idx) * 3600 * 1000);
     return `${d.getHours().toString().padStart(2, '0')}:00`;
   }, [activity, now, t.dash]);
 

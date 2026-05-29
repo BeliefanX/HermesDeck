@@ -12,12 +12,16 @@ import type {
 import { runPython } from '../run-python';
 import { execFileAsync } from './core';
 import { spawn } from 'node:child_process';
-import { promises as fs } from 'node:fs';
+import { constants as fsConstants, promises as fs } from 'node:fs';
 import path from 'node:path';
 
 // Kanban data lives at:
 //   default board → ~/.hermes/kanban.db (legacy / back-compat path)
 //   other boards  → ~/.hermes/kanban/boards/<slug>/kanban.db
+//
+// Legacy retention / sunset: the default-board legacy path is deliberately
+// preserved so existing ~/.hermes/kanban.db boards continue to load. Do not
+// migrate/delete it until Hermes CLI itself stops creating or reading that DB.
 //
 // Reads go through SQLite directly (matches the pattern used for sessions /
 // messages / runs — much faster than shelling to the CLI for every list).
@@ -958,12 +962,20 @@ async function getTaskWorkspace(boardSlug: string, taskId: string): Promise<{ wo
 
 const ALPHA_LABS_WORKSPACE_ROOT = '/Users/fanxuxin/Hermes_Sync/AlphaLabs';
 
+function isWithinRoot(rootReal: string, candidateReal: string): boolean {
+  return candidateReal === rootReal || candidateReal.startsWith(rootReal + path.sep);
+}
+
 async function existingDirectory(absPath: string): Promise<string | null> {
   const abs = path.resolve(absPath);
   try {
+    const lst = await fs.lstat(abs);
+    // Do not anchor the browser on a symlink path; all later boundary checks
+    // compare real paths rooted at the resolved workspace directory.
+    if (lst.isSymbolicLink()) return null;
     const st = await fs.stat(abs);
     if (!st.isDirectory()) return null;
-    return abs;
+    return await fs.realpath(abs);
   } catch {
     return null;
   }
@@ -996,12 +1008,12 @@ async function resolveMarkdownRoots(boardSlug: string, taskId: string): Promise<
   return roots;
 }
 
-function safeJoin(root: string, relPath: string): string {
+async function safeJoin(root: string, relPath: string): Promise<string> {
   // Reject NUL and backslashes outright — we only run on posix; backslash in a
   // user-supplied path is almost certainly an attempt to confuse path.resolve
   // on Windows.
   if (relPath.includes('\0') || relPath.includes('\\')) throw new Error('invalid_path');
-  const rootAbs = path.resolve(root);
+  const rootAbs = await fs.realpath(path.resolve(root));
   const candidate = path.isAbsolute(relPath)
     ? path.resolve(relPath)
     : path.resolve(rootAbs, relPath.replace(/^[/]+/, ''));
@@ -1019,7 +1031,7 @@ async function resolveMarkdownTarget(boardSlug: string, taskId: string, relPath:
   let firstPathError: Error | null = null;
   for (const root of roots) {
     try {
-      const abs = safeJoin(root, relPath);
+      const abs = await safeJoin(root, relPath);
       return { root, abs };
     } catch (err) {
       firstPathError ||= err instanceof Error ? err : new Error(String(err));
@@ -1032,14 +1044,16 @@ export async function listMarkdownFiles(boardSlug: string, taskId: string): Prom
   const roots = await resolveMarkdownRoots(boardSlug, taskId);
   const root = roots[0] || null;
   if (!root) return { root: null, entries: [] };
+  const rootReal = await fs.realpath(root);
   const out: KanbanMarkdownListResult['entries'] = [];
-  const queue: string[] = [root];
+  const queue: string[] = [rootReal];
   // BFS so the top-level files surface before nested ones in the unsorted
   // intermediate buffer (we still re-sort by mtime at the end).
   while (queue.length > 0 && out.length < MD_MAX_FILES) {
     const dir = queue.shift()!;
     let dirents: import('node:fs').Dirent[];
     try {
+      if (!isWithinRoot(rootReal, await fs.realpath(dir))) continue;
       dirents = await fs.readdir(dir, { withFileTypes: true });
     } catch {
       continue;
@@ -1049,16 +1063,23 @@ export async function listMarkdownFiles(boardSlug: string, taskId: string): Prom
       const name = ent.name;
       // Skip dot-files / dot-dirs unconditionally — they're rarely the user's
       // deep reports and a dot-dir like .obsidian/ blows the file budget.
-      if (name.startsWith('.')) continue;
+      if (name.startsWith('.') || ent.isSymbolicLink()) continue;
       const abs = path.join(dir, name);
       if (ent.isDirectory()) {
         if (MD_SKIP_DIRS.has(name)) continue;
-        queue.push(abs);
+        try {
+          const dirReal = await fs.realpath(abs);
+          if (isWithinRoot(rootReal, dirReal)) queue.push(dirReal);
+        } catch {/* ignore unreadable */}
       } else if (ent.isFile() && name.toLowerCase().endsWith('.md')) {
         try {
-          const st = await fs.stat(abs);
+          const lst = await fs.lstat(abs);
+          if (lst.isSymbolicLink() || !lst.isFile()) continue;
+          const real = await fs.realpath(abs);
+          if (!isWithinRoot(rootReal, real)) continue;
+          const st = await fs.stat(real);
           out.push({
-            path: path.relative(root, abs),
+            path: path.relative(rootReal, real),
             size: st.size,
             mtime: Math.round(st.mtimeMs / 1000),
           });
@@ -1067,18 +1088,23 @@ export async function listMarkdownFiles(boardSlug: string, taskId: string): Prom
     }
   }
   out.sort((a, b) => b.mtime - a.mtime);
-  return { root, entries: out };
+  return { root: rootReal, entries: out };
 }
 
 export async function readMarkdownFile(boardSlug: string, taskId: string, relPath: string): Promise<KanbanMarkdownFile> {
   const { root, abs } = await resolveMarkdownTarget(boardSlug, taskId, relPath);
   if (!abs.toLowerCase().endsWith('.md')) throw new Error('not_markdown');
-  const st = await fs.stat(abs);
+  const rootReal = await fs.realpath(root);
+  const lst = await fs.lstat(abs);
+  if (lst.isSymbolicLink()) throw new Error('path_outside_workspace');
+  const real = await fs.realpath(abs);
+  if (!isWithinRoot(rootReal, real)) throw new Error('path_outside_workspace');
+  const st = await fs.stat(real);
   if (!st.isFile()) throw new Error('not_a_file');
   if (st.size > MD_MAX_BYTES) throw new Error('file_too_large');
-  const content = await fs.readFile(abs, 'utf8');
+  const content = await fs.readFile(real, 'utf8');
   return {
-    path: path.relative(root, abs),
+    path: path.relative(rootReal, real),
     size: st.size,
     mtime: Math.round(st.mtimeMs / 1000),
     content,
@@ -1094,8 +1120,20 @@ export async function writeMarkdownFile(boardSlug: string, taskId: string, relPa
   // ad-hoc creation. This also keeps the path validator simple — we never
   // need to mkdir intermediate directories.
   let preStat: import('node:fs').Stats;
-  try { preStat = await fs.stat(abs); }
-  catch { throw new Error('file_not_found'); }
+  const rootReal = await fs.realpath(root);
+  let real = '';
+  try {
+    const lst = await fs.lstat(abs);
+    if (lst.isSymbolicLink()) throw new Error('path_outside_workspace');
+    real = await fs.realpath(abs);
+    if (!isWithinRoot(rootReal, real)) throw new Error('path_outside_workspace');
+    preStat = await fs.stat(real);
+  }
+  catch (err) {
+    if (err instanceof Error && /path_outside_workspace/.test(err.message)) throw err;
+    throw new Error('file_not_found');
+  }
+  if (!preStat.isFile()) throw new Error('not_a_file');
   // Optimistic concurrency: when the caller passes the mtime it last read,
   // reject if the file changed on disk since then — a kanban worker may have
   // rewritten the report under the editor, and an unconditional write would
@@ -1104,11 +1142,16 @@ export async function writeMarkdownFile(boardSlug: string, taskId: string, relPa
     const current = Math.round(preStat.mtimeMs / 1000);
     if (current !== mtime) throw new Error('mtime_conflict');
   }
-  await fs.writeFile(abs, content, 'utf8');
-  const st = await fs.stat(abs);
+  const handle = await fs.open(real, fsConstants.O_WRONLY | fsConstants.O_TRUNC | fsConstants.O_NOFOLLOW);
+  try {
+    await handle.writeFile(content, 'utf8');
+  } finally {
+    await handle.close();
+  }
+  const st = await fs.stat(real);
   return {
     ok: true,
-    path: path.relative(root, abs),
+    path: path.relative(rootReal, real),
     size: st.size,
     mtime: Math.round(st.mtimeMs / 1000),
   };

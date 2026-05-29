@@ -1,8 +1,8 @@
 /**
  * Deck-local metadata for sessions — pinned, foldered, archived, tagged,
  * renamed. Keyed by Hermes session id (or local: id). Persisted to
- * localStorage; never sent to Hermes (REBUILD_PLAN: "Implement
- * pin/folder/archive as Deck-local metadata keyed by Hermes session id").
+ * localStorage; never sent to Hermes; pin/folder/archive state stays Deck-local
+ * metadata keyed by Hermes session id.
  */
 
 /**

@@ -10,7 +10,7 @@ import {
   rateLimitReset,
   verifyPassword,
 } from '@/lib/server/auth';
-import { isSameOrigin } from '@/lib/server/csrf';
+import { guardRequestBody, readLimitedJson, isSameOrigin } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,8 +31,11 @@ export async function POST(req: NextRequest) {
   if (!isSameOrigin(req)) {
     return NextResponse.json({ ok: false, error: 'Cross-origin request rejected.' }, { status: 403 });
   }
-  let body: { username?: string; password?: string };
-  try { body = await req.json(); } catch { body = {}; }
+  const bodyGuard = guardRequestBody(req, { contentTypes: ['application/json'], maxBytes: 16_000 });
+  if (!bodyGuard.ok) return bodyGuard.response;
+  const parsed = await readLimitedJson<{ username?: string; password?: string }>(req, 16_000, {});
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.value;
   const username = typeof body.username === 'string' ? body.username.trim() : '';
   const password = typeof body.password === 'string' ? body.password : '';
   if (!username || !password) {

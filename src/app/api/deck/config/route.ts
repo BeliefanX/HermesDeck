@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readProfileConfig, saveProfileConfigFile } from '@/lib/server/hermes';
-import { guardMutating, requireAuth } from '@/lib/server/csrf';
+import { guardMutating, guardRequestBody, readLimitedJsonText, requireAuth } from '@/lib/server/csrf';
 import type { ConfigFileKey } from '@/lib/config-files';
 
 export const dynamic = 'force-dynamic';
@@ -55,16 +55,12 @@ export async function PUT(req: NextRequest) {
   const guard = guardMutating(req);
   if (!guard.ok) return guard.response;
 
-  const ct = req.headers.get('content-type') || '';
-  if (!ct.toLowerCase().includes('application/json')) {
-    return badRequest('expected_application_json', 415);
-  }
-  const cl = Number(req.headers.get('content-length') || '0');
-  if (cl > MAX_BODY_BYTES) return badRequest('payload_too_large', 413);
-  const text = await req.text().catch(() => '');
-  if (text.length > MAX_BODY_BYTES) return badRequest('payload_too_large', 413);
+  const bodyGuard = guardRequestBody(req, { contentTypes: ['application/json'], maxBytes: MAX_BODY_BYTES });
+  if (!bodyGuard.ok) return bodyGuard.response;
+  const limitedBody = await readLimitedJsonText(req, MAX_BODY_BYTES);
+  if (!limitedBody.ok) return limitedBody.response;
   let body: unknown;
-  try { body = text ? JSON.parse(text) : {}; }
+  try { body = limitedBody.text ? JSON.parse(limitedBody.text) : {}; }
   catch { return badRequest('invalid_json'); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return badRequest('invalid_body');
 

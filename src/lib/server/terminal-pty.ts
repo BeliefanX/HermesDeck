@@ -16,9 +16,6 @@
 import { execFile, spawn as cpSpawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
-import { writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { createRequire } from 'node:module';
 import os from 'node:os';
 
 const execFileAsync = promisify(execFile);
@@ -61,6 +58,7 @@ type Entry = {
 };
 
 const TMUX = process.env.HERMESDECK_TMUX_BIN || 'tmux';
+const TMUX_CONF = process.env.HERMESDECK_TMUX_CONF || '/dev/null';
 const SOCKET_NAME = 'hermesdeck';
 const MAX_SESSIONS = 8;
 const MAX_SUBSCRIBERS_PER_SESSION = 8;
@@ -68,18 +66,11 @@ const BUFFER_LIMIT_BYTES = 256 * 1024;
 const ABANDONED_REAP_MS = 10 * 60 * 1000; // kill live PTYs nobody has watched in 10 minutes
 
 const sessions = new Map<string, Entry>();
-let ptyMod: typeof import('node-pty') | null = null;
+let ptyModulePromise: Promise<typeof import('node-pty')> | null = null;
 
-function loadPty(): typeof import('node-pty') {
-  if (ptyMod) return ptyMod;
-  // Defer the require so build-time bundling never tries to pull the native
-  // addon into the client/edge build. createRequire works in both CJS and
-  // ESM module contexts that Next's server runtime uses. The turbopackIgnore
-  // hint stops Turbopack from tracing the native binary into the NFT bundle
-  // (it's resolved at runtime against the operator's installed node-pty).
-  const req = createRequire(import.meta.url);
-  ptyMod = req(/* turbopackIgnore: true */ 'node-pty') as typeof import('node-pty');
-  return ptyMod;
+async function loadPty(): Promise<typeof import('node-pty')> {
+  ptyModulePromise ||= import(/* turbopackIgnore: true */ 'node-pty');
+  return ptyModulePromise;
 }
 
 export function liveTerminalEnabled(): boolean {
@@ -155,32 +146,8 @@ function buildChildEnv(extras: Record<string, string>): NodeJS.ProcessEnv {
 }
 
 async function tmux(args: string[], opts: { timeout?: number } = {}): Promise<{ stdout: string; stderr: string }> {
-  const fullArgs = ['-L', SOCKET_NAME, '-f', tmuxConfPath(), ...args];
+  const fullArgs = ['-L', SOCKET_NAME, '-f', TMUX_CONF, ...args];
   return execFileAsync(TMUX, fullArgs, { timeout: opts.timeout ?? 4000, maxBuffer: 256 * 1024, shell: false });
-}
-
-let cachedConfPath: string | null = null;
-// Write a tiny tmux.conf the first time we need it. Disabling the status
-// bar gives the embedded shell a full row back; mouse + utf8 keep the user's
-// p10k-style prompts and selection working.
-function tmuxConfPath(): string {
-  if (cachedConfPath) return cachedConfPath;
-  const dir = join(os.tmpdir(), 'hermesdeck-tmux');
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  const f = join(dir, 'tmux.conf');
-  writeFileSync(f, [
-    'set -g status off',
-    'set -g mouse on',
-    'set -g default-terminal "xterm-256color"',
-    'set -ga terminal-overrides ",xterm-256color:Tc"',
-    'set -g escape-time 10',
-    'set -g focus-events on',
-    'set -g history-limit 10000',
-    'setw -g aggressive-resize on',
-    '',
-  ].join('\n'));
-  cachedConfPath = f;
-  return f;
 }
 
 function appendToBuffer(entry: Entry, data: string) {
@@ -223,14 +190,13 @@ export async function createSession(input: { label?: string; cols?: number; rows
   const id = randomUUID().slice(0, 12);
   const tmuxName = `hd-${id}`;
 
-  const pty = loadPty();
-  // Pass `-f` to point tmux at our own minimal config: hides the tmux status
-  // bar (we have our own window strip), keeps mouse + 256color on. Also
-  // sets `default-terminal` to xterm-256color for parity with the pty.
+  // Pass a stable tmux config path; operators can override HERMESDECK_TMUX_CONF
+  // for custom status/mouse/truecolor settings without build-time file tracing.
   // -A attaches if a session with that name already exists, otherwise creates.
+  const pty = await loadPty();
   const child = pty.spawn(TMUX, [
     '-L', SOCKET_NAME,
-    '-f', tmuxConfPath(),
+    '-f', TMUX_CONF,
     'new-session', '-A', '-s', tmuxName,
     '-x', String(cols), '-y', String(rows),
   ], {
@@ -299,12 +265,10 @@ function auditPtyInput(id: string, data: string) {
   if (data.length < AUDIT_INPUT_THRESHOLD) return;
   try {
     const head = data.slice(0, 32).replace(/[^\x20-\x7e]/g, '·');
-    // eslint-disable-next-line no-console
     console.log(`[pty-audit] session=${id} bytes=${data.length} head=${JSON.stringify(head)}`);
   } catch {
     if (!auditWarnedDisabled) {
       auditWarnedDisabled = true;
-      // eslint-disable-next-line no-console
       console.warn('[pty-audit] disabled (logger threw)');
     }
   }

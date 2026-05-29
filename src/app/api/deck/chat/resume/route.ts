@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { resumeChatStream } from '@/lib/server/hermes';
+import { requireAuth } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,8 +15,11 @@ export const dynamic = 'force-dynamic';
 // re-fetch messages from /api/deck/sessions/:id/messages".
 //
 // This endpoint is GET and idempotent (no upstream side effects), so we don't
-// run it through guardMutating(); it only reads from the in-memory hub.
+// run it through guardMutating(); it still exposes private in-flight chat data
+// and must require a valid session cookie.
 export async function GET(req: NextRequest) {
+  const auth = requireAuth(req);
+  if (!auth.ok) return auth.response;
   const url = new URL(req.url);
   const sessionId = (url.searchParams.get('sessionId') || '').trim();
   if (!sessionId) {

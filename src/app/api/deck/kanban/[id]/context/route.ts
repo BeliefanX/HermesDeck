@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getTaskContext } from '@/lib/server/hermes';
+import { requireAuth } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,8 @@ interface RouteCtx {
 }
 
 export async function GET(req: Request, ctx: RouteCtx) {
+  const auth = requireAuth(req);
+  if (!auth.ok) return auth.response;
   let id: string;
   try {
     const p = await ctx.params;

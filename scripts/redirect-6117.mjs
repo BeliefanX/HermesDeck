@@ -26,10 +26,11 @@ const server = createServer((req, res) => {
 
 server.on('error', (err) => {
   // EADDRINUSE: someone is already on 6117. We don't kill them — could be the
-  // user's old next dev — but we exit so the parent script knows.
+  // user's old next dev — but we exit non-zero so the parent/CI status is not
+  // silently green when the legacy redirect is unavailable.
   if (err && err.code === 'EADDRINUSE') {
-    console.warn(`[redirect-6117] :${FROM_PORT} already in use; redirect helper not started.`);
-    process.exit(0);
+    console.warn(`[redirect-6117] WARNING: :${FROM_PORT} already in use; redirect helper not started.`);
+    process.exit(1);
   }
   console.error('[redirect-6117] error:', err);
   process.exit(1);

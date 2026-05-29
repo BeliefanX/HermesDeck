@@ -42,7 +42,7 @@ module.exports = {
   // Keep pdf-parse / mammoth out of the client bundle and let them resolve as
   // CJS at runtime on the server. They pull in fs/path/buffer and would break
   // bundling otherwise.
-  serverExternalPackages: ['pdf-parse', 'mammoth'],
+  serverExternalPackages: ['pdf-parse', 'mammoth', 'node-pty'],
   // Note: Next 16 stabilized Node-runtime middleware; the auth proxy declares
   // `export const runtime = 'nodejs'` directly, so we no longer need the
   // experimental.nodeMiddleware flag (which was removed/renamed).

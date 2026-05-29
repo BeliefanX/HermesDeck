@@ -110,7 +110,7 @@ HermesDeck/
 │  ├─ free-port.mjs             # 启动前释放 6118
 │  ├─ fix-pty-helper.mjs        # node-pty spawn-helper 可执行权限修复
 │  ├─ verify-pwa.mjs            # 验证 PWA 关键文件 / CSS 关键 token
-│  └─ probe-mobile-scroll.mjs   # 移动端布局探针
+│  └─ smoke.mjs                 # build 后启动并检查关键公开路由
 └─ docs/                        # 当前文档集
 ```
 

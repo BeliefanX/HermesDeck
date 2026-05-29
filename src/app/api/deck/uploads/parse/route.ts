@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { guardMutating } from '@/lib/server/csrf';
+import { guardMutating, guardRequestBody, readLimitedFormData } from '@/lib/server/csrf';
 import { MAX_ATTACHMENT_BYTES, MAX_TEXT_CHARS } from '@/lib/attachments';
 
 export const dynamic = 'force-dynamic';
@@ -20,13 +20,12 @@ function jsonError(message: string, status = 400) {
 export async function POST(req: NextRequest) {
   const guard = guardMutating(req);
   if (!guard.ok) return guard.response;
+  const bodyGuard = guardRequestBody(req, { contentTypes: ['multipart/form-data'], maxBytes: MAX_ATTACHMENT_BYTES + 64_000 });
+  if (!bodyGuard.ok) return bodyGuard.response;
 
-  let form: FormData;
-  try {
-    form = await req.formData();
-  } catch {
-    return jsonError('expected multipart/form-data', 400);
-  }
+  const parsedForm = await readLimitedFormData(req, MAX_ATTACHMENT_BYTES + 64_000);
+  if (!parsedForm.ok) return parsedForm.response;
+  const form = parsedForm.formData;
   const file = form.get('file');
   if (!(file instanceof File)) return jsonError('missing "file" field', 400);
   if (file.size === 0) return jsonError('empty file', 400);

@@ -113,3 +113,125 @@ export function guardMutating(req: NextRequest | Request): { ok: true } | { ok: 
   }
   return { ok: true };
 }
+
+export function guardRequestBody(
+  req: NextRequest | Request,
+  opts: { contentTypes: string[]; maxBytes: number },
+): { ok: true } | { ok: false; response: NextResponse } {
+  const contentType = (req.headers.get('content-type') || '').toLowerCase();
+  if (!opts.contentTypes.some((t) => contentType.startsWith(t.toLowerCase()))) {
+    return { ok: false, response: NextResponse.json({ ok: false, error: 'Unsupported Content-Type.' }, { status: 415 }) };
+  }
+  const len = req.headers.get('content-length');
+  if (len) {
+    const n = Number(len);
+    if (!Number.isFinite(n) || n < 0) {
+      return { ok: false, response: NextResponse.json({ ok: false, error: 'Invalid Content-Length.' }, { status: 400 }) };
+    }
+    if (n > opts.maxBytes) {
+      return { ok: false, response: NextResponse.json({ ok: false, error: 'Request body too large.', limit: opts.maxBytes }, { status: 413 }) };
+    }
+  }
+  return { ok: true };
+}
+
+export async function readLimitedJsonText(
+  req: NextRequest | Request,
+  maxBytes: number,
+): Promise<{ ok: true; text: string } | { ok: false; response: NextResponse }> {
+  const body = (req as Request).body;
+  if (!body) return { ok: true, text: '' };
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let total = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try { await reader.cancel(); } catch {}
+        return { ok: false, response: NextResponse.json({ ok: false, error: 'Request body too large.', limit: maxBytes }, { status: 413 }) };
+      }
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+    return { ok: true, text: chunks.join('') };
+  } catch {
+    return { ok: false, response: NextResponse.json({ ok: false, error: 'Invalid request body.' }, { status: 400 }) };
+  }
+}
+
+export async function readLimitedBody(
+  req: NextRequest | Request,
+  maxBytes: number,
+): Promise<{ ok: true; bytes: Uint8Array<ArrayBuffer> } | { ok: false; response: NextResponse }> {
+  const body = (req as Request).body;
+  if (!body) return { ok: true, bytes: new Uint8Array() };
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try { await reader.cancel(); } catch {}
+        return { ok: false, response: NextResponse.json({ ok: false, error: 'Request body too large.', limit: maxBytes }, { status: 413 }) };
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return { ok: false, response: NextResponse.json({ ok: false, error: 'Invalid request body.' }, { status: 400 }) };
+  }
+
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { ok: true, bytes: out };
+}
+
+export async function readLimitedFormData(
+  req: NextRequest | Request,
+  maxBytes: number,
+): Promise<{ ok: true; formData: FormData } | { ok: false; response: NextResponse }> {
+  const bodyResult = await readLimitedBody(req, maxBytes);
+  if (!bodyResult.ok) return bodyResult;
+  try {
+    const cloned = new Request('http://hermesdeck.local/upload', {
+      method: 'POST',
+      headers: { 'content-type': req.headers.get('content-type') || '' },
+      body: bodyResult.bytes,
+    });
+    return { ok: true, formData: await cloned.formData() };
+  } catch {
+    return { ok: false, response: NextResponse.json({ ok: false, error: 'Invalid multipart/form-data body.' }, { status: 400 }) };
+  }
+}
+
+export async function readLimitedJson<T = unknown>(
+  req: NextRequest | Request,
+  maxBytes: number,
+  fallback?: T,
+): Promise<{ ok: true; value: T } | { ok: false; response: NextResponse }> {
+  const textResult = await readLimitedJsonText(req, maxBytes);
+  if (!textResult.ok) return textResult;
+  if (!textResult.text.trim()) return { ok: true, value: fallback as T };
+  try {
+    return { ok: true, value: JSON.parse(textResult.text) as T };
+  } catch {
+    if (fallback !== undefined) return { ok: true, value: fallback };
+    return { ok: false, response: NextResponse.json({ ok: false, error: 'Invalid JSON.' }, { status: 400 }) };
+  }
+}

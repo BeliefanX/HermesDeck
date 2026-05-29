@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { listMarkdownFiles } from '@/lib/server/hermes';
+import { requireAuth } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,8 @@ interface RouteCtx {
 }
 
 export async function GET(req: Request, ctx: RouteCtx) {
+  const auth = requireAuth(req);
+  if (!auth.ok) return auth.response;
   const params = await ctx.params;
   if (!params || !TASK_ID_RE.test(params.id)) {
     return NextResponse.json({ error: 'invalid_task_id' }, { status: 400 });

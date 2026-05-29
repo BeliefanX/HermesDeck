@@ -7,7 +7,7 @@ import { useActiveProfile } from '@/lib/profile-context';
 import type { TimelineItem } from '@/lib/timeline';
 import { shortTitle } from '@/lib/format';
 import { type AttachmentItem } from '@/lib/attachments';
-import { type MetaStore, emptyStore, gcMetaStore } from '@/lib/session-meta';
+import { type MetaStore, emptyStore, gcMetaStore, saveMetaStore } from '@/lib/session-meta';
 import { useChatT } from './_lib/i18n';
 import { type LocalSession, mergeSessions } from './_lib/storage';
 import type { TurnUsage } from './_lib/context-window';
@@ -78,6 +78,7 @@ function ChatPageInner() {
   const [usageBySession, setUsageBySession] = useState<Record<string, TurnUsage>>({});
 
   const abortRef = useRef<AbortController | null>(null);
+  const mobileThreadPushedRef = useRef(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -156,11 +157,15 @@ function ChatPageInner() {
         setSessions((prev) => mergeSessions(prev, r.sessions, profile));
         // GC localStorage meta entries for sessions the server no longer
         // returns — otherwise they accumulate forever on this device.
-        setMetaStore((cur) => gcMetaStore(cur, r.sessions.map((s) => s.id)));
+        setMetaStoreRaw((cur) => {
+          const next = gcMetaStore(cur, r.sessions.map((s) => s.id));
+          saveMetaStore(next);
+          return next;
+        });
       })
       .catch(() => {});
     return () => { alive = false; };
-  }, [profile, hydrated]);
+  }, [profile, hydrated, setMetaStoreRaw]);
 
   const activeMessages = messages[active] || [];
 
@@ -205,13 +210,32 @@ function ChatPageInner() {
     }
   }, []);
 
+  const explicitSessionParam = searchParams.get('session');
+
+  useEffect(() => {
+    // A plain /chat visit is the mobile level-1 entry point. Do not let a
+    // stale html[data-chat-mobile-view="thread"] from an earlier in-app visit,
+    // HMR cycle, or browser restore make the Chat tab reopen directly into the
+    // persisted active thread. Only an explicit ?session= deep link below may
+    // choose the level-2 thread on initial entry.
+    if (!explicitSessionParam) {
+      applyMobileView('list');
+      mobileThreadPushedRef.current = false;
+    }
+  }, [explicitSessionParam, applyMobileView]);
+
   const enterThread = useCallback(() => {
     // Desktop shows all 3 panels — no level split, so no history entry.
     if (typeof window === 'undefined') return;
     if (!window.matchMedia('(max-width:880px)').matches) return;
     if (document.documentElement.dataset.chatMobileView === 'thread') return;
     applyMobileView('thread');
-    try { window.history.pushState(null, '', window.location.href); } catch {}
+    try {
+      window.history.pushState(null, '', window.location.href);
+      mobileThreadPushedRef.current = true;
+    } catch {
+      mobileThreadPushedRef.current = false;
+    }
   }, [applyMobileView]);
 
   // Back button → pop the pushed entry; the popstate handler then flips to the
@@ -219,14 +243,19 @@ function ChatPageInner() {
   const goToList = useCallback(() => {
     if (typeof document !== 'undefined'
       && document.documentElement.dataset.chatMobileView === 'thread') {
-      window.history.back();
+      if (mobileThreadPushedRef.current) {
+        window.history.back();
+      } else {
+        applyMobileView('list');
+      }
     }
-  }, []);
+  }, [applyMobileView]);
 
   useEffect(() => {
     const onPopState = () => {
       if (document.documentElement.dataset.chatMobileView === 'thread') {
         applyMobileView('list');
+        mobileThreadPushedRef.current = false;
       }
     };
     window.addEventListener('popstate', onPopState);
@@ -252,23 +281,28 @@ function ChatPageInner() {
   // palette all link here). The persisted `active` from localStorage is the
   // default; an explicit ?session= param wins once that id shows up in the
   // freshly-loaded session list.
-  const deepLinkAppliedRef = useRef(false);
+  const deepLinkAppliedRef = useRef('');
   useEffect(() => {
-    if (!hydrated || deepLinkAppliedRef.current) return;
-    const target = searchParams.get('session');
-    if (!target) { deepLinkAppliedRef.current = true; return; }
+    if (!hydrated) return;
+    const target = explicitSessionParam;
+    const key = `${profile}:${target || ''}`;
+    if (deepLinkAppliedRef.current === key) return;
+    if (!target) { deepLinkAppliedRef.current = key; return; }
     const found = sessions.find((s) => s.id === target);
     if (found) {
-      deepLinkAppliedRef.current = true;
+      deepLinkAppliedRef.current = key;
       if (found.id !== active) openSession(found);
       // A deep link is an explicit request for one session — land in the
       // level-2 thread directly rather than the level-1 list.
       enterThread();
     } else if (sessions.length > 0) {
-      // Session list loaded but the id isn't among it — give up silently.
-      deepLinkAppliedRef.current = true;
+      // Session list loaded but the id isn't among it — fall back to the
+      // level-1 list instead of leaving a stale thread attr in control.
+      deepLinkAppliedRef.current = key;
+      applyMobileView('list');
+      mobileThreadPushedRef.current = false;
     }
-  }, [hydrated, sessions, searchParams, openSession, enterThread, active]);
+  }, [hydrated, sessions, explicitSessionParam, openSession, enterThread, active, profile, applyMobileView]);
 
   const {
     updateMeta, setMetaStore,

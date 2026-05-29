@@ -73,7 +73,6 @@ export async function runPython<T>(script: string, opts: RunPythonOptions = {}):
 export async function runPythonOr<T>(script: string, fallback: T, opts: RunPythonOptions = {}): Promise<T> {
   const r = await runPython<T>(script, opts);
   if (r.ok) return r.value;
-  // eslint-disable-next-line no-console
   console.warn('[runPython] failed:', r.error);
   return fallback;
 }

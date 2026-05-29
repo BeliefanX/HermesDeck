@@ -21,6 +21,23 @@ const PHASE_LABEL: Record<string, string> = {
   'fallback-cli':  'Falling back to hermes CLI',
 };
 
+type JsonObject = Record<string, unknown>;
+
+function asRecord(value: unknown): JsonObject | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as JsonObject
+    : null;
+}
+
+function prop(record: JsonObject | null, key: string): unknown {
+  return record?.[key];
+}
+
+function stringProp(record: JsonObject | null, key: string): string | undefined {
+  const value = prop(record, key);
+  return typeof value === 'string' ? value : undefined;
+}
+
 export function isDeltaType(t?: string): boolean {
   if (!t) return false;
   return /\.delta$/.test(t) || t === 'message.delta';
@@ -52,12 +69,13 @@ let interpretSeq = 0;
  * event should be silently merged into the previous delta aggregate.
  */
 export function interpret(
-  raw: { type: string; payload?: any; ts: number; runId?: string },
+  raw: { type: string; payload?: unknown; ts: number; runId?: string },
 ): { item: TimelineItem | null; mergeDelta: boolean } {
   const type = String(raw.type || 'event');
   const ts = raw.ts ?? Date.now();
   const id = `${ts}-${(interpretSeq++).toString(36)}`;
-  const payload = raw.payload ?? {};
+  const payloadValue = raw.payload ?? {};
+  const payload = asRecord(payloadValue);
 
   // status.* — phase markers from BFF
   if (type.startsWith('status.')) {
@@ -67,14 +85,14 @@ export function interpret(
       item: {
         id, ts, kind: 'status', raw: type,
         title: PHASE_LABEL[phase] || `Status: ${phase}`,
-        summary: typeof payload?.backend === 'string' ? `backend · ${payload.backend}` : undefined,
+        summary: stringProp(payload, 'backend') ? `backend · ${stringProp(payload, 'backend')}` : undefined,
       },
     };
   }
 
   // run.completed (sent by BFF on done)
   if (type === 'run.completed') {
-    const content = typeof payload?.content === 'string' ? payload.content : '';
+    const content = stringProp(payload, 'content') || '';
     return {
       mergeDelta: false,
       item: {
@@ -86,7 +104,10 @@ export function interpret(
   }
 
   if (type === 'error' || type.endsWith('.error') || type === 'response.failed') {
-    const msg = payload?.error || payload?.message || payload?.detail || JSON.stringify(payload).slice(0, 120);
+    const msg = stringProp(payload, 'error')
+      || stringProp(payload, 'message')
+      || stringProp(payload, 'detail')
+      || JSON.stringify(payloadValue).slice(0, 120);
     return {
       mergeDelta: false,
       item: { id, ts, kind: 'error', raw: type, title: 'Error', summary: shorten(String(msg), 160) },
@@ -104,13 +125,15 @@ export function interpret(
     type.startsWith('response.tool_call') ||
     type.startsWith('response.function_call') ||
     /tool/i.test(type) ||
-    payload?.tool_name || payload?.tool_call?.name || payload?.function?.name
+    stringProp(payload, 'tool_name') ||
+    stringProp(asRecord(prop(payload, 'tool_call')), 'name') ||
+    stringProp(asRecord(prop(payload, 'function')), 'name')
   ) {
     const name =
-      payload?.tool_name ||
-      payload?.tool_call?.name ||
-      payload?.function?.name ||
-      payload?.name ||
+      stringProp(payload, 'tool_name') ||
+      stringProp(asRecord(prop(payload, 'tool_call')), 'name') ||
+      stringProp(asRecord(prop(payload, 'function')), 'name') ||
+      stringProp(payload, 'name') ||
       'tool';
     let phase: string = 'tool';
     if (type.endsWith('.added') || type.endsWith('.created') || type.endsWith('.started')) phase = 'call';
@@ -118,8 +141,8 @@ export function interpret(
     else if (type.endsWith('.failed')) phase = 'failed';
     else if (type.endsWith('.delta') || type.includes('arguments')) phase = 'args';
     else if (type.includes('output')) phase = 'result';
-    const args = payload?.arguments || payload?.args || payload?.input;
-    const result = payload?.output || payload?.result;
+    const args = prop(payload, 'arguments') || prop(payload, 'args') || prop(payload, 'input');
+    const result = prop(payload, 'output') || prop(payload, 'result');
     const summary = result
       ? `result · ${summarizeArgs(result)}`
       : args
@@ -139,10 +162,12 @@ export function interpret(
 
   // Response lifecycle
   if (type === 'response.created') {
-    return { mergeDelta: false, item: { id, ts, kind: 'event', raw: type, title: 'Response created', summary: payload?.response?.id } };
+    const response = asRecord(prop(payload, 'response'));
+    return { mergeDelta: false, item: { id, ts, kind: 'event', raw: type, title: 'Response created', summary: stringProp(response, 'id') } };
   }
   if (type === 'response.output_item.added') {
-    const itype = payload?.item?.type || 'item';
+    const item = asRecord(prop(payload, 'item'));
+    const itype = stringProp(item, 'type') || 'item';
     return { mergeDelta: false, item: { id, ts, kind: 'event', raw: type, title: `Output item · ${itype}` } };
   }
   if (type === 'response.completed' || type === 'response.done') {

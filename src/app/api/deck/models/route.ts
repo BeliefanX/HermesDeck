@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getModels } from '@/lib/server/hermes';
+import { requireAuth } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const auth = requireAuth(req);
+  if (!auth.ok) return auth.response;
   const profile = req.nextUrl.searchParams.get('profile') || 'default';
   const safe = /^[\w.-]{1,64}$/.test(profile) ? profile : 'default';
   try {

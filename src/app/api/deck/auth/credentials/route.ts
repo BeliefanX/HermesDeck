@@ -10,7 +10,7 @@ import {
   verifyPassword,
   verifySessionToken,
 } from '@/lib/server/auth';
-import { isSameOrigin } from '@/lib/server/csrf';
+import { guardRequestBody, readLimitedJson, isSameOrigin } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,8 +24,11 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Not authenticated.' }, { status: 401 });
   }
 
-  let body: { currentPassword?: string; newUsername?: string; newPassword?: string };
-  try { body = await req.json(); } catch { body = {}; }
+  const bodyGuard = guardRequestBody(req, { contentTypes: ['application/json'], maxBytes: 16_000 });
+  if (!bodyGuard.ok) return bodyGuard.response;
+  const parsed = await readLimitedJson<{ currentPassword?: string; newUsername?: string; newPassword?: string }>(req, 16_000, {});
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.value;
 
   const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
   const newUsername = typeof body.newUsername === 'string' ? body.newUsername.trim() : '';

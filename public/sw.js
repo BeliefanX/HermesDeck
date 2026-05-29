@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'hermesdeck-pwa-v8';
+const CACHE_VERSION = 'hermesdeck-pwa-v10';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const IMAGE_CACHE = `${CACHE_VERSION}-images`;
@@ -14,7 +14,7 @@ const RUNTIME_CACHE_MAX = 40;
 // runtime upgrades to the query-string variant work even when offline.
 // Dynamic routes (/runs/[id]) can't be pre-cached; they fall back to /offline
 // when navigation fails AND the runtime cache has nothing.
-const APP_SHELL = ['/', '/chat', '/profiles', '/runs', '/tools', '/terminal', '/settings', '/offline', '/manifest.webmanifest'];
+const APP_SHELL = ['/', '/chat', '/chat?source=pwa', '/profiles', '/runs', '/tools', '/terminal', '/settings', '/offline', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -118,7 +118,14 @@ self.addEventListener('fetch', (event) => {
         }
         return res;
       }).catch(() =>
-        caches.match(req).then((hit) => hit || caches.match('/offline').then((off) => off || Response.error()))
+        caches.match(req).then(async (hit) => {
+          if (hit) return hit;
+          if (url.pathname === '/chat') {
+            const chatHit = await caches.match('/chat?source=pwa') || await caches.match('/chat');
+            if (chatHit) return chatHit;
+          }
+          return caches.match('/offline').then((off) => off || Response.error());
+        })
       )
     );
     return;

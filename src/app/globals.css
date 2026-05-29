@@ -793,7 +793,7 @@ p{line-height:1.6}
 
 .thread{display:flex;flex-direction:column;min-height:0}
 .chat-panel{
-  padding:0;overflow:hidden;
+  padding:0;overflow:hidden;min-height:0;
   display:flex;flex-direction:column;min-width:0;
   border:0;border-radius:0;background:transparent;box-shadow:none;
   transition:opacity var(--t-3) var(--ease-out);
@@ -1485,7 +1485,7 @@ p{line-height:1.6}
     box-shadow:none;
   }
   .messages{
-    padding:14px calc(14px + var(--safe-left)) 14px calc(14px + var(--safe-right));
+    padding:14px calc(14px + var(--safe-right)) 14px calc(14px + var(--safe-left));
     gap:10px;
     /* Don't trigger system pull-to-refresh while inside the chat thread */
     overscroll-behavior:contain;
@@ -1594,7 +1594,7 @@ p{line-height:1.6}
      reasoning as the 880px breakpoint: titles/icons must line up. */
   .card,.card.hero-card,.card.metric-card,.card.token-hero{padding:14px}
   .panel-header{padding:11px 12px}
-  .messages{padding:12px calc(12px + var(--safe-left)) 12px calc(12px + var(--safe-right));gap:10px}
+  .messages{padding:12px calc(12px + var(--safe-right)) 12px calc(12px + var(--safe-left));gap:10px}
   .msg-row{max-width:99%}
   .msg-row.user{max-width:90%}
   .msg{padding:10px 13px;font-size:14px}

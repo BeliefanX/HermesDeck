@@ -214,13 +214,6 @@ export function ChatLayoutView(p: ChatLayoutViewProps) {
         {/* Sessions panel (desktop) */}
         <aside
           className="chat-panel thread sessions-panel"
-          style={{
-            background: 'var(--panel)',
-            border: '1px solid var(--line)',
-            borderRadius: 10,
-            minHeight: 0,
-            overflow: 'hidden',
-          }}
         >
           <div className="sessions-toolbar" style={{ padding: '10px 12px', borderBottom: '1px solid var(--hairline)', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div className="sessions-tabs" role="tablist" aria-label={p.t.tabAll} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -249,14 +242,6 @@ export function ChatLayoutView(p: ChatLayoutViewProps) {
         {/* Thread */}
         <section
           className="chat-panel thread"
-          style={{
-            background: 'var(--panel)',
-            border: '1px solid var(--line)',
-            borderRadius: 10,
-            minHeight: 0,
-            overflow: 'hidden',
-            position: 'relative',
-          }}
         >
           <ChatThreadHeader
             t={p.t}
@@ -270,7 +255,7 @@ export function ChatLayoutView(p: ChatLayoutViewProps) {
             newChat={p.newChat}
           />
 
-          <div className="messages" ref={p.messagesRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 22px 8px', minHeight: 0 }}>
+          <div className="messages" ref={p.messagesRef}>
             {p.activeMessages.length === 0 && (
               <EmptyState t={p.t} suggestions={p.SUGGESTIONS} onSendSuggestion={(s) => p.send(s)} />
             )}

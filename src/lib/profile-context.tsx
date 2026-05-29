@@ -37,7 +37,11 @@ function writeStoredProfile(id: string): void {
 
 /** Migrate the legacy chat-only `hermesdeck.chat.v1.profile` field into the
  *  global key. Only runs once and only when the global key is unset, so it
- *  doesn't clobber a profile the user picked from the new switcher. */
+ *  doesn't clobber a profile the user picked from the new switcher.
+ *
+ *  Legacy retention / sunset: keep until at least two minor releases after the
+ *  global profile selector is the only supported UI. Removing earlier would
+ *  strand users who skip versions with their old chat-only profile selection. */
 function migrateLegacyChatProfile(): string | null {
   if (typeof window === 'undefined') return null;
   try {

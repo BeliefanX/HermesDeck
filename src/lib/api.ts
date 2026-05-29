@@ -28,15 +28,19 @@ export class ApiError extends Error {
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 
-function combineSignals(signals: (AbortSignal | undefined)[]): AbortSignal {
-  const real = signals.filter((s): s is AbortSignal => Boolean(s));
-  if (real.length === 0) return AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
-  if (real.length === 1) return real[0]!;
+function normalizeTimeoutMs(timeoutMs: number | undefined): number {
+  return Number.isFinite(timeoutMs) && (timeoutMs as number) > 0 ? (timeoutMs as number) : DEFAULT_TIMEOUT_MS;
+}
+
+function combineSignals(callerSignal: AbortSignal | undefined, timeoutMs: number | undefined): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(normalizeTimeoutMs(timeoutMs));
+  const signals = callerSignal ? [callerSignal, timeoutSignal] : [timeoutSignal];
+  if (signals.length === 1) return signals[0]!;
   const anyFn = (AbortSignal as unknown as { any?: (s: AbortSignal[]) => AbortSignal }).any;
-  if (typeof anyFn === 'function') return anyFn(real);
+  if (typeof anyFn === 'function') return anyFn(signals);
   // Fallback for older runtimes (browsers without AbortSignal.any).
   const ctrl = new AbortController();
-  for (const s of real) {
+  for (const s of signals) {
     if (s.aborted) { ctrl.abort((s as AbortSignal & { reason?: unknown }).reason); break; }
     s.addEventListener('abort', () => ctrl.abort((s as AbortSignal & { reason?: unknown }).reason), { once: true });
   }
@@ -44,15 +48,15 @@ function combineSignals(signals: (AbortSignal | undefined)[]): AbortSignal {
 }
 
 async function request<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
-  const timeoutMs = init?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const signal = combineSignals([init?.signal ?? undefined, AbortSignal.timeout(timeoutMs)]);
+  const { timeoutMs, signal: callerSignal, headers, ...fetchInit } = init ?? {};
+  const signal = combineSignals(callerSignal ?? undefined, timeoutMs);
   let res: Response;
   try {
     res = await fetch(path, {
       cache: 'no-store',
-      ...init,
+      ...fetchInit,
       signal,
-      headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+      headers: { 'Content-Type': 'application/json', ...(headers || {}) },
     });
   } catch (err) {
     // Re-throw AbortError unchanged so callers can distinguish a deliberate

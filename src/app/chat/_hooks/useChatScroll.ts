@@ -129,7 +129,7 @@ export function useChatScroll({ active, activeMessages, input, taRef }: ScrollPa
     userScrolledAwayRef.current = false;
     justSwitchedRef.current = true;
     setShowJumpToBottom(false);
-    requestAnimationFrame(() => {
+    const firstSnap = requestAnimationFrame(() => {
       if (userScrolledAwayRef.current) return;
       scrollToBottom(false);
     });
@@ -161,6 +161,7 @@ export function useChatScroll({ active, activeMessages, input, taRef }: ScrollPa
       }, 2200);
     }
     return () => {
+      cancelAnimationFrame(firstSnap);
       timers.forEach(clearTimeout);
       if (stopRo) clearTimeout(stopRo);
       try { ro?.disconnect(); } catch {}
@@ -185,12 +186,13 @@ export function useChatScroll({ active, activeMessages, input, taRef }: ScrollPa
     if (!stickToBottomRef.current) return;
     const snap = justSwitchedRef.current;
     if (snap) justSwitchedRef.current = false;
-    requestAnimationFrame(() => {
+    const raf = requestAnimationFrame(() => {
       // Re-check inside the RAF — the user may have flicked the wheel between
       // the React commit and the next paint.
       if (userScrolledAwayRef.current) return;
       scrollToBottom(!snap);
     });
+    return () => cancelAnimationFrame(raf);
   }, [streamContentSig, activeMessages.length, scrollToBottom]);
 
   // Auto-resize composer. Keep this in sync with .composer .textarea max-height

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y tmux python3 make g++
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck -- --pretty false
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Verify PWA
+        run: npm run verify:pwa
+      - name: Smoke test
+        run: npm run smoke
+      - name: Production audit
+        run: npm audit --omit=dev

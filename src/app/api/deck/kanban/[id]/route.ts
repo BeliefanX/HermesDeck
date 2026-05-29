@@ -9,7 +9,7 @@ import {
   editTask,
   type TaskAction,
 } from '@/lib/server/hermes';
-import { guardMutating } from '@/lib/server/csrf';
+import { guardMutating, guardRequestBody, readLimitedJson, requireAuth } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +32,8 @@ async function resolveParams(ctx: RouteCtx): Promise<{ id: string } | null> {
 }
 
 export async function GET(req: Request, ctx: RouteCtx) {
+  const auth = requireAuth(req);
+  if (!auth.ok) return auth.response;
   const params = await resolveParams(ctx);
   if (!params) return NextResponse.json({ error: 'invalid_task_id' }, { status: 400 });
   const url = new URL(req.url);
@@ -56,9 +58,11 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
   const board = url.searchParams.get('board') || 'default';
   if (!BOARD_SLUG_RE.test(board)) return NextResponse.json({ error: 'invalid_board' }, { status: 400 });
 
-  let body: unknown;
-  try { body = await req.json(); }
-  catch { return NextResponse.json({ error: 'invalid_json' }, { status: 400 }); }
+  const bodyGuard = guardRequestBody(req, { contentTypes: ['application/json'], maxBytes: 256_000 });
+  if (!bodyGuard.ok) return bodyGuard.response;
+  const parsed = await readLimitedJson(req, 256_000);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.value;
 
   const op = (body as { op?: unknown })?.op;
   try {

@@ -21,6 +21,9 @@ function startChild(label, cmd, args, env = process.env) {
     console.log(`[dev] ${label} exited (code=${code}, signal=${signal ?? 'none'})`);
     // If next itself died, tear everything down — the redirect alone is useless.
     if (label === 'next') shutdown(code ?? 1);
+    if (label === 'redirect-6117' && code !== 0 && !shuttingDown) {
+      console.warn('[dev] WARNING: legacy :6117 redirect helper is unavailable; canonical :6118 may still work.');
+    }
   });
   child.on('error', (err) => {
     console.error(`[dev] ${label} failed to start:`, err);
@@ -46,6 +49,6 @@ process.on('SIGTERM', () => shutdown(0));
 // Start Next first; it's the load-bearing process.
 startChild('next', nextBin, nextArgs);
 
-// Start the redirect helper. If 6117 is occupied, the helper exits 0 and we
-// just continue without the legacy redirect — Next on 6118 still works.
+// Start the redirect helper. If 6117 is occupied, the helper exits non-zero and
+// the parent emits an explicit warning instead of silently reporting success.
 startChild('redirect-6117', process.execPath, ['scripts/redirect-6117.mjs']);

@@ -35,7 +35,7 @@
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `HERMESDECK_LIVE_TERMINAL` | `1`（`npm run dev` / `npm start` 通过 `package.json` 默认开启） | 设为 `0` 关闭 PTY 路由 + tmux 会话。安全敏感部署建议关闭。 |
+| `HERMESDECK_LIVE_TERMINAL` | `0`（`npm run dev` / `npm start` 通过 `package.json` 默认关闭） | 设为 `1` 才启用 PTY 路由 + tmux 会话。安全敏感部署建议保持关闭。 |
 | `HERMESDECK_TMUX_BIN` | `tmux` | tmux 可执行文件路径，自定义编译时使用。 |
 | `HERMESDECK_TERMINAL_ENV_PASSTHROUGH` | _（未设置）_ | `terminal-pty.ts` 默认从子进程环境剥掉一组敏感变量；该项预留给将来主动添加白名单变量。 |
 

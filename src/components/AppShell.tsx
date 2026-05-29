@@ -1,7 +1,8 @@
 'use client';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import {
   BookOpen, Bot, FileCog, Globe, Home, KanbanSquare, Menu, MessageSquare, Moon, PanelLeftClose, PanelLeftOpen,
   Radio, Search, Settings, Sun, Terminal, Wrench, X,
@@ -37,6 +38,11 @@ const MOBILE_PRIMARY: ReadonlySet<string> = new Set(['/', '/chat', '/profiles', 
 // implying a selection has any effect on the page.
 const PROFILE_CHIP_HIDDEN: ReadonlySet<string> = new Set(['/tools', '/settings', '/terminal']);
 
+function isRouteActive(path: string, href: string) {
+  if (href === '/') return path === '/';
+  return path === href || path.startsWith(`${href}/`);
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname() || '/';
   // The /login route renders full-bleed without sidebar/topbar chrome.
@@ -46,6 +52,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [apiStatus, setApiStatus] = useState<HealthStatus | 'checking'>('checking');
+  const moreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const lang = useLang();
 
   // Reflect real Hermes API health in the sidebar footer dot — previously it
@@ -176,7 +185,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  useEffect(() => { setMoreOpen(false); }, [path]);
+  const closeMoreSheet = useCallback((restoreFocus = true) => {
+    setMoreOpen(false);
+    if (restoreFocus) {
+      window.setTimeout(() => restoreFocusRef.current?.focus(), 0);
+    }
+  }, []);
+
+  useEffect(() => { closeMoreSheet(false); }, [path, closeMoreSheet]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    restoreFocusRef.current = previouslyFocused;
+    window.setTimeout(() => {
+      const first = sheetRef.current?.querySelector<HTMLElement>('button, a[href], [tabindex]:not([tabindex="-1"])');
+      first?.focus();
+    }, 0);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeMoreSheet(true);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [moreOpen, closeMoreSheet]);
 
   function toggleTheme() {
     const next = theme === 'dark' ? 'light' : 'dark';
@@ -193,7 +224,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     });
   }
 
-  const active = navItems.find((n) => n.href === path) || navItems[0];
+  const active = navItems.find((n) => isRouteActive(path, n.href)) || navItems[0];
   const ActiveIcon = active.icon;
   const mobilePrimary = navItems.filter((n) => MOBILE_PRIMARY.has(n.href));
   const mobileOverflow = navItems.filter((n) => !MOBILE_PRIMARY.has(n.href));
@@ -201,7 +232,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // The chat page goes full-bleed on mobile and merges its own header with the
   // global app-bar. Tagging the root lets CSS hide redundant chrome there.
   const routeKey = path === '/chat' ? 'chat' : (path.split('/')[1] || 'home');
-  const showProfileChip = !PROFILE_CHIP_HIDDEN.has(path);
+  const showProfileChip = !Array.from(PROFILE_CHIP_HIDDEN).some((href) => isRouteActive(path, href));
 
   const apiDot =
     apiStatus === 'connected' ? 'var(--green)' :
@@ -227,7 +258,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="sidebar" aria-label={t.primaryNav}>
         <div className="brand" style={{ alignItems: 'center' }}>
           <div className="brand-badge" aria-hidden>
-            <img className="brand-mark" src="/icons/icon-192.png" alt="" />
+            <Image className="brand-mark" src="/icons/icon-192.png" alt="" width={32} height={32} />
           </div>
           {!collapsed && (
             <div className="brand-text">
@@ -239,7 +270,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <nav className="nav" aria-label={t.pages}>
           {navItems.map(({ href, label, icon: Icon }) => {
-            const isActive = path === href;
+            const isActive = isRouteActive(path, href);
             return (
               <Link
                 key={href}
@@ -378,7 +409,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="app-bar" role="banner">
           <div className="ab-brand">
             <div className="brand-badge" aria-hidden>
-              <img className="brand-mark" src="/icons/icon-192.png" alt="" />
+              <Image className="brand-mark" src="/icons/icon-192.png" alt="" width={32} height={32} />
             </div>
             <div className="ab-title-row">
               <div className="ab-title">{active.label.label}</div>
@@ -425,17 +456,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile bottom nav */}
       <nav className="mobile-nav" aria-label={t.mobileNav}>
         {mobilePrimary.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={path === href ? 'active' : ''} aria-label={label.label}>
+          <Link key={href} href={href} className={isRouteActive(path, href) ? 'active' : ''} aria-label={label.label}>
             <Icon size={19} />
             <span className="mobile-nav-label">{label.label}</span>
           </Link>
         ))}
         <button
+          ref={moreButtonRef}
           type="button"
           className={moreOpen ? 'active' : ''}
-          onClick={() => setMoreOpen((v) => !v)}
+          onClick={() => {
+            if (moreOpen) {
+              closeMoreSheet(true);
+            } else {
+              restoreFocusRef.current = moreButtonRef.current;
+              setMoreOpen(true);
+            }
+          }}
           aria-label={t.moreNav}
           aria-expanded={moreOpen}
+          aria-controls="app-mobile-more-sheet"
         >
           <Menu size={19} />
           <span className="mobile-nav-label">{t.moreNav}</span>
@@ -445,14 +485,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Overflow sheet */}
       <div
         className={`sheet-backdrop ${moreOpen ? 'open' : ''}`}
-        onClick={() => setMoreOpen(false)}
+        onClick={() => closeMoreSheet(true)}
         aria-hidden
       />
-      <div className={`sheet ${moreOpen ? 'open' : ''}`} role="dialog" aria-label={t.moreSheetLabel}>
+      <div
+        id="app-mobile-more-sheet"
+        ref={sheetRef}
+        className={`sheet ${moreOpen ? 'open' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t.moreSheetLabel}
+      >
         <div className="sheet-handle" />
         <div className="sheet-header">
           <h2>{t.moreNav}</h2>
-          <button className="btn icon" onClick={() => setMoreOpen(false)} aria-label={t.close}>
+          <button className="btn icon" onClick={() => closeMoreSheet(true)} aria-label={t.close}>
             <X size={16} />
           </button>
         </div>
@@ -461,8 +508,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               key={href}
               href={href}
-              className={`list-row ${path === href ? 'active' : ''}`}
-              onClick={() => setMoreOpen(false)}
+              className={`list-row ${isRouteActive(path, href) ? 'active' : ''}`}
+              onClick={() => closeMoreSheet(false)}
             >
               <div className="meta" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <span className="metric-icon" style={{ width: 32, height: 32, borderRadius: 10 }}>

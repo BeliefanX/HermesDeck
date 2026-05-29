@@ -1,6 +1,7 @@
 'use client';
 import { memo, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
+import type { Options as ReactMarkdownOptions } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import remarkBreaks from 'remark-breaks';
@@ -57,15 +58,14 @@ const MessageContentInner = memo(function MessageContentInner({ content, streami
   // <img> with no max-width (huge data URLs blow up the layout) and no way to
   // click-through to view full size or download. This wires both up.
   const [preview, setPreview] = useState<{ src: string; name?: string } | null>(null);
-  const rehypePlugins = streaming
+  const rehypePlugins: ReactMarkdownOptions['rehypePlugins'] = streaming
     ? []
     : [[rehypeHighlight, { detect: true, ignoreMissing: true }] as [typeof rehypeHighlight, { detect: boolean; ignoreMissing: boolean }], rehypeKatex];
   return (
     <div className="md">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        rehypePlugins={rehypePlugins as any}
+        rehypePlugins={rehypePlugins}
         components={{
           pre: ({ children }) => {
             const codeEl = children as { props?: { className?: string; children?: ReactNode } } | null | undefined;

@@ -27,6 +27,7 @@ export function useResizablePanel({ side, storageKey, defaultW, minW, maxW }: Re
   // widthRef mirrors state so the drag handlers (closed over once at
   // pointerdown) always read the freshest width on mouseup persist.
   const widthRef = useRef<number>(defaultW);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
   // A left panel widens as the pointer moves right (+1); a right panel widens
   // as the pointer moves left (-1).
   const dirSign = side === 'left' ? 1 : -1;
@@ -55,8 +56,11 @@ export function useResizablePanel({ side, storageKey, defaultW, minW, maxW }: Re
 
   const startResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
+    dragCleanupRef.current?.();
     const startX = e.clientX;
     const startW = widthRef.current;
+    const prevUserSelect = document.body.style.userSelect;
+    const prevCursor = document.body.style.cursor;
     setDragging(true);
 
     const onMove = (ev: MouseEvent) => {
@@ -65,12 +69,16 @@ export function useResizablePanel({ side, storageKey, defaultW, minW, maxW }: Re
       widthRef.current = next;
       setWidth(next);
     };
-    const onUp = () => {
+    const cleanupDrag = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-      document.body.style.userSelect = '';
-      document.body.style.cursor = '';
+      document.body.style.userSelect = prevUserSelect;
+      document.body.style.cursor = prevCursor;
       setDragging(false);
+      dragCleanupRef.current = null;
+    };
+    const onUp = () => {
+      cleanupDrag();
       try { localStorage.setItem(storageKey, String(widthRef.current)); } catch { /* quota / disabled */ }
     };
     document.addEventListener('mousemove', onMove);
@@ -79,7 +87,10 @@ export function useResizablePanel({ side, storageKey, defaultW, minW, maxW }: Re
     // the browser highlights message text under the pointer mid-drag.
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
+    dragCleanupRef.current = cleanupDrag;
   }, [dirSign, minW, maxW, storageKey]);
+
+  useEffect(() => () => dragCleanupRef.current?.(), []);
 
   const onResizerKeyDown = useCallback((e: React.KeyboardEvent) => {
     let delta = 0;

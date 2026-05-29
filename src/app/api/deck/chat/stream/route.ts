@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createChatStream } from '@/lib/server/hermes';
-import { guardMutating } from '@/lib/server/csrf';
+import { guardMutating, guardRequestBody, readLimitedJson } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,31 +15,11 @@ export async function POST(req: NextRequest) {
   const guard = guardMutating(req);
   if (!guard.ok) return guard.response;
 
-  const ct = req.headers.get('content-type') || '';
-  if (!ct.toLowerCase().includes('application/json')) {
-    return new Response(JSON.stringify({ error: 'expected application/json' }), {
-      status: 415, headers: { 'Content-Type': 'application/json' },
-    });
-  }
-  const cl = Number(req.headers.get('content-length') || '0');
-  if (cl > MAX_REQUEST_BYTES) {
-    return new Response(JSON.stringify({ error: 'payload_too_large', limit: MAX_REQUEST_BYTES }), {
-      status: 413, headers: { 'Content-Type': 'application/json' },
-    });
-  }
-  const text = await req.text().catch(() => '');
-  if (text.length > MAX_REQUEST_BYTES) {
-    return new Response(JSON.stringify({ error: 'payload_too_large', limit: MAX_REQUEST_BYTES }), {
-      status: 413, headers: { 'Content-Type': 'application/json' },
-    });
-  }
-  let body: unknown = {};
-  try { body = text ? JSON.parse(text) : {}; }
-  catch {
-    return new Response(JSON.stringify({ error: 'invalid_json' }), {
-      status: 400, headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  const bodyGuard = guardRequestBody(req, { contentTypes: ['application/json'], maxBytes: MAX_REQUEST_BYTES });
+  if (!bodyGuard.ok) return bodyGuard.response;
+  const parsed = await readLimitedJson<Record<string, unknown>>(req, MAX_REQUEST_BYTES, {});
+  if (!parsed.ok) return parsed.response;
+  const body: unknown = parsed.value;
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return new Response(JSON.stringify({ error: 'invalid_body' }), {
       status: 400, headers: { 'Content-Type': 'application/json' },

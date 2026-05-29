@@ -1,5 +1,19 @@
 import type { DeckHealth } from '@/lib/types';
-import { execFileAsync, makeCache, apiHeaders, HERMES_API_BASE, HERMES_DASHBOARD_BASE, startedAt } from './core';
+import { execFileAsync, makeCache, apiHeaders, HERMES_API_BASE, HERMES_DASHBOARD_BASE, startedAt, redactSecrets } from './core';
+
+function exposeBaseUrl(url: string): string {
+  if (process.env.NODE_ENV !== 'production' || process.env.HERMESDECK_DEBUG_HEALTH === '1') return url;
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.hostname === '127.0.0.1' || u.hostname === 'localhost' ? 'localhost' : u.hostname}${u.port ? ':<redacted>' : ''}`;
+  } catch {
+    return 'hidden';
+  }
+}
+
+function safeDetail(input: unknown): string {
+  return redactSecrets(String(input || '')).slice(0, 240);
+}
 
 export async function hermesVersion(): Promise<string> {
   try {
@@ -25,9 +39,12 @@ async function getHealthUncached(): Promise<DeckHealth> {
   let apiDetail = '';
   if (apiRes.status === 'fulfilled') {
     apiHealthy = apiRes.value.ok;
-    apiDetail = await apiRes.value.text().then((t) => t.slice(0, 240)).catch(() => '');
+    apiDetail = `HTTP ${apiRes.value.status}`;
+    if (!apiRes.value.ok) {
+      apiDetail = `${apiDetail} ${safeDetail(await apiRes.value.text().catch(() => ''))}`.trim();
+    }
   } else {
-    apiDetail = apiRes.reason instanceof Error ? apiRes.reason.message : String(apiRes.reason);
+    apiDetail = safeDetail(apiRes.reason instanceof Error ? apiRes.reason.message : String(apiRes.reason));
   }
   let dashHealthy = false;
   let dashDetail = '';
@@ -36,14 +53,14 @@ async function getHealthUncached(): Promise<DeckHealth> {
     dashHealthy = r.ok || r.status === 401 || r.status === 403;
     dashDetail = `HTTP ${r.status}`;
   } else {
-    dashDetail = dashRes.reason instanceof Error ? dashRes.reason.message : String(dashRes.reason);
+    dashDetail = safeDetail(dashRes.reason instanceof Error ? dashRes.reason.message : String(dashRes.reason));
   }
   return {
     ok: apiHealthy || version.startsWith('Hermes Agent'),
     status: apiHealthy ? 'connected' : version.startsWith('Hermes Agent') ? 'degraded' : 'unreachable',
     version,
-    apiServer: { baseUrl: HERMES_API_BASE, healthy: apiHealthy, detail: apiDetail },
-    dashboard: { baseUrl: HERMES_DASHBOARD_BASE, healthy: dashHealthy, detail: dashDetail },
+    apiServer: { baseUrl: exposeBaseUrl(HERMES_API_BASE), healthy: apiHealthy, detail: apiDetail },
+    dashboard: { baseUrl: exposeBaseUrl(HERMES_DASHBOARD_BASE), healthy: dashHealthy, detail: dashDetail },
     uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
   };
 }

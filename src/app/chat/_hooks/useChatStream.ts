@@ -201,6 +201,7 @@ export function useChatStream(params: UseChatStreamParams) {
   const regenerateRef = useRef<() => void>(() => {});
   // Per-stream live state. Owned by start*Stream — handlers read it in-flight.
   const inflightRef = useRef<InflightLive | null>(null);
+  const profileRef = useRef(profile);
   // Resume already attempted? Avoid running twice in StrictMode dev.
   const resumeAttemptedRef = useRef(false);
 
@@ -212,6 +213,18 @@ export function useChatStream(params: UseChatStreamParams) {
     setTimeline([]);
     deltaRef.current = null;
   }, [setTimeline]);
+
+  useEffect(() => {
+    if (profileRef.current === profile) return;
+    profileRef.current = profile;
+    abortRef.current?.abort();
+    openSessionAbortRef.current?.abort();
+    inflightRef.current = null;
+    deltaRef.current = null;
+    clearInflight();
+    setBusy(false);
+    clearTimeline();
+  }, [abortRef, clearTimeline, profile, setBusy]);
 
   const handleEvent = useCallback((eventType: string, payload: unknown) => {
     if (eventType !== 'run-event') return;
@@ -469,6 +482,7 @@ export function useChatStream(params: UseChatStreamParams) {
   }, [profile, setMessages]);
 
   const openSession = useCallback(async (s: LocalSession) => {
+    const requestProfile = profile;
     openSessionAbortRef.current?.abort();
     if (active && active !== s.id) abortRef.current?.abort();
     const seq = ++openSessionSeqRef.current;
@@ -484,7 +498,7 @@ export function useChatStream(params: UseChatStreamParams) {
     if (!cached || (s.messageCount || 0) > cached.length) {
       try {
         const r = await deckApi.messages(s.id, profile, ac.signal);
-        if (seq !== openSessionSeqRef.current || ac.signal.aborted) return;
+        if (seq !== openSessionSeqRef.current || ac.signal.aborted || profileRef.current !== requestProfile) return;
         if (r.messages.length) setMessages((m) => ({ ...m, [s.id]: r.messages }));
       } catch { /* aborted or network failure — drop silently */ }
     }
@@ -501,6 +515,7 @@ export function useChatStream(params: UseChatStreamParams) {
     sid: string;
     initialAssistantId: string;
     streamId: number;
+    profile: string;
     onSidReconcile: (incoming: string) => void;
     isAbortedRef: React.MutableRefObject<boolean>;
   }): StreamCallbacks => {
@@ -511,7 +526,7 @@ export function useChatStream(params: UseChatStreamParams) {
     let myTextAssistantId = init.initialAssistantId;
     const isMine = () => {
       const inf = inflightRef.current;
-      return !!inf && inf.streamId === init.streamId;
+      return !!inf && inf.streamId === init.streamId && profileRef.current === init.profile;
     };
     return {
       onHub(info) {
@@ -772,7 +787,6 @@ export function useChatStream(params: UseChatStreamParams) {
       }
     };
 
-    let succeeded = false;
     try {
       await streamChat(
         {
@@ -788,11 +802,10 @@ export function useChatStream(params: UseChatStreamParams) {
           ...(reasoningEffort !== defaultReasoning ? { reasoningEffort } : {}),
         },
         buildCallbacks({
-          sid, initialAssistantId: assistantId, streamId, onSidReconcile: reconcileSid, isAbortedRef,
+          sid, initialAssistantId: assistantId, streamId, profile, onSidReconcile: reconcileSid, isAbortedRef,
         }),
         ac.signal,
       );
-      succeeded = true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (!ac.signal.aborted) {
@@ -816,7 +829,6 @@ export function useChatStream(params: UseChatStreamParams) {
       //   - the abort listener above (user-initiated stop)
       //   - the resume path's 404 fallback (run no longer in hub)
     } finally {
-      void succeeded;
       setBusy(false);
       abortRef.current = null;
       // Only clear our slot if no newer stream has taken over.
@@ -910,7 +922,7 @@ export function useChatStream(params: UseChatStreamParams) {
           hubKey,
           lastSeq,
           buildCallbacks({
-            sid: sessionId, initialAssistantId: textAssistantId, streamId, onSidReconcile: reconcileSid, isAbortedRef,
+            sid: sessionId, initialAssistantId: textAssistantId, streamId, profile, onSidReconcile: reconcileSid, isAbortedRef,
           }),
           ac.signal,
         );

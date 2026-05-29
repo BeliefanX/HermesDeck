@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTokenStats } from '@/lib/server/hermes';
+import { requireAuth } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const auth = requireAuth(req);
+  if (!auth.ok) return auth.response;
   const raw = req.nextUrl.searchParams.get('days');
   const days = raw === null ? 14 : Number(raw);
   if (!Number.isFinite(days) || days <= 0) {

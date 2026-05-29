@@ -7,67 +7,29 @@ import {
   Play, Plus, RotateCw, Save, Send, Terminal, Trash2, Unlink, User, X,
 } from 'lucide-react';
 import { deckApi, ApiError } from '@/lib/api';
-import type { KanbanBoard, KanbanMarkdownEntry, KanbanTask, KanbanTaskDetail, KanbanTaskStatus, KanbanDiagnostic, KanbanStats, KanbanAssignee } from '@/lib/types';
+import type { KanbanBoard, KanbanMarkdownEntry, KanbanTask, KanbanTaskDetail, KanbanDiagnostic, KanbanStats, KanbanAssignee } from '@/lib/types';
 import { Page, Card, Btn, Tag, Kicker, type Tone } from '@/components/Brand';
 import { MessageContent } from '@/components/MessageContent';
 import { useActiveProfile } from '@/lib/profile-context';
 import { useT } from '@/lib/i18n';
 import { relTime } from '@/lib/format';
-
-// Mirror Hermes's task workflow (hermes_cli/kanban_db.py VALID_STATUSES):
-// triage → todo → ready → running → blocked → done → archived. We render
-// everything except archived (those are hidden by default; surfaced via
-// the archive action button on each row).
-type ColumnKey = 'triage' | 'todo' | 'ready' | 'running' | 'blocked' | 'done';
-const COLUMNS: ColumnKey[] = ['triage', 'todo', 'ready', 'running', 'blocked', 'done'];
-
-const DEFAULT_BOARD_LS_KEY = 'kanban:defaultBoard';
-const SHOW_EMPTY_LS_KEY = 'kanban:showEmpty';
-const DETAIL_WIDTH_LS_KEY = 'kanban:detailWidth';
-
-// Detail-panel width clamps. Min keeps the toolbar buttons + tag chips from
-// wrapping ugly; max stops the user from squeezing the kanban columns into
-// uselessness. Default sits in the middle of the old clamp(360,32vw,520).
-const DETAIL_WIDTH_MIN = 320;
-const DETAIL_WIDTH_MAX = 900;
-const DETAIL_WIDTH_DEFAULT = 460;
-
-function readLocalString(key: string): string {
-  if (typeof window === 'undefined') return '';
-  try { return window.localStorage.getItem(key) || ''; } catch { return ''; }
-}
-function writeLocalString(key: string, val: string) {
-  if (typeof window === 'undefined') return;
-  try {
-    if (val) window.localStorage.setItem(key, val);
-    else window.localStorage.removeItem(key);
-  } catch {/* quota / disabled — silently noop */}
-}
-
-function clampDetailWidth(n: number): number {
-  if (!Number.isFinite(n)) return DETAIL_WIDTH_DEFAULT;
-  return Math.min(DETAIL_WIDTH_MAX, Math.max(DETAIL_WIDTH_MIN, Math.round(n)));
-}
-function readDetailWidth(): number {
-  const raw = readLocalString(DETAIL_WIDTH_LS_KEY);
-  if (!raw) return DETAIL_WIDTH_DEFAULT;
-  const n = Number(raw);
-  return Number.isFinite(n) ? clampDetailWidth(n) : DETAIL_WIDTH_DEFAULT;
-}
-
-function statusTone(status: KanbanTaskStatus): Tone {
-  if (status === 'running') return 'accent';
-  if (status === 'done') return 'green';
-  if (status === 'blocked') return 'red';
-  if (status === 'archived') return 'default';
-  if (status === 'triage') return 'yellow';
-  if (status === 'todo') return 'default';
-  return 'cyan';
-}
-
-const POLL_MS = 4000;
-const SECONDARY_POLL_MS = 12000; // diagnostics / stats / assignees
-const SSE_DEBOUNCE_MS = 350; // batch event-tick refreshes
+import {
+  COLUMNS,
+  DEFAULT_BOARD_LS_KEY,
+  DETAIL_WIDTH_DEFAULT,
+  DETAIL_WIDTH_LS_KEY,
+  POLL_MS,
+  SECONDARY_POLL_MS,
+  SHOW_EMPTY_LS_KEY,
+  SSE_DEBOUNCE_MS,
+  clampDetailWidth,
+  formatBytes,
+  readDetailWidth,
+  readLocalString,
+  statusTone,
+  writeLocalString,
+  type ColumnKey,
+} from './_lib/kanban-ui';
 
 export default function KanbanPage() {
   const { profiles, activeProfile } = useActiveProfile();
@@ -366,6 +328,12 @@ export default function KanbanPage() {
   const sseRef = useRef<EventSource | null>(null);
   const sseDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastEventIdRef = useRef<number>(0);
+  const lastEventBoardRef = useRef<string>('');
+  const selectedIdRef = useRef<string>('');
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   const loadBoards = useCallback(async () => {
     try {
@@ -440,17 +408,27 @@ export default function KanbanPage() {
         if (cancelled) return;
         void loadSnapshot(activeBoard);
         void loadBoards();
-        if (selectedId) {
-          deckApi.kanbanTaskDetail(activeBoard, selectedId).then(setDetail).catch(() => {});
+        const currentSelectedId = selectedIdRef.current;
+        if (currentSelectedId) {
+          deckApi.kanbanTaskDetail(activeBoard, currentSelectedId).then(setDetail).catch(() => {});
         }
       }, SSE_DEBOUNCE_MS);
     };
+
+    // Event ids are scoped to the active board API query. Do not carry a cursor
+    // from a previously viewed board, otherwise the first subscription for the
+    // new board can skip events whose ids are lower than the old board cursor.
+    if (lastEventBoardRef.current !== activeBoard) {
+      lastEventBoardRef.current = activeBoard;
+      lastEventIdRef.current = 0;
+    }
 
     const url = deckApi.kanbanEventsUrl(activeBoard, lastEventIdRef.current, 1);
     const es = new EventSource(url);
     sseRef.current = es;
     es.onopen = () => { if (!cancelled) setLiveMode('live'); errors = 0; };
     es.onmessage = (ev) => {
+      if (cancelled) return;
       try {
         const payload = JSON.parse(ev.data);
         if (payload?.type === 'sync') {
@@ -477,7 +455,6 @@ export default function KanbanPage() {
       if (sseRef.current === es) sseRef.current = null;
       if (sseDebounceRef.current) clearTimeout(sseDebounceRef.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedId intentionally omitted: the SSE handler reads the current value via closure on each event, so re-subscribing on every selection change would thrash the upstream subprocess.
   }, [activeBoard, loadSnapshot, loadBoards]);
 
   // Background poll — same cadence as the runs page. When SSE is live we still
@@ -2267,13 +2244,6 @@ function ModalLoading() {
 }
 
 // ─── MarkdownModal ──────────────────────────────────────────────────────
-
-function formatBytes(n: number): string {
-  if (!Number.isFinite(n) || n < 0) return '0 B';
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(2)} MB`;
-}
 
 // ─── MD path linkification ──────────────────────────────────────────────
 //

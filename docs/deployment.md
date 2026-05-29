@@ -31,7 +31,7 @@
 ### 不推荐
 
 - **直接把 6118 暴露到公网**。HermesDeck 是单用户工具：登录限速虽然在
-  位，但缺少多用户审计；`Live Terminal` 默认开启时给登陆用户极大权限。
+  位，但缺少多用户审计；`Live Terminal` 一旦显式启用就会给登陆用户极大权限。
 
 ---
 
@@ -197,7 +197,7 @@ cd ~/HermesDeck
 git fetch && git pull
 npm install
 npm run typecheck -- --pretty false
-npm run build
+npm run build       # next build --webpack
 systemctl restart hermesdeck
 ```
 

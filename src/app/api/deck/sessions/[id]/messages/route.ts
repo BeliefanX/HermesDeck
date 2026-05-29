@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMessages } from '@/lib/server/hermes';
+import { requireAuth } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const auth = requireAuth(req);
+  if (!auth.ok) return auth.response;
   const { id } = await ctx.params;
   const profile = req.nextUrl.searchParams.get('profile') || 'default';
   const limitRaw = req.nextUrl.searchParams.get('limit');

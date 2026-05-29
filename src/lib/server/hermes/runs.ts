@@ -13,6 +13,8 @@ import { PROFILE_ID_RE } from './core';
 // never `::`), so we can split safely without needing a regex with greedy
 // captures. We still accept the legacy `run_<profile>_<sid>_<idx>` form for
 // any clients/cache holding old IDs.
+// Legacy retention / sunset: keep decoding the old form while run detail links
+// may be cached in browser history or copied from pre-delimiter Deck builds.
 function buildRunsScript(filter: string): string {
   return String.raw`
 import sqlite3, json, os, pathlib, datetime
@@ -222,6 +224,9 @@ export async function getRunDetail(runId: string): Promise<DeckRunDetail | null>
     profile = parts.shift()!;
     sessionId = parts.join('::');
   } else {
+    // Legacy retention / sunset: decode old copied/cached run_<profile>_<sid>_<idx>
+    // URLs, but only for the unambiguous no-underscore profile case documented
+    // above. Do not broaden this parser without changing the legacy id format.
     const m = runId.match(/^run_([^_]+)_(.+)_(\d+)$/);
     if (!m) return null;
     [, profile, sessionId, idxStr] = m;

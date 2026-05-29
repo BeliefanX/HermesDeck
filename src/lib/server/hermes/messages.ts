@@ -33,6 +33,8 @@ if state.exists():
       # used 'created_at'. Probe both — this query previously only knew
       # 'created_at', so on the newer schema every message came back with a
       # blank createdAt and was ordered by rowid instead of time.
+      # Legacy retention / sunset: keep the 'created_at' probe while existing
+      # user state.db files from pre-timestamp Hermes builds remain readable.
       ts_col='timestamp' if 'timestamp' in cols else ('created_at' if 'created_at' in cols else None)
       order=ts_col or ('id' if 'id' in cols else session_col)
       def to_iso(v):
@@ -51,6 +53,8 @@ if state.exists():
         # image + file). Split into a (joined_text, attachments[]) pair so the
         # frontend can render text and binary artifacts independently rather
         # than dumping the whole JSON blob into the markdown bubble.
+        # Legacy retention / sunset: the plain-string branch is permanent
+        # backcompat for historical chat rows, not dead code.
         if raw is None: return ('', [])
         if isinstance(raw, (int, float)): return (str(raw), [])
         s = str(raw)

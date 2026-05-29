@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRunDetail } from '@/lib/server/hermes';
+import { requireAuth } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const auth = requireAuth(req);
+  if (!auth.ok) return auth.response;
   const { id } = await ctx.params;
   try {
     const run = await getRunDetail(id);

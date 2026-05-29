@@ -71,9 +71,9 @@ function defaultRecord(): { record: AuthRecord; plaintext: string } {
 let cached: AuthRecord | null = null;
 let cachedMtimeMs = 0;
 let printedBootstrapBanner = false;
-// Serializes first-boot init so two concurrent requests don't each generate a
-// different bootstrap password and race writeAuth().
-let firstBootInProgress = false;
+// Serializes first-boot init so two concurrent callers don't each generate
+// a different bootstrap password and race writeAuth().
+let firstBootPromise: Promise<AuthRecord> | null = null;
 
 function currentMtimeMs(): number {
   try { return statSync(AUTH_FILE).mtimeMs; } catch { return 0; }
@@ -94,70 +94,60 @@ function maybeAnnounceBootstrap(plaintext: string) {
     '═══════════════════════════════════════════════════════',
     '',
   ].join('\n');
-  // eslint-disable-next-line no-console
   console.log(banner);
 }
 
-export function readAuth(): AuthRecord {
+function readExistingAuth(): AuthRecord | null {
   const mtime = currentMtimeMs();
   if (cached && mtime && mtime === cachedMtimeMs) return cached;
   try {
-    if (existsSync(AUTH_FILE)) {
-      const raw = JSON.parse(readFileSync(AUTH_FILE, 'utf8')) as Partial<AuthRecord>;
-      if (
-        raw && raw.version === 1 &&
-        typeof raw.username === 'string' &&
-        typeof raw.passwordSalt === 'string' &&
-        typeof raw.passwordHash === 'string' &&
-        typeof raw.sessionSecret === 'string'
-      ) {
-        cached = {
-          version: 1,
-          username: raw.username,
-          passwordSalt: raw.passwordSalt,
-          passwordHash: raw.passwordHash,
-          sessionSecret: raw.sessionSecret,
-          passwordVersion: typeof raw.passwordVersion === 'number' ? raw.passwordVersion : 1,
-          bootstrap: raw.bootstrap === true ? true : undefined,
-        };
-        cachedMtimeMs = mtime;
-        return cached;
-      }
+    if (!existsSync(AUTH_FILE)) return null;
+    const raw = JSON.parse(readFileSync(AUTH_FILE, 'utf8')) as Partial<AuthRecord>;
+    if (
+      raw && raw.version === 1 &&
+      typeof raw.username === 'string' &&
+      typeof raw.passwordSalt === 'string' &&
+      typeof raw.passwordHash === 'string' &&
+      typeof raw.sessionSecret === 'string'
+    ) {
+      cached = {
+        version: 1,
+        username: raw.username,
+        passwordSalt: raw.passwordSalt,
+        passwordHash: raw.passwordHash,
+        sessionSecret: raw.sessionSecret,
+        passwordVersion: typeof raw.passwordVersion === 'number' ? raw.passwordVersion : 1,
+        bootstrap: raw.bootstrap === true ? true : undefined,
+      };
+      cachedMtimeMs = mtime;
+      return cached;
     }
   } catch {}
-  // First boot — only one caller proceeds with seed generation; the rest spin
-  // briefly and re-read the freshly written file. Without this lock, two
-  // concurrent first requests would each generate their own bootstrap password
-  // and one would silently clobber the other after the printed banner.
-  if (firstBootInProgress) {
-    const start = Date.now();
-    while (firstBootInProgress && Date.now() - start < 5_000) {
-      // Busy-wait is acceptable: this branch only runs once per process.
-    }
-    if (cached) return cached;
+  return null;
+}
+
+function createInitialAuth(): AuthRecord {
+  const existing = readExistingAuth();
+  if (existing) return existing;
+  const seeded = defaultRecord();
+  cached = seeded.record;
+  writeAuth(cached);
+  cachedMtimeMs = currentMtimeMs();
+  maybeAnnounceBootstrap(seeded.plaintext);
+  return cached;
+}
+
+export async function ensureAuthInitialized(): Promise<AuthRecord> {
+  const existing = readExistingAuth();
+  if (existing) return existing;
+  if (!firstBootPromise) {
+    firstBootPromise = Promise.resolve().then(createInitialAuth).finally(() => { firstBootPromise = null; });
   }
-  firstBootInProgress = true;
-  try {
-    // Re-check after acquiring the lock in case another path wrote it.
-    if (existsSync(AUTH_FILE)) {
-      try {
-        const raw = JSON.parse(readFileSync(AUTH_FILE, 'utf8')) as AuthRecord;
-        if (raw && raw.version === 1) {
-          cached = raw;
-          cachedMtimeMs = currentMtimeMs();
-          return cached;
-        }
-      } catch {}
-    }
-    const seeded = defaultRecord();
-    cached = seeded.record;
-    writeAuth(cached);
-    cachedMtimeMs = currentMtimeMs();
-    maybeAnnounceBootstrap(seeded.plaintext);
-    return cached;
-  } finally {
-    firstBootInProgress = false;
-  }
+  return firstBootPromise;
+}
+
+export function readAuth(): AuthRecord {
+  return readExistingAuth() || createInitialAuth();
 }
 
 function saveAuth(next: AuthRecord) {

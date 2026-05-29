@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDiagnostics } from '@/lib/server/hermes';
+import { requireAuth } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +9,8 @@ const TASK_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const VALID_SEVERITIES: ReadonlySet<string> = new Set(['warning', 'error', 'critical']);
 
 export async function GET(req: Request) {
+  const auth = requireAuth(req);
+  if (!auth.ok) return auth.response;
   const url = new URL(req.url);
   const board = url.searchParams.get('board') || 'default';
   if (!BOARD_SLUG_RE.test(board)) {

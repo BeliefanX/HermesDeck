@@ -44,6 +44,14 @@ const HERMES_REQUEST_BODY_BYTE_LIMIT = 1_000_000;
 //   - upstream proxies (nginx, Cloudflare) don't drop an "idle" connection
 //   - the client watchdog has a steady byte signal even during long tool calls
 const HEARTBEAT_INTERVAL_MS = 15_000;
+const CLI_OUTPUT_RING_BYTES = 256_000;
+const CLI_STDERR_EVENT_BYTES = 8_000;
+
+function appendRing(current: string, chunk: string, maxBytes: number): string {
+  const next = current + chunk;
+  if (Buffer.byteLength(next, 'utf8') <= maxBytes) return next;
+  return Buffer.from(next, 'utf8').subarray(-maxBytes).toString('utf8');
+}
 
 // SSE encoding helper: same wire format as core.sendSse but operates on
 // arbitrary write callbacks so it can plug into a hub-subscriber lambda.
@@ -179,6 +187,12 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody): Promise
     if (cliChild) { try { cliChild.kill('SIGTERM'); } catch {} }
   }, { once: true });
 
+  // Long tasks are common with tool-heavy prompts. Default cap is 30 min.
+  // Client may request a smaller value but we never exceed the hard ceiling.
+  const HARD_TIMEOUT_MS = 30 * 60 * 1000;
+  const requestedTimeout = Number(body?.timeoutMs || 600_000);
+  const timeoutMs = Math.min(Math.max(1000, requestedTimeout), HARD_TIMEOUT_MS);
+
   try {
     const inputForApi: unknown = hasImages
       ? [
@@ -218,11 +232,6 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody): Promise
       reqHeaders['X-Hermes-Session-Id'] = clientSessionId;
     }
 
-    // Long tasks are common with tool-heavy prompts. Default cap is 30 min.
-    // Client may request a smaller value but we never exceed the hard ceiling.
-    const HARD_TIMEOUT_MS = 30 * 60 * 1000;
-    const requestedTimeout = Number(body?.timeoutMs || 600_000);
-    const timeoutMs = Math.min(Math.max(1000, requestedTimeout), HARD_TIMEOUT_MS);
     const fetchSignal = combineAbortSignals([AbortSignal.timeout(timeoutMs), stream.abort.signal]);
     const response = await fetch(`${HERMES_API_BASE}/v1/responses`, {
       method: 'POST', headers: reqHeaders, body: apiBodyJson, signal: fetchSignal,
@@ -352,22 +361,51 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody): Promise
     const args = ['chat'];
     if (profile && profile !== 'default') args.push('--profile', profile);
     args.push('-Q', '--source', 'hermesdeck', '-q', '--', enrichedMessage);
-    const child = spawn('hermes', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn('hermes', args, { stdio: ['ignore', 'pipe', 'pipe'], shell: false });
     cliChild = child;
     let cliFull = ''; let cliErr = '';
+    let settled = false;
+    let timedOut = false;
+    const cleanupCli = () => {
+      if (cliTimeout) clearTimeout(cliTimeout);
+      stream.abort.signal.removeEventListener('abort', onCliAbort);
+      cliChild = null;
+    };
+    const terminateCli = () => {
+      try { child.kill('SIGTERM'); } catch {}
+      setTimeout(() => { if (!child.killed) { try { child.kill('SIGKILL'); } catch {} } }, 1500).unref?.();
+    };
+    const onCliAbort = () => terminateCli();
+    const cliTimeout = setTimeout(() => {
+      timedOut = true;
+      terminateCli();
+    }, timeoutMs);
+    cliTimeout.unref?.();
+    stream.abort.signal.addEventListener('abort', onCliAbort, { once: true });
     await new Promise<void>((resolve) => {
-      child.stdout.on('data', (chunk) => { const delta = chunk.toString(); cliFull += delta; emitToHub(stream, 'delta', { delta }); });
-      child.stderr.on('data', (chunk) => { cliErr += chunk.toString(); emitToHub(stream, 'run-event', { type: 'stderr', payload: chunk.toString(), ts: Date.now() }); });
-      child.on('error', (e) => {
-        emitToHub(stream, 'error', { error: e.message });
-        markStreamDone(stream);
-        resolve();
+      const finish = () => { if (!settled) { settled = true; cleanupCli(); resolve(); } };
+      child.stdout.on('data', (chunk) => {
+        const delta = chunk.toString();
+        cliFull = appendRing(cliFull, delta, CLI_OUTPUT_RING_BYTES);
+        emitToHub(stream, 'delta', { delta });
       });
-      child.on('close', (code) => {
-        if (code === 0) emitToHub(stream, 'done', { ok: true, backend: 'hermes-cli-fallback', content: cliFull.trim(), stderr: cliErr.slice(-1000) });
-        else emitToHub(stream, 'error', { error: `hermes exited with code ${code}`, stderr: cliErr.slice(-2000) });
+      child.stderr.on('data', (chunk) => {
+        const safe = redactSecrets(chunk.toString());
+        cliErr = appendRing(cliErr, safe, CLI_OUTPUT_RING_BYTES);
+        emitToHub(stream, 'run-event', { type: 'stderr', payload: appendRing('', safe, CLI_STDERR_EVENT_BYTES), ts: Date.now() });
+      });
+      child.on('error', (e) => {
+        emitToHub(stream, 'error', { error: redactSecrets(e.message) });
         markStreamDone(stream);
-        resolve();
+        finish();
+      });
+      child.on('close', (code, signal) => {
+        const stderr = redactSecrets(cliErr);
+        if (timedOut) emitToHub(stream, 'error', { error: `hermes timed out after ${timeoutMs}ms`, stderr });
+        else if (code === 0) emitToHub(stream, 'done', { ok: true, backend: 'hermes-cli-fallback', content: cliFull.trim(), stderr: stderr.slice(-1000) });
+        else emitToHub(stream, 'error', { error: `hermes exited with code ${code ?? 'null'}${signal ? ` (${signal})` : ''}`, stderr: stderr.slice(-2000) });
+        markStreamDone(stream);
+        finish();
       });
     });
   }

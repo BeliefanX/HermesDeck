@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getBoardSnapshot, createTask, type CreateTaskInput } from '@/lib/server/hermes';
-import { guardMutating } from '@/lib/server/csrf';
+import { guardMutating, guardRequestBody, readLimitedJson, requireAuth } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
 const BOARD_SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 export async function GET(req: Request) {
+  const auth = requireAuth(req);
+  if (!auth.ok) return auth.response;
   const url = new URL(req.url);
   const board = url.searchParams.get('board') || 'default';
   if (!BOARD_SLUG_RE.test(board)) {
@@ -35,13 +37,11 @@ export async function POST(req: Request) {
   if (!BOARD_SLUG_RE.test(board)) {
     return NextResponse.json({ error: 'invalid_board' }, { status: 400 });
   }
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
-  }
-  const b = body as Partial<CreateTaskInput>;
+  const bodyGuard = guardRequestBody(req, { contentTypes: ['application/json'], maxBytes: 256_000 });
+  if (!bodyGuard.ok) return bodyGuard.response;
+  const parsed = await readLimitedJson<Partial<CreateTaskInput>>(req, 256_000, {});
+  if (!parsed.ok) return parsed.response;
+  const b = parsed.value;
   if (typeof b.title !== 'string' || !b.title.trim()) {
     return NextResponse.json({ error: 'title_required' }, { status: 400 });
   }

@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getDeckStats } from '@/lib/server/hermes';
+import { requireAuth } from '@/lib/server/csrf';
 
 export const dynamic = 'force-dynamic';
 
 const PROFILE_ID_RE = /^[\w.-]{1,64}$/;
 
 export async function GET(req: Request) {
+  const auth = requireAuth(req);
+  if (!auth.ok) return auth.response;
   const url = new URL(req.url);
   const profile = url.searchParams.get('profile') || undefined;
   if (profile && !PROFILE_ID_RE.test(profile)) {

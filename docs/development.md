@@ -62,11 +62,11 @@ cookie 会因 `passwordVersion` 自增立刻失效）。
 
 | 命令 | 行为 |
 | --- | --- |
-| `npm run dev` | `free-port 6118` → `next dev -H 0.0.0.0 -p 6118` + 6117 重定向 helper。`HERMESDECK_LIVE_TERMINAL` 默认开。 |
-| `npm run build` | `next build`（生成 `.next/`）。 |
+| `npm run dev` | `free-port 6118` → `next dev -H 0.0.0.0 -p 6118` + 6117 重定向 helper。`HERMESDECK_LIVE_TERMINAL` 默认 `0`。 |
+| `npm run build` | `next build --webpack`（生成 `.next/`）。 |
 | `npm start` | 同 `dev` 流程，但用 `next start --start`，跑生产构建。 |
 | `npm run typecheck` | `tsc --noEmit`。CI / 提交前必跑。 |
-| `npm run lint` | `next lint`，规则见 `eslint.config.mjs`。 |
+| `npm run lint` | `eslint .`，规则见 `eslint.config.mjs`。 |
 | `npm run verify:pwa` | 静态检查 `manifest.ts` / `sw.js` / icons / `globals.css` 关键 token。 |
 
 ### 3.2 直接调用 Next
