@@ -410,18 +410,6 @@ export function ChatComposer({
           >
             <Paperclip size={13} />
           </button>
-          {!goal && !goalEditing && (
-            <button
-              type="button"
-              className="composer-goal-btn"
-              onClick={() => { setGoalDraft(''); setGoalEditing(true); }}
-              aria-label={t.goalSet}
-              title={t.goalEditHint}
-              style={iconBtnStyle}
-            >
-              <Target size={13} />
-            </button>
-          )}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
             <ComposerPicker
               label={t.modelLabel}
