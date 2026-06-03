@@ -1,4 +1,4 @@
-import type { DeckHealth, DeckProfile, DeckSession, DeckMessage, ToolSummary, TerminalAction, TerminalRunRequest, TerminalRunResult, DeckModelsResponse, TokenStats, DeckStats, DeckRun, DeckRunDetail, LiveTerminalSession, LiveTerminalListResponse, LiveTerminalWindow, LiveTerminalCreateRequest, LiveTerminalTmuxRequest, SkillContent, KanbanBoard, KanbanBoardSnapshot, KanbanTaskDetail, KanbanDiagnostic, KanbanStats, KanbanAssignee, KanbanTaskLog, KanbanTaskContext, KanbanMarkdownListResult, KanbanMarkdownFile, LcmDashboard } from './types';
+import type { DeckAuthSession, DeckHealth, DeckProfile, DeckSession, DeckMessage, ToolSummary, TerminalAction, TerminalRunRequest, TerminalRunResult, DeckModelsResponse, DeckModelPreferenceResponse, TokenStats, DeckStats, DeckRun, DeckRunDetail, LiveTerminalSession, LiveTerminalListResponse, LiveTerminalWindow, LiveTerminalCreateRequest, LiveTerminalTmuxRequest, SkillContent, KanbanBoard, KanbanBoardSnapshot, KanbanTaskDetail, KanbanDiagnostic, KanbanStats, KanbanAssignee, KanbanTaskLog, KanbanTaskContext, KanbanMarkdownListResult, KanbanMarkdownFile, LcmDashboard } from './types';
 import type { ConfigFileKey, DeckConfigBundle, SaveConfigResult } from './config-files';
 
 /**
@@ -89,6 +89,7 @@ async function request<T>(path: string, init?: RequestInit & { timeoutMs?: numbe
 }
 
 export const deckApi = {
+  session: (signal?: AbortSignal) => request<DeckAuthSession>('/api/deck/auth/session', { signal }),
   health: (signal?: AbortSignal) => request<DeckHealth>('/api/deck/health', { signal }),
   stats: (profileId?: string, signal?: AbortSignal) => {
     const qs = profileId ? `?profile=${encodeURIComponent(profileId)}` : '';
@@ -122,6 +123,13 @@ export const deckApi = {
     }),
   models: (profileId = 'default', signal?: AbortSignal) =>
     request<DeckModelsResponse>(`/api/deck/models?profile=${encodeURIComponent(profileId)}`, { signal }),
+  modelPreference: (profileId = 'default', signal?: AbortSignal) =>
+    request<DeckModelPreferenceResponse>(`/api/deck/model-preferences?profileId=${encodeURIComponent(profileId)}`, { signal }),
+  saveModelPreference: (profileId: string, body: { modelId?: string; modelProvider?: string }) =>
+    request<DeckModelPreferenceResponse>('/api/deck/model-preferences', {
+      method: 'PUT',
+      body: JSON.stringify({ profileId, ...body }),
+    }),
   // Token aggregation can be slow when state.db is large; bump the timeout.
   tokens: (days = 14, signal?: AbortSignal) => request<TokenStats>(`/api/deck/tokens?days=${days}`, { signal, timeoutMs: 30_000 }),
   runs: (profileId?: string, signal?: AbortSignal) => {

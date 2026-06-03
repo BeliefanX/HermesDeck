@@ -41,10 +41,11 @@ export const viewport: Viewport = {
 };
 
 const themeBootstrap = `(function(){try{var t=localStorage.getItem('hermesdeck-theme');var d=t||(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.dataset.theme=d;}catch(e){document.documentElement.dataset.theme='dark';}})();`;
+const langBootstrap = `(function(){try{var l=localStorage.getItem('hermesdeck-lang');if(l!=='zh'&&l!=='zh-CN'&&l!=='en'){var n=(navigator.language||'').toLowerCase();l=n.indexOf('zh')===0?'zh':'en';}document.documentElement.lang=(l==='zh'||l==='zh-CN')?'zh-CN':'en';}catch(e){document.documentElement.lang='en';}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body>
         {/* Theme bootstrap must run before hydration so the first paint uses
            the correct background; next/script with strategy="beforeInteractive"
@@ -52,6 +53,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
            that fires for inline <script> children inside React components. */}
         <Script id="theme-bootstrap" strategy="beforeInteractive">
           {themeBootstrap}
+        </Script>
+        <Script id="lang-bootstrap" strategy="beforeInteractive">
+          {langBootstrap}
         </Script>
         <GlobalErrorSink />
         <ProfileProvider>

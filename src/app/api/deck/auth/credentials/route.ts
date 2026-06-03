@@ -3,7 +3,6 @@ import {
   SESSION_COOKIE,
   SESSION_TTL_MS,
   cookieSecureFor,
-  getUsername,
   issueSessionToken,
   updatePassword,
   updateUsername,
@@ -37,24 +36,26 @@ export async function PATCH(req: NextRequest) {
   if (!newUsername && !newPassword) {
     return NextResponse.json({ ok: false, error: 'Nothing to update.' }, { status: 400 });
   }
-  if (!currentPassword || !verifyPassword(currentPassword)) {
+  if (!currentPassword || !verifyPassword(currentPassword, session.user.id)) {
     return NextResponse.json({ ok: false, error: 'Current password is incorrect.' }, { status: 401 });
   }
 
-  if (newUsername && newUsername !== getUsername()) {
-    const r = updateUsername(newUsername);
+  if (newUsername && newUsername !== session.user.username) {
+    const r = updateUsername(newUsername, session.user.id);
     if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: 400 });
   }
 
   let passwordChanged = false;
   if (newPassword) {
-    const r = updatePassword(currentPassword, newPassword);
+    const r = updatePassword(currentPassword, newPassword, session.user.id);
     if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: 400 });
     passwordChanged = true;
   }
 
-  const res = NextResponse.json({ ok: true, username: getUsername(), passwordChanged });
-  const fresh = issueSessionToken();
+  const freshSession = verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
+  const username = freshSession.ok ? freshSession.user.username : newUsername || session.user.username;
+  const res = NextResponse.json({ ok: true, username, passwordChanged });
+  const fresh = issueSessionToken(session.user.id);
   res.cookies.set({
     name: SESSION_COOKIE,
     value: fresh,

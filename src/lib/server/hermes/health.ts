@@ -1,5 +1,5 @@
 import type { DeckHealth } from '@/lib/types';
-import { execFileAsync, makeCache, apiHeaders, HERMES_API_BASE, HERMES_DASHBOARD_BASE, startedAt, redactSecrets } from './core';
+import { makeCache, apiHeaders, HERMES_API_BASE, HERMES_DASHBOARD_BASE, startedAt, redactSecrets } from './core';
 
 function exposeBaseUrl(url: string): string {
   if (process.env.NODE_ENV !== 'production' || process.env.HERMESDECK_DEBUG_HEALTH === '1') return url;
@@ -17,24 +17,23 @@ function safeDetail(input: unknown): string {
 
 export async function hermesVersion(): Promise<string> {
   try {
-    const { stdout } = await execFileAsync('hermes', ['--version'], { timeout: 8000 });
-    return stdout.trim() || 'Hermes';
-  } catch (err) {
-    return `Hermes (${err instanceof Error ? err.message : 'version unavailable'})`;
+    const response = await fetch(`${HERMES_API_BASE}/health`, { cache: 'no-store', headers: apiHeaders(), signal: AbortSignal.timeout(2500) });
+    if (!response.ok) return 'Hermes Agent API';
+    const payload = await response.json().catch(() => null) as { version?: unknown; name?: unknown } | null;
+    const version = typeof payload?.version === 'string' ? payload.version : '';
+    const name = typeof payload?.name === 'string' ? payload.name : 'Hermes Agent API';
+    return version ? `${name} ${version}` : name;
+  } catch {
+    return 'Hermes Agent API';
   }
 }
 
 async function getHealthUncached(): Promise<DeckHealth> {
-  // Run version + the two health probes in parallel — the version call shells
-  // out to `hermes --version` (slow) and previously blocked the HTTP probes.
-  const [versionRes, apiRes, dashRes] = await Promise.allSettled([
-    hermesVersion(),
+  const [apiRes, dashRes] = await Promise.allSettled([
     fetch(`${HERMES_API_BASE}/health`, { cache: 'no-store', headers: apiHeaders(), signal: AbortSignal.timeout(2500) }),
     fetch(`${HERMES_DASHBOARD_BASE}/api/sessions`, { cache: 'no-store', signal: AbortSignal.timeout(1200) }),
   ]);
-  const version = versionRes.status === 'fulfilled'
-    ? versionRes.value
-    : `Hermes (${versionRes.reason instanceof Error ? versionRes.reason.message : 'version unavailable'})`;
+  const version = await hermesVersion();
   let apiHealthy = false;
   let apiDetail = '';
   if (apiRes.status === 'fulfilled') {
@@ -56,8 +55,8 @@ async function getHealthUncached(): Promise<DeckHealth> {
     dashDetail = safeDetail(dashRes.reason instanceof Error ? dashRes.reason.message : String(dashRes.reason));
   }
   return {
-    ok: apiHealthy || version.startsWith('Hermes Agent'),
-    status: apiHealthy ? 'connected' : version.startsWith('Hermes Agent') ? 'degraded' : 'unreachable',
+    ok: apiHealthy,
+    status: apiHealthy ? 'connected' : 'unreachable',
     version,
     apiServer: { baseUrl: exposeBaseUrl(HERMES_API_BASE), healthy: apiHealthy, detail: apiDetail },
     dashboard: { baseUrl: exposeBaseUrl(HERMES_DASHBOARD_BASE), healthy: dashHealthy, detail: dashDetail },

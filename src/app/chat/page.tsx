@@ -1,7 +1,7 @@
 'use client';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { deckApi } from '@/lib/api';
+import { deckApi, ApiError } from '@/lib/api';
 import type { DeckMessage, ToolSummary } from '@/lib/types';
 import { useActiveProfile } from '@/lib/profile-context';
 import type { TimelineItem } from '@/lib/timeline';
@@ -24,6 +24,18 @@ import { useChatScroll } from './_hooks/useChatScroll';
 import { useDragDropPaste } from './_hooks/useDragDropPaste';
 import { useSlashCommand } from './_hooks/useSlashCommand';
 import { useVisibleMessages } from './_hooks/useVisibleMessages';
+import { NoAssignedAgentsState } from '@/components/NoAssignedAgentsState';
+
+function apiErrorDetail(err: unknown): string {
+  if (err instanceof ApiError) {
+    const body = err.body;
+    const detail = body && typeof body === 'object' && 'detail' in body && typeof (body as { detail?: unknown }).detail === 'string'
+      ? `: ${(body as { detail: string }).detail}`
+      : '';
+    return `${err.status} ${err.message}${detail}`;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
 
 export default function ChatPage() {
   return (
@@ -149,7 +161,7 @@ function ChatPageInner() {
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !profile) return;
     let alive = true;
     deckApi.sessions(profile)
       .then((r) => {
@@ -163,7 +175,10 @@ function ChatPageInner() {
           return next;
         });
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (!alive) return;
+        setError(`Session list failed to load: ${apiErrorDetail(err)}`);
+      });
     return () => { alive = false; };
   }, [profile, hydrated, setMetaStoreRaw]);
 
@@ -417,6 +432,16 @@ function ChatPageInner() {
       performDeleteSession={performDeleteSession}
     />
   );
+
+  const noAssignedAgents = profileHydrated && profiles.length === 0;
+
+  if (noAssignedAgents) {
+    return (
+      <main className="chat-shell" style={{ padding: 18 }}>
+        <NoAssignedAgentsState />
+      </main>
+    );
+  }
 
   return (
     <ChatLayoutView

@@ -166,11 +166,12 @@ export async function streamChat(payload: Record<string, unknown>, callbacks: St
  *  later. The hub buffer is keyed by the original POSTed id. */
 export async function resumeChatStreamClient(
   sessionId: string,
+  profileId: string,
   since: number,
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
 ): Promise<boolean> {
-  const res = await fetch(`/api/deck/chat/resume?sessionId=${encodeURIComponent(sessionId)}&since=${since}`, {
+  const res = await fetch(`/api/deck/chat/resume?sessionId=${encodeURIComponent(sessionId)}&profileId=${encodeURIComponent(profileId)}&since=${since}`, {
     method: 'GET',
     signal,
   });

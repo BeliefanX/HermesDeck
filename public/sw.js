@@ -1,12 +1,10 @@
-const CACHE_VERSION = 'hermesdeck-pwa-v10';
+const CACHE_VERSION = 'hermesdeck-pwa-v13';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
-const IMAGE_CACHE = `${CACHE_VERSION}-images`;
 
-// LRU caps. Without these the IMAGE_CACHE grows unbounded as users scroll
-// history; RUNTIME_CACHE accumulates every visited page. On a long-lived PWA
-// install that fills tens of MB and triggers eviction warnings on iOS.
-const IMAGE_CACHE_MAX = 60;
+// LRU cap. Without this RUNTIME_CACHE accumulates every visited page. On a
+// long-lived PWA install that fills tens of MB and triggers eviction warnings
+// on iOS.
 const RUNTIME_CACHE_MAX = 40;
 
 // App shell — kept tight to the routes that actually exist.
@@ -70,24 +68,19 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Hermes-cached binary artifacts (images, audio, etc.) are served via
-  // /api/deck/cache-image. They're effectively immutable — the upstream path
-  // is the cache key — so we use stale-while-revalidate. This keeps images
-  // available offline (e.g. scrolling back through history) instead of
-  // breaking when the JSON offline fallback would otherwise replace binary.
+  // /api/deck/cache-image is admin-only; never satisfy it from a Service Worker
+  // cache because a later ordinary session could otherwise receive a previously
+  // cached admin artifact by URL. Delete any legacy per-request hit before
+  // falling through to the authenticated network request.
   if (url.pathname === '/api/deck/cache-image') {
     event.respondWith(
-      caches.open(IMAGE_CACHE).then(async (cache) => {
-        const hit = await cache.match(req);
-        const fetched = fetch(req).then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            putWithTrim(IMAGE_CACHE, req, copy, IMAGE_CACHE_MAX);
-          }
-          return res;
-        }).catch(() => hit || new Response('', { status: 504 }));
-        return hit || fetched;
-      })
+      caches.keys()
+        .then((keys) => Promise.all(keys.map((key) => caches.open(key).then((cache) => cache.delete(req)))))
+        .then(() => fetch(req))
+        .catch(() => new Response(
+          JSON.stringify({ ok: false, offline: true, error: 'offline' }),
+          { status: 503, headers: { 'Content-Type': 'application/json' } }
+        ))
     );
     return;
   }

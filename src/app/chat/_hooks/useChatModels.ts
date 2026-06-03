@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { deckApi } from '@/lib/api';
 
 export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
@@ -14,10 +14,21 @@ interface ModelOption { id: string; provider: string; isDefault?: boolean }
  */
 export function useChatModels(profile: string) {
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedModel, setSelectedModelState] = useState<string>('');
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium');
   const [defaultReasoning, setDefaultReasoning] = useState<ReasoningEffort>('medium');
   const reasoningTouchedRef = useRef(false);
+  const optionsRef = useRef<ModelOption[]>([]);
+
+  const setSelectedModel = useCallback((nextModel: string) => {
+    setSelectedModelState(nextModel);
+    if (!profile) return;
+    const match = optionsRef.current.find((option) => option.id === nextModel);
+    deckApi.saveModelPreference(profile, {
+      modelId: nextModel || undefined,
+      modelProvider: match?.provider,
+    }).catch(() => { /* keep local UI responsive; stream route can still use current selection */ });
+  }, [profile]);
 
   useEffect(() => {
     let alive = true;
@@ -30,10 +41,18 @@ export function useChatModels(profile: string) {
     // Reset selectedModel whenever profile changes so the new profile's
     // catalog gets a fresh "first available" pick, instead of carrying
     // over a stale id that the new profile may not advertise.
-    setSelectedModel('');
-    deckApi.models(profile, ac.signal)
-      .then((r) => {
+    setSelectedModelState('');
+    setModelOptions([]);
+    optionsRef.current = [];
+    if (!profile) return;
+    Promise.allSettled([
+      deckApi.models(profile, ac.signal),
+      deckApi.modelPreference(profile, ac.signal),
+    ])
+      .then(([modelsResult, preferenceResult]) => {
         if (!alive) return;
+        if (modelsResult.status !== 'fulfilled') return;
+        const r = modelsResult.value;
         const seen = new Map<string, ModelOption>();
         for (const p of r.providers) {
           for (const mm of p.models) {
@@ -45,9 +64,14 @@ export function useChatModels(profile: string) {
           }
         }
         const flat = Array.from(seen.values());
+        optionsRef.current = flat;
         setModelOptions(flat);
         const def = flat.find((m) => m.isDefault) || flat[0];
-        if (def) setSelectedModel(def.id);
+        const storedModel = preferenceResult.status === 'fulfilled'
+          ? preferenceResult.value.preference?.modelId
+          : undefined;
+        const stored = storedModel ? flat.find((m) => m.id === storedModel) : undefined;
+        if (stored || def) setSelectedModelState((stored || def)!.id);
         const cfg = (r.reasoningEffort || '').toLowerCase();
         const resolved: ReasoningEffort = (REASONING_LEVELS as string[]).includes(cfg)
           ? (cfg as ReasoningEffort)

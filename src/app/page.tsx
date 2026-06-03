@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { deckApi } from '@/lib/api';
+import { deckApi, ApiError } from '@/lib/api';
 import type { DeckHealth, DeckSession, DeckStats, ToolSummary, TokenStats } from '@/lib/types';
 import { sourceMeta, sourceTone, shortTitle, relTime } from '@/lib/format';
 import {
@@ -16,6 +16,8 @@ import {
 import { Globe } from 'lucide-react';
 import { useT } from '@/lib/i18n';
 import { useActiveProfile } from '@/lib/profile-context';
+import { useDeckSession } from '@/lib/use-deck-session';
+import { NoAssignedAgentsState } from '@/components/NoAssignedAgentsState';
 import {
   DASHBOARD_ACTIVITY_HOURS,
   buildSessionAggregates,
@@ -25,6 +27,17 @@ import {
   formatUptime,
   pct,
 } from './_lib/dashboard';
+
+function apiErrorDetail(err: unknown): string {
+  if (err instanceof ApiError) {
+    const body = err.body;
+    const detail = body && typeof body === 'object' && 'detail' in body && typeof (body as { detail?: unknown }).detail === 'string'
+      ? `: ${(body as { detail: string }).detail}`
+      : '';
+    return `${err.status} ${err.message}${detail}`;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
 
 export default function HomePage() {
   const t = useT({
@@ -309,6 +322,10 @@ export default function HomePage() {
   });
 
   const { activeProfile, profiles, hydrated } = useActiveProfile();
+  const { capabilities } = useDeckSession();
+  const canUseTerminal = capabilities.canUseTerminal;
+  const canViewTokenAnalytics = capabilities.canManageUsers;
+  const noAssignedAgents = hydrated && profiles.length === 0;
   /** Dashboard scope. 'active' = filter sessions/stats by the active profile;
    *  'all' = global aggregate (the previous behavior). The toggle lives next
    *  to the hero so the "scope" of the headline numbers stays obvious. */
@@ -319,10 +336,20 @@ export default function HomePage() {
   const [tokens, setTokens] = useState<TokenStats | null>(null);
   const [stats, setStats] = useState<DeckStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (!hydrated) return;
+    if (noAssignedAgents) {
+      setSessions([]);
+      setTools([]);
+      setTokens(null);
+      setStats(null);
+      setLoadError('');
+      setLoading(false);
+      return;
+    }
     let alive = true;
     const profileForScope = scope === 'active' ? activeProfile : undefined;
     // Track in-flight requests so an older slow response can't overwrite a
@@ -344,9 +371,9 @@ export default function HomePage() {
           // The recent-sessions sample (heatmap, spark stats, recent list) is
           // always the *active* profile's threads — never silently 'default'.
           // The scope toggle drives only the aggregate `stats` request below.
-          deckApi.sessions(activeProfile || 'default', ac.signal),
+          deckApi.sessions(activeProfile, ac.signal),
           deckApi.tools(ac.signal),
-          deckApi.tokens(14, ac.signal),
+          canViewTokenAnalytics ? deckApi.tokens(14, ac.signal) : Promise.resolve(null),
           deckApi.stats(profileForScope, ac.signal),
         ]);
         if (!alive || mySeq !== seq) return;
@@ -355,6 +382,10 @@ export default function HomePage() {
         if (tl.status === 'fulfilled') setTools(tl.value.tools);
         if (k.status === 'fulfilled') setTokens(k.value);
         if (st.status === 'fulfilled') setStats(st.value);
+        const failures: string[] = [];
+        if (s.status === 'rejected') failures.push(`sessions: ${apiErrorDetail(s.reason)}`);
+        if (st.status === 'rejected') failures.push(`stats: ${apiErrorDetail(st.reason)}`);
+        setLoadError(failures.join(' · '));
         setNow(Date.now());
       } finally {
         if (alive && mySeq === seq) setLoading(false);
@@ -375,7 +406,7 @@ export default function HomePage() {
       inflight?.abort();
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [hydrated, scope, activeProfile]);
+  }, [hydrated, scope, activeProfile, noAssignedAgents, canViewTokenAnalytics]);
 
   const statusTone: Tone = health?.status === 'connected' ? 'green' : health?.status === 'degraded' ? 'yellow' : 'red';
   const statusLabel = health?.status === 'connected' ? t.statusConnected
@@ -446,6 +477,14 @@ export default function HomePage() {
     return fromStats ?? sessions.length;
   }, [stats, activeProfile, sessions.length]);
 
+  if (noAssignedAgents) {
+    return (
+      <Page>
+        <NoAssignedAgentsState />
+      </Page>
+    );
+  }
+
   return (
     <Page>
       {/* Hero */}
@@ -466,9 +505,11 @@ export default function HomePage() {
           <Link href="/chat" style={{ textDecoration: 'none' }}>
             <Btn variant="primary" icon={<MessageSquare size={14} />}>{t.openChat}</Btn>
           </Link>
-          <Link href="/terminal" style={{ textDecoration: 'none' }}>
-            <Btn icon={<Terminal size={14} />}>{t.openTerminal}</Btn>
-          </Link>
+          {canUseTerminal && (
+            <Link href="/terminal" style={{ textDecoration: 'none' }}>
+              <Btn icon={<Terminal size={14} />}>{t.openTerminal}</Btn>
+            </Link>
+          )}
           <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             <Chip active={scope === 'active'} onClick={() => setScope('active')} icon={<Bot size={11} />}>
               {activeProfileMeta?.name || activeProfile}
@@ -479,6 +520,14 @@ export default function HomePage() {
           </span>
         </div>
       </Card>
+
+      {loadError && (
+        <Card>
+          <div style={{ color: '#f87171', fontSize: 13, lineHeight: 1.5 }}>
+            Dashboard data load failed: {loadError}
+          </div>
+        </Card>
+      )}
 
       {/* 5 metric cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14 }}>
@@ -570,20 +619,24 @@ export default function HomePage() {
         </div>
       </Card>
 
-      {/* Token usage hero */}
-      <TokenUsageCard tokens={tokens} loading={loading} />
+      {canViewTokenAnalytics && (
+        <>
+          {/* Token usage hero */}
+          <TokenUsageCard tokens={tokens} loading={loading} />
 
-      {/* Token charts: daily stacked + weekday/hour heatmap */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
-        <TokenDailyChart tokens={tokens} loading={loading} />
-        <TokenHourlyHeatmap tokens={tokens} loading={loading} />
-      </div>
+          {/* Token charts: daily stacked + weekday/hour heatmap */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+            <TokenDailyChart tokens={tokens} loading={loading} />
+            <TokenHourlyHeatmap tokens={tokens} loading={loading} />
+          </div>
 
-      {/* Top models + Top sources by tokens */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
-        <TopModelsByTokens tokens={tokens} loading={loading} />
-        <TopSourcesByTokens tokens={tokens} loading={loading} />
-      </div>
+          {/* Top models + Top sources by tokens */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+            <TopModelsByTokens tokens={tokens} loading={loading} />
+            <TopSourcesByTokens tokens={tokens} loading={loading} />
+          </div>
+        </>
+      )}
 
       {/* Profiles + Recent sessions */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>

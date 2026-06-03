@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import {
   HERMES_API_BASE,
   PROFILE_ID_RE,
@@ -6,7 +5,6 @@ import {
   combineAbortSignals,
   redactSecrets,
 } from './core';
-import { tagSessionSource } from './sessions';
 import {
   buildPromptWithAttachments,
   extractAttachmentsFromEvent,
@@ -21,6 +19,7 @@ import {
   hasGap,
   markStreamDone,
   type ActiveStream,
+  type ActiveStreamMetadata,
   type HubEvent,
 } from './stream-hub';
 
@@ -44,15 +43,6 @@ const HERMES_REQUEST_BODY_BYTE_LIMIT = 1_000_000;
 //   - upstream proxies (nginx, Cloudflare) don't drop an "idle" connection
 //   - the client watchdog has a steady byte signal even during long tool calls
 const HEARTBEAT_INTERVAL_MS = 15_000;
-const CLI_OUTPUT_RING_BYTES = 256_000;
-const CLI_STDERR_EVENT_BYTES = 8_000;
-
-function appendRing(current: string, chunk: string, maxBytes: number): string {
-  const next = current + chunk;
-  if (Buffer.byteLength(next, 'utf8') <= maxBytes) return next;
-  return Buffer.from(next, 'utf8').subarray(-maxBytes).toString('utf8');
-}
-
 // SSE encoding helper: same wire format as core.sendSse but operates on
 // arbitrary write callbacks so it can plug into a hub-subscriber lambda.
 function encodeSseFrame(event: string, jsonData: string): Uint8Array {
@@ -178,13 +168,11 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody): Promise
   const hasImages = attachments.some((a) => a.kind === 'image');
   const enrichedMessage = buildPromptWithAttachments(message, attachments);
 
-  let cliChild: import('node:child_process').ChildProcess | null = null;
   let upstreamReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   // Detach the upstream if the hub itself is aborted (e.g. another send for
   // the same session, or the eviction timer fires).
   stream.abort.signal.addEventListener('abort', () => {
     if (upstreamReader) { try { upstreamReader.cancel('hub-abort'); } catch {} }
-    if (cliChild) { try { cliChild.kill('SIGTERM'); } catch {} }
   }, { once: true });
 
   // Long tasks are common with tool-heavy prompts. Default cap is 30 min.
@@ -345,69 +333,15 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody): Promise
       attachments: slimAtts,
     });
     markStreamDone(stream);
-    if (sessionId) { void tagSessionSource(sessionId, 'hermesdeck', profile); }
   } catch (apiError) {
     const rawReason = apiError instanceof Error ? apiError.message : String(apiError);
     const reason = redactSecrets(rawReason);
-    if (hasImages) {
-      emitToHub(stream, 'error', {
-        error: `图片对话失败：${reason}`,
-        backend: 'hermes-api-server',
-      });
-      markStreamDone(stream);
-      return;
-    }
-    emitToHub(stream, 'status', { phase: 'fallback-cli', backend: 'hermes-cli', reason });
-    const args = ['chat'];
-    if (profile && profile !== 'default') args.push('--profile', profile);
-    args.push('-Q', '--source', 'hermesdeck', '-q', '--', enrichedMessage);
-    const child = spawn('hermes', args, { stdio: ['ignore', 'pipe', 'pipe'], shell: false });
-    cliChild = child;
-    let cliFull = ''; let cliErr = '';
-    let settled = false;
-    let timedOut = false;
-    const cleanupCli = () => {
-      if (cliTimeout) clearTimeout(cliTimeout);
-      stream.abort.signal.removeEventListener('abort', onCliAbort);
-      cliChild = null;
-    };
-    const terminateCli = () => {
-      try { child.kill('SIGTERM'); } catch {}
-      setTimeout(() => { if (!child.killed) { try { child.kill('SIGKILL'); } catch {} } }, 1500).unref?.();
-    };
-    const onCliAbort = () => terminateCli();
-    const cliTimeout = setTimeout(() => {
-      timedOut = true;
-      terminateCli();
-    }, timeoutMs);
-    cliTimeout.unref?.();
-    stream.abort.signal.addEventListener('abort', onCliAbort, { once: true });
-    await new Promise<void>((resolve) => {
-      const finish = () => { if (!settled) { settled = true; cleanupCli(); resolve(); } };
-      child.stdout.on('data', (chunk) => {
-        const delta = chunk.toString();
-        cliFull = appendRing(cliFull, delta, CLI_OUTPUT_RING_BYTES);
-        emitToHub(stream, 'delta', { delta });
-      });
-      child.stderr.on('data', (chunk) => {
-        const safe = redactSecrets(chunk.toString());
-        cliErr = appendRing(cliErr, safe, CLI_OUTPUT_RING_BYTES);
-        emitToHub(stream, 'run-event', { type: 'stderr', payload: appendRing('', safe, CLI_STDERR_EVENT_BYTES), ts: Date.now() });
-      });
-      child.on('error', (e) => {
-        emitToHub(stream, 'error', { error: redactSecrets(e.message) });
-        markStreamDone(stream);
-        finish();
-      });
-      child.on('close', (code, signal) => {
-        const stderr = redactSecrets(cliErr);
-        if (timedOut) emitToHub(stream, 'error', { error: `hermes timed out after ${timeoutMs}ms`, stderr });
-        else if (code === 0) emitToHub(stream, 'done', { ok: true, backend: 'hermes-cli-fallback', content: cliFull.trim(), stderr: stderr.slice(-1000) });
-        else emitToHub(stream, 'error', { error: `hermes exited with code ${code ?? 'null'}${signal ? ` (${signal})` : ''}`, stderr: stderr.slice(-2000) });
-        markStreamDone(stream);
-        finish();
-      });
+    emitToHub(stream, 'error', {
+      error: hasImages ? `图片对话失败：${reason}` : 'hermes_api_unavailable',
+      detail: reason.slice(0, 480),
+      backend: 'hermes-api-server',
     });
+    markStreamDone(stream);
   }
 }
 
@@ -415,11 +349,11 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody): Promise
  *  for the session, kicks off the upstream pump in the background, and returns
  *  a subscriber stream for the calling client. Refresh-resumability is provided
  *  by the GET resume route which subscribes to the same hub stream. */
-export function createChatStream(body: ChatStreamBody, clientSignal?: AbortSignal): ReadableStream<Uint8Array> {
+export function createChatStream(body: ChatStreamBody, metadata: ActiveStreamMetadata, clientSignal?: AbortSignal): ReadableStream<Uint8Array> {
   const incomingSession = typeof body?.sessionId === 'string' && body.sessionId
     ? body.sessionId
     : `pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const stream = createActiveStream(incomingSession);
+  const stream = createActiveStream(incomingSession, metadata);
 
   // Detach (NOT abort upstream) when the originating client disconnects — the
   // hub keeps the upstream running so a refresh can resume.

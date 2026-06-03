@@ -2,9 +2,10 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { LogIn, Lock, User } from 'lucide-react';
+import { LogIn, Lock, User, UserPlus } from 'lucide-react';
 import { Btn } from '@/components/Brand';
-import { useT } from '@/lib/i18n';
+import { LanguageToggle } from '@/components/LanguageToggle';
+import { localizeError, useLang, useT } from '@/lib/i18n';
 
 function LoginForm() {
   const router = useRouter();
@@ -16,6 +17,7 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [bootstrap, setBootstrap] = useState(false);
   const userRef = useRef<HTMLInputElement | null>(null);
+  const lang = useLang();
 
   const t = useT({
     zh: {
@@ -30,6 +32,7 @@ function LoginForm() {
       missing: '请填写用户名和密码。',
       networkError: '网络错误，请稍后重试。',
       tooMany: '尝试次数过多，请稍后再试。',
+      register: '创建新账户',
     },
     en: {
       title: 'HermesDeck',
@@ -43,6 +46,7 @@ function LoginForm() {
       missing: 'Please enter both username and password.',
       networkError: 'Network error — please try again.',
       tooMany: 'Too many attempts — please wait and try again.',
+      register: 'Create a new account',
     },
   });
 
@@ -87,9 +91,14 @@ function LoginForm() {
         if (res.status === 429) {
           setError(t.tooMany);
         } else {
-          setError(data?.error || t.invalid);
+          setError(data?.error ? localizeError(data.error, lang) : t.invalid);
         }
         setSubmitting(false);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (data?.pending) {
+        window.location.replace('/pending');
         return;
       }
       // Use a hard navigation so middleware re-evaluates with the fresh cookie.
@@ -103,6 +112,7 @@ function LoginForm() {
 
   return (
     <div className="login-shell">
+      <LanguageToggle style={{ position: 'fixed', top: 16, right: 16, zIndex: 10 }} />
       <div className="login-card">
         <div className="login-brand">
           <Image src="/icons/icon-192.png" alt="" width={48} height={48} />
@@ -153,6 +163,11 @@ function LoginForm() {
           >
             {submitting ? t.submitting : t.submit}
           </Btn>
+
+          <a className="btn ghost" href="/register" style={{ justifyContent: 'center', width: '100%', textDecoration: 'none' }}>
+            <UserPlus size={14} />
+            {t.register}
+          </a>
 
           {bootstrap ? <div className="login-hint">{t.hint}</div> : null}
         </form>

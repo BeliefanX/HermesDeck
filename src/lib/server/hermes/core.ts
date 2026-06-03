@@ -98,6 +98,21 @@ export function apiHeaders(): Record<string, string> {
   return h;
 }
 
+export async function hermesApiGet<T>(path: string, timeoutMs = 5000): Promise<T> {
+  const base = HERMES_API_BASE.replace(/\/+$/, '');
+  const response = await fetch(`${base}${path.startsWith('/') ? path : `/${path}`}`, {
+    cache: 'no-store',
+    headers: apiHeaders(),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    const detail = text ? `: ${redactSecrets(text).slice(0, 240)}` : '';
+    throw new Error(`Hermes Agent API GET ${path} failed with ${response.status}${detail}`);
+  }
+  return response.json() as Promise<T>;
+}
+
 export function redactSecrets(text: string): string {
   return text
     .replace(/(Authorization:\s*Bearer\s+)[A-Za-z0-9._~+\/-]+=*/gi, '$1[REDACTED]')
@@ -135,20 +150,4 @@ export function sendSse(controller: ReadableStreamDefaultController<Uint8Array>,
   try {
     controller.enqueue(new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
   } catch { /* controller already closed */ }
-}
-
-let cachedHermesProject: { projectDir: string; pythonBin: string } | null = null;
-export async function resolveHermesProject(): Promise<{ projectDir: string; pythonBin: string } | null> {
-  if (cachedHermesProject) return cachedHermesProject;
-  try {
-    const { stdout } = await execFileAsync('hermes', ['--version'], { timeout: 8000 });
-    const proj = stdout.match(/Project:\s+(\S+)/);
-    if (proj) {
-      const projectDir = proj[1];
-      const pythonBin = join(projectDir, 'venv', 'bin', 'python3');
-      cachedHermesProject = { projectDir, pythonBin };
-      return cachedHermesProject;
-    }
-  } catch {}
-  return null;
 }

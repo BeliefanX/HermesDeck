@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
-import { resumeChatStream } from '@/lib/server/hermes';
-import { requireAuth } from '@/lib/server/csrf';
+import { getActiveStream, resumeChatStream } from '@/lib/server/hermes';
+import { isAdminRole, requireActiveUser, requireProfileAccess, rbacJsonError } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,14 +18,29 @@ export const dynamic = 'force-dynamic';
 // run it through guardMutating(); it still exposes private in-flight chat data
 // and must require a valid session cookie.
 export async function GET(req: NextRequest) {
-  const auth = requireAuth(req);
+  const auth = requireActiveUser(req);
   if (!auth.ok) return auth.response;
   const url = new URL(req.url);
   const sessionId = (url.searchParams.get('sessionId') || '').trim();
+  const profileId = (url.searchParams.get('profileId') || url.searchParams.get('profile') || '').trim();
   if (!sessionId) {
     return new Response(JSON.stringify({ error: 'missing_session_id' }), {
       status: 400, headers: { 'Content-Type': 'application/json' },
     });
+  }
+  const active = getActiveStream(sessionId);
+  if (!active) {
+    return new Response(JSON.stringify({ error: 'not_found', sessionId }), {
+      status: 404, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (profileId && profileId !== active.profileId) {
+    return rbacJsonError(403, 'unauthorized', 'Requested profile does not own this stream.');
+  }
+  const access = requireProfileAccess(auth.user, active.profileId, { fallback: active.profileId });
+  if (!access.ok) return access.response;
+  if (active.ownerUserId !== auth.user.id && !isAdminRole(auth.user.role)) {
+    return rbacJsonError(403, 'unauthorized', 'Stream belongs to another user.');
   }
   // Reasonable bound — anything beyond a few thousand events is nonsense and
   // also bigger than our buffer cap, so fall through to gap-detection.
@@ -33,11 +48,7 @@ export async function GET(req: NextRequest) {
   const since = Number.isFinite(sinceRaw) && sinceRaw >= 0 ? Math.min(sinceRaw, 1_000_000) : 0;
 
   const stream = resumeChatStream(sessionId, since);
-  if (!stream) {
-    return new Response(JSON.stringify({ error: 'not_found', sessionId }), {
-      status: 404, headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  if (!stream) return new Response(JSON.stringify({ error: 'not_found', sessionId }), { status: 404, headers: { 'Content-Type': 'application/json' } });
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream; charset=utf-8',

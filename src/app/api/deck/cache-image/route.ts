@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAuth } from '@/lib/server/csrf';
+import { requireAdmin } from '@/lib/server/rbac';
 import { createReadStream } from 'node:fs';
 import { lstat, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -48,7 +48,7 @@ function isInsideAllowedRoot(absPath: string): boolean {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = requireAuth(req);
+  const auth = requireAdmin(req);
   if (!auth.ok) return auth.response;
   const url = new URL(req.url);
   const raw = url.searchParams.get('path');

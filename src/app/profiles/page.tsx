@@ -10,6 +10,7 @@ import { Card, Kbd, Kicker, MetricCard, Page, SectionHead, Tag, Btn, type Tone }
 import { relTime, useNowTick } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import { useActiveProfile } from '@/lib/profile-context';
+import { NoAssignedAgentsState } from '@/components/NoAssignedAgentsState';
 
 function fmtTokens(n?: number): string {
   if (!n) return '—';
@@ -216,15 +217,7 @@ export default function ProfilesPage() {
             <div className="skel" style={{ width: 280, height: 12 }} />
           </Card>
         ) : profiles.length === 0 ? (
-          <Card style={{ padding: 28, textAlign: 'center' }}>
-            <Bot size={22} style={{ color: 'var(--muted)' }} />
-            <h2 style={{ margin: '8px 0 4px', fontSize: 16, fontWeight: 620, color: 'var(--strong-text)' }}>
-              {t.noProfiles}
-            </h2>
-            <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: 0 }}>
-              {t.noProfilesDesc1}<Kbd>hermes profile create</Kbd>{t.noProfilesDesc2}
-            </p>
-          </Card>
+          <NoAssignedAgentsState />
         ) : (
           <ProfileSelector
             profiles={profiles}

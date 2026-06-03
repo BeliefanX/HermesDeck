@@ -4,8 +4,8 @@ import {
   SESSION_TTL_MS,
   cookieSecureFor,
   issueSessionToken,
-  verifySessionToken,
 } from '@/lib/server/auth';
+import { inspectProtectedSessionToken } from '@/lib/server/session-auth';
 
 // Next 16 `proxy` always runs on Node.js — runtime / matcher / route-segment
 // configs are NOT allowed in this file. Path skipping is done inline instead.
@@ -31,9 +31,12 @@ const SKIP_EXACT = new Set<string>([
 // silently unauthenticated.
 const PUBLIC_PATHS = new Set<string>([
   '/login',
+  '/register',
+  '/pending',
   '/api/deck/auth/login',
   '/api/deck/auth/logout',
   '/api/deck/auth/session',
+  '/api/deck/auth/register',
 ]);
 
 function shouldSkip(path: string): boolean {
@@ -57,9 +60,12 @@ export function proxy(req: NextRequest) {
   if (isPublic(pathname)) return NextResponse.next();
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
-  const result = verifySessionToken(token);
+  const result = inspectProtectedSessionToken(token);
 
   if (!result.ok) {
+    if (result.reason === 'inactive_user') {
+      return NextResponse.json({ ok: false, error: 'inactive_user', detail: 'User is not active.' }, { status: 403 });
+    }
     if (isApiPath(pathname)) {
       return NextResponse.json({ ok: false, error: 'Not authenticated.' }, { status: 401 });
     }
@@ -72,11 +78,11 @@ export function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (result.shouldRefresh) {
+  if (result.session.shouldRefresh) {
     const res = NextResponse.next();
     res.cookies.set({
       name: SESSION_COOKIE,
-      value: issueSessionToken(),
+      value: issueSessionToken(result.user.id),
       httpOnly: true,
       sameSite: 'lax',
       secure: cookieSecureFor(req),

@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   SESSION_COOKIE,
   SESSION_TTL_MS,
+  authenticateUser,
   cookieSecureFor,
-  getUsername,
   issueSessionToken,
   rateLimitCheck,
   rateLimitRecordFailure,
   rateLimitReset,
-  verifyPassword,
+  toSafeUserContext,
 } from '@/lib/server/auth';
 import { guardRequestBody, readLimitedJson, isSameOrigin } from '@/lib/server/csrf';
 
@@ -52,18 +52,34 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Always run verifyPassword, even when the username is wrong, so that timing
-  // does not leak whether the username exists.
-  const passwordOk = verifyPassword(password);
-  const usernameOk = username === getUsername();
-  if (!usernameOk || !passwordOk) {
+  // authenticateUser always runs a password hash, even for unknown users, so
+  // timing does not leak whether the username exists.
+  const auth = authenticateUser(username, password, { allowStatuses: ['active', 'pending'] });
+  if (!auth.ok) {
     rateLimitRecordFailure(limitKey);
     return NextResponse.json({ ok: false, error: 'Invalid username or password.' }, { status: 401 });
   }
 
   rateLimitReset(limitKey);
-  const token = issueSessionToken();
-  const res = NextResponse.json({ ok: true, username: getUsername() });
+  if (auth.user.status === 'pending') {
+    return NextResponse.json({
+      ok: true,
+      pending: true,
+      status: 'pending',
+      message: 'Your account is pending administrator approval.',
+      user: toSafeUserContext(auth.user),
+    });
+  }
+
+  const token = issueSessionToken(auth.user.id);
+  const res = NextResponse.json({
+    ok: true,
+    pending: false,
+    username: auth.user.username,
+    role: auth.user.role,
+    status: auth.user.status,
+    user: toSafeUserContext(auth.user),
+  });
   res.cookies.set({
     name: SESSION_COOKIE,
     value: token,

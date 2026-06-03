@@ -1,5 +1,30 @@
 export type HealthStatus = 'connected' | 'degraded' | 'unreachable';
 
+export type DeckRole = 'super_admin' | 'admin' | 'user';
+export type DeckUserStatus = 'pending' | 'active' | 'disabled' | 'rejected';
+
+export interface DeckUserCapabilities {
+  canUseApp: boolean;
+  canManageUsers: boolean;
+  canApproveUsers: boolean;
+  canUseTerminal: boolean;
+  canManageOwnCredentials: boolean;
+}
+
+export interface DeckAuthSession {
+  authenticated: boolean;
+  userId?: string;
+  username?: string;
+  displayName?: string;
+  email?: string;
+  role?: DeckRole;
+  status?: DeckUserStatus;
+  assignedProfileIds?: string[];
+  capabilities?: DeckUserCapabilities;
+  expiresAt?: number;
+  bootstrap?: boolean;
+}
+
 export interface DeckHealth {
   ok: boolean;
   status: HealthStatus;
@@ -188,6 +213,18 @@ export interface DeckModelsResponse {
   orphanModels: ModelInfo[];
   /** Configured `agent.reasoning_effort` from this profile's config.yaml. */
   reasoningEffort?: string;
+}
+
+export interface DeckModelPreference {
+  modelId?: string;
+  modelProvider?: string;
+  updatedAt: string;
+}
+
+export interface DeckModelPreferenceResponse {
+  ok: true;
+  profileId: string;
+  preference: DeckModelPreference | null;
 }
 
 export interface TokenStats {

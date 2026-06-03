@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeSession } from '@/lib/server/terminal-pty';
 import { guardMutating, guardRequestBody, readLimitedJson } from '@/lib/server/csrf';
+import { requireAdmin } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -8,6 +9,8 @@ export const runtime = 'nodejs';
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = guardMutating(req);
   if (!guard.ok) return guard.response;
+  const auth = requireAdmin(req);
+  if (!auth.ok) return auth.response;
   const bodyGuard = guardRequestBody(req, { contentTypes: ['application/json'], maxBytes: 128_000 });
   if (!bodyGuard.ok) return bodyGuard.response;
   try {

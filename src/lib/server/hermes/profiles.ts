@@ -1,101 +1,89 @@
 import type { DeckProfile } from '@/lib/types';
-import { runPythonOr } from '../run-python';
-import { execFileAsync, makeCache } from './core';
+import { apiHeaders, HERMES_API_BASE, makeCache, PROFILE_ID_RE } from './core';
 
-async function getProfileActivity(profileIds: string[]): Promise<Record<string, { sessionCount: number; lastActiveAt: string }>> {
-  if (!profileIds.length) return {};
-  // Each profile keeps its own state.db at ~/.hermes/state.db (default) or
-  // ~/.hermes/profiles/<id>/state.db (named). We aggregate session count and
-  // the latest activity timestamp (max of started_at and last message
-  // created_at) so the deck can show "X sessions · last active 2h ago" without
-  // touching any Hermes config.
-  const script = String.raw`
-import sqlite3, json, os, pathlib, datetime
-ids = json.loads(os.environ.get('IDS','[]'))
-home = pathlib.Path.home() / '.hermes'
-out = {}
-def to_iso(v):
-    if v in (None, ''): return ''
-    try:
-        f = float(v)
-        if f > 10_000_000:
-            return datetime.datetime.fromtimestamp(f, tz=datetime.timezone.utc).isoformat().replace('+00:00','Z')
-    except (TypeError, ValueError):
-        pass
-    return str(v)
-for pid in ids:
-    db = home / 'state.db' if pid == 'default' else home / 'profiles' / pid / 'state.db'
-    info = {'sessionCount': 0, 'lastActiveAt': ''}
-    if not db.exists():
-        out[pid] = info; continue
-    try:
-        con = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
-        sess_cols = [r[1] for r in con.execute('pragma table_info(sessions)').fetchall()]
-        if not sess_cols:
-            out[pid] = info; con.close(); continue
-        info['sessionCount'] = int(con.execute('select count(*) from sessions').fetchone()[0] or 0)
-        candidates = []
-        for c in ('updated_at','ended_at','started_at','created_at'):
-            if c in sess_cols:
-                v = con.execute(f'select max({c}) from sessions').fetchone()[0]
-                if v: candidates.append(v)
-        msg_cols = [r[1] for r in con.execute('pragma table_info(messages)').fetchall()]
-        if 'created_at' in msg_cols:
-            v = con.execute('select max(created_at) from messages').fetchone()[0]
-            if v: candidates.append(v)
-        if candidates:
-            best = ''
-            for c in candidates:
-                iso = to_iso(c)
-                if iso > best: best = iso
-            info['lastActiveAt'] = best
-        con.close()
-    except Exception:
-        pass
-    out[pid] = info
-print(json.dumps(out, ensure_ascii=False))`;
-  return runPythonOr<Record<string, { sessionCount: number; lastActiveAt: string }>>(
-    script,
-    {},
-    { timeoutMs: 8000, env: { ...process.env, IDS: JSON.stringify(profileIds) } },
-  );
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-async function getProfilesUncached(): Promise<DeckProfile[]> {
-  // `profile show` and `profile list` are independent — running them in
-  // parallel halves wall-clock latency on a cold call.
-  const [showRes, listRes] = await Promise.allSettled([
-    execFileAsync('hermes', ['profile', 'show'], { timeout: 8000 }),
-    execFileAsync('hermes', ['profile', 'list'], { timeout: 10000 }),
-  ]);
-  let active = 'default';
-  if (showRes.status === 'fulfilled') {
-    const m = showRes.value.stdout.match(/(?:Active profile|Profile)[:\s]+([\w.-]+)/i);
-    if (m) active = m[1];
-  }
-  let profiles: DeckProfile[] = [];
-  if (listRes.status === 'fulfilled') {
-    const { stdout } = listRes.value;
-    const rows = stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    for (const line of rows) {
-      if (/^(NAME|Profile|---)/i.test(line) || /^[─\-\s]+$/.test(line)) continue;
-      const isActive = /[◆*▶>]/.test(line.slice(0, 3));
-      const clean = line.replace(/^[◆*▶>\s]+/, '').trim();
-      const cols = clean.split(/\s{2,}|\t+/).filter(Boolean);
-      const first = cols[0] || clean.split(/\s+/)[0];
-      if (!first || /profile/i.test(first)) continue;
-      const id = first.replace(/[：:]/g, '');
-      profiles.push({ id, name: id, active: id === active || isActive, model: cols[1] || '', gateway: cols[2] || '', alias: cols[3] || '', toolsets: [] });
-    }
-    profiles = Array.from(new Map(profiles.map((p) => [p.id, p])).values());
-  }
-  if (!profiles.length) profiles = [{ id: 'default', name: 'default', active: true, toolsets: [] }];
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
 
-  const activity = await getProfileActivity(profiles.map((p) => p.id));
-  return profiles.map((p) => {
-    const a = activity[p.id];
-    return a ? { ...p, sessionCount: a.sessionCount, lastActiveAt: a.lastActiveAt || undefined } : p;
+function coerceProfileId(value: unknown): string {
+  const id = stringValue(value);
+  return id && PROFILE_ID_RE.test(id) ? id : '';
+}
+
+function normalizeApiProfile(raw: unknown): DeckProfile | null {
+  if (typeof raw === 'string') {
+    const id = coerceProfileId(raw);
+    return id ? { id, name: id, active: false, toolsets: [] } : null;
+  }
+  if (!isRecord(raw)) return null;
+
+  const id = coerceProfileId(raw.id) || coerceProfileId(raw.profileId) || coerceProfileId(raw.name);
+  if (!id) return null;
+  const toolsets = Array.isArray(raw.toolsets) ? raw.toolsets.filter((item): item is string => typeof item === 'string') : [];
+  const active = raw.active === true || raw.isActive === true || raw.current === true;
+  return {
+    id,
+    name: stringValue(raw.name) || id,
+    active,
+    model: stringValue(raw.model),
+    gateway: stringValue(raw.gateway),
+    alias: stringValue(raw.alias) || undefined,
+    toolsets,
+  };
+}
+
+function extractApiProfiles(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload;
+  if (!isRecord(payload)) throw new Error('profiles API returned a non-object payload.');
+  for (const key of ['profiles', 'items', 'data']) {
+    const value = payload[key];
+    if (Array.isArray(value)) return value;
+  }
+  if (isRecord(payload.data) && Array.isArray(payload.data.profiles)) return payload.data.profiles;
+  throw new Error('profiles API payload does not contain a profile list.');
+}
+
+async function fetchProfilesApi(path: string): Promise<DeckProfile[]> {
+  const base = HERMES_API_BASE.replace(/\/+$/, '');
+  const response = await fetch(`${base}${path}`, {
+    cache: 'no-store',
+    headers: apiHeaders(),
+    signal: AbortSignal.timeout(5000),
   });
+  if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}`);
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error(`${path} returned invalid JSON.`);
+  }
+
+  const profiles = extractApiProfiles(payload)
+    .map(normalizeApiProfile)
+    .filter((profile): profile is DeckProfile => profile !== null);
+  return Array.from(new Map(profiles.map((profile) => [profile.id, profile])).values());
 }
 
-export const getProfiles = makeCache(5_000, getProfilesUncached);
+async function getStrictProfilesUncached(): Promise<DeckProfile[]> {
+  // Strict profile discovery is backed only by Hermes Agent's HTTP API.
+  // Do not synthesize default profiles and do not fall back to local runtime stores.
+  const errors: string[] = [];
+  for (const path of ['/v1/profiles', '/api/profiles']) {
+    try {
+      const profiles = await fetchProfilesApi(path);
+      if (!profiles.length) throw new Error(`${path} returned no profiles.`);
+      return profiles;
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+  throw new Error(`Hermes Agent profile list unavailable: ${errors.join('; ')}`);
+}
+
+export const getStrictProfiles = makeCache(2_000, getStrictProfilesUncached);
+export const getProfiles = getStrictProfiles;

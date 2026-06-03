@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readSkill, saveSkill } from '@/lib/server/hermes';
-import { guardMutating, guardRequestBody, readLimitedJsonText, requireAuth } from '@/lib/server/csrf';
+import { guardMutating, guardRequestBody, readLimitedJsonText } from '@/lib/server/csrf';
+import { requireActiveUser, requireAdmin } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,7 +21,7 @@ function statusForFsError(err: unknown): number {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = requireAuth(req);
+  const auth = requireActiveUser(req);
   if (!auth.ok) return auth.response;
   const url = new URL(req.url);
   const relPath = url.searchParams.get('path') || '';
@@ -39,6 +40,8 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const guard = guardMutating(req);
   if (!guard.ok) return guard.response;
+  const auth = requireAdmin(req);
+  if (!auth.ok) return auth.response;
 
   const bodyGuard = guardRequestBody(req, { contentTypes: ['application/json'], maxBytes: MAX_BODY_BYTES });
   if (!bodyGuard.ok) return bodyGuard.response;

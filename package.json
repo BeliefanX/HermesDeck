@@ -11,6 +11,8 @@
     "lint": "eslint .",
     "verify:pwa": "node scripts/verify-pwa.mjs",
     "smoke": "node scripts/smoke.mjs",
+    "test:rbac": "node --experimental-strip-types --test tests/rbac-auth.test.mjs",
+    "test:csrf": "node --experimental-strip-types --test tests/csrf-auth.test.mjs",
     "postinstall": "node scripts/fix-pty-helper.mjs"
   },
   "engines": {

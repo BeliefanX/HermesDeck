@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { SESSION_COOKIE, verifySessionToken } from './auth';
+import { NextRequest, NextResponse } from 'next/server.js';
+import { inspectProtectedSessionToken, readSessionCookie } from './session-auth.ts';
 
 /**
  * Same-origin guard for state-changing endpoints.
@@ -8,7 +8,9 @@ import { SESSION_COOKIE, verifySessionToken } from './auth';
  * explicit allowlist:
  *   - `HERMESDECK_PUBLIC_ORIGIN` — set in production behind a reverse proxy
  *     (e.g. https://deck.example.com). Comma-separated for multi-host setups.
- *   - localhost / 127.0.0.1 / ::1 — always allowed for dev convenience.
+ *   - localhost / 127.0.0.1 / ::1 — always allowed for local access.
+ *   - Private IPv4 literals — always allowed for direct LAN access by phones,
+ *     tablets, and other local devices without weakening arbitrary domains.
  *
  * We deliberately do NOT mirror the request's `Host` / `X-Forwarded-Host`
  * header: those are client-controllable when there's no proxy stripping them
@@ -30,12 +32,18 @@ function parseAllowedHosts(): Set<string> {
   return out;
 }
 
-// RFC1918 + link-local + loopback. Used in development to permit phones / other
-// LAN devices without forcing the operator to enumerate IPs in HERMESDECK_PUBLIC_ORIGIN.
+// RFC1918 + link-local + loopback. Permits phones / other LAN devices without
+// forcing the operator to enumerate IPs in HERMESDECK_PUBLIC_ORIGIN. Keep this
+// literal-only and octet-validated; do not infer trust from Host/X-Forwarded-*.
 function isPrivateIPv4(host: string): boolean {
-  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!m) return false;
-  const a = +m[1]!, b = +m[2]!;
+  const parts = host.split('.');
+  if (parts.length !== 4) return false;
+  const octets = parts.map((part) => {
+    if (!/^\d{1,3}$/.test(part)) return NaN;
+    return Number(part);
+  });
+  if (octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
+  const a = octets[0]!, b = octets[1]!;
   if (a === 10) return true;
   if (a === 192 && b === 168) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
@@ -50,10 +58,8 @@ function hostMatchesAllowed(host: string, allowed: Set<string>): boolean {
   // Allow host:port pairs where the bare host matches (dev convenience).
   const bare = h.includes(':') ? h.split(':')[0]! : h;
   if (bare && allowed.has(bare)) return true;
-  // In development, accept any private-network IPv4 — phones / iPads on the
-  // same Wi-Fi need to POST to the dev server, and the operator should not
-  // have to enumerate every host.
-  if (process.env.NODE_ENV !== 'production' && isPrivateIPv4(bare)) return true;
+  // Accept only literal private-network IPv4 origins for direct LAN access.
+  if (isPrivateIPv4(bare)) return true;
   return false;
 }
 
@@ -91,11 +97,11 @@ export function isSameOrigin(req: NextRequest | Request): boolean {
  * matcher-tweak from accidentally exposing a sensitive endpoint.
  */
 export function requireAuth(req: NextRequest | Request): { ok: true } | { ok: false; response: NextResponse } {
-  const cookieHeader = req.headers.get('cookie') || '';
-  const m = cookieHeader.split(/; */).find((c) => c.startsWith(`${SESSION_COOKIE}=`));
-  const token = m ? decodeURIComponent(m.slice(SESSION_COOKIE.length + 1)) : undefined;
-  const result = verifySessionToken(token);
+  const result = inspectProtectedSessionToken(readSessionCookie(req));
   if (!result.ok) {
+    if (result.reason === 'inactive_user') {
+      return { ok: false, response: NextResponse.json({ ok: false, error: 'inactive_user', detail: 'User is not active.' }, { status: 403 }) };
+    }
     return { ok: false, response: NextResponse.json({ ok: false, error: 'Not authenticated.' }, { status: 401 }) };
   }
   return { ok: true };
@@ -231,7 +237,19 @@ export async function readLimitedJson<T = unknown>(
   try {
     return { ok: true, value: JSON.parse(textResult.text) as T };
   } catch {
-    if (fallback !== undefined) return { ok: true, value: fallback };
     return { ok: false, response: NextResponse.json({ ok: false, error: 'Invalid JSON.' }, { status: 400 }) };
   }
+}
+
+export async function readLimitedJsonObject(
+  req: NextRequest | Request,
+  maxBytes: number,
+): Promise<{ ok: true; value: Record<string, unknown> } | { ok: false; response: NextResponse }> {
+  const parsed = await readLimitedJson<unknown>(req, maxBytes);
+  if (!parsed.ok) return parsed;
+  const value = parsed.value;
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return { ok: false, response: NextResponse.json({ ok: false, error: 'JSON body must be an object.' }, { status: 400 }) };
+  }
+  return { ok: true, value: value as Record<string, unknown> };
 }

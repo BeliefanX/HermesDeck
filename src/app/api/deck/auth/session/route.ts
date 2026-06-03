@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SESSION_COOKIE, getUsername, isBootstrapPassword, verifySessionToken } from '@/lib/server/auth';
+import { SESSION_COOKIE, isBootstrapPassword, toSafeUserContext, verifySessionToken } from '@/lib/server/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,10 +9,19 @@ export async function GET(req: NextRequest) {
   if (!result.ok) {
     return NextResponse.json({ authenticated: false }, { status: 200 });
   }
+  const user = toSafeUserContext(result.user);
   return NextResponse.json({
     authenticated: true,
-    username: getUsername(),
+    userId: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    assignedProfileIds: user.assignedProfileIds,
+    capabilities: user.capabilities,
+    user,
     expiresAt: result.payload.exp,
-    bootstrap: isBootstrapPassword(),
+    bootstrap: isBootstrapPassword(result.user.id),
   });
 }

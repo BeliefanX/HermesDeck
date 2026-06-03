@@ -12,6 +12,7 @@ import { ProfileChip } from './ProfileChip';
 import { deckApi } from '@/lib/api';
 import type { HealthStatus } from '@/lib/types';
 import { useT, useLang, toggleLang } from '@/lib/i18n';
+import { useDeckSession } from '@/lib/use-deck-session';
 
 const SIDEBAR_KEY = 'hermesdeck-sidebar-collapsed';
 
@@ -45,8 +46,8 @@ function isRouteActive(path: string, href: string) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname() || '/';
-  // The /login route renders full-bleed without sidebar/topbar chrome.
-  const bare = path === '/login';
+  // Auth routes render full-bleed without sidebar/topbar chrome.
+  const bare = path === '/login' || path === '/register' || path === '/pending';
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [mounted, setMounted] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -56,6 +57,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const lang = useLang();
+  const { capabilities } = useDeckSession();
+  const canUseTerminal = capabilities.canUseTerminal;
+  const canManageUsers = capabilities.canManageUsers;
 
   // Reflect real Hermes API health in the sidebar footer dot — previously it
   // was hardcoded green, which contradicted the dashboard hero whenever Hermes
@@ -145,11 +149,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Build the localised nav once per language change rather than on every render.
   const navItems = useMemo(
-    () => NAV.map((n) => ({
+    () => NAV.filter((n) => {
+      if (n.key === 'terminal' && !canUseTerminal) return false;
+      if (n.key === 'config' && !canManageUsers) return false;
+      if (n.key === 'lcm' && !canManageUsers) return false;
+      return true;
+    }).map((n) => ({
       ...n,
       label: t[`nav${n.key.charAt(0).toUpperCase() + n.key.slice(1)}` as keyof typeof t] as { label: string; kicker: string },
     })),
-    [t],
+    [t, canUseTerminal, canManageUsers],
   );
 
   useEffect(() => {

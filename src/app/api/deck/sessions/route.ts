@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessions } from '@/lib/server/hermes';
-import { requireAuth } from '@/lib/server/csrf';
+import { normalizeProfileId, requireActiveUser, requireProfileAccess } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const auth = requireAuth(req);
+  const auth = requireActiveUser(req);
   if (!auth.ok) return auth.response;
-  const profile = req.nextUrl.searchParams.get('profile') || 'default';
+  const profile = normalizeProfileId(req.nextUrl.searchParams.get('profile'), 'default');
+  if (!profile) return NextResponse.json({ sessions: [], error: 'invalid_profile' }, { status: 400 });
+  const access = requireProfileAccess(auth.user, profile, { fallback: profile });
+  if (!access.ok) return access.response;
   try {
     const sessions = await getSessions(profile);
     return NextResponse.json(

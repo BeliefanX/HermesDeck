@@ -1,12 +1,12 @@
 import { NextRequest } from 'next/server';
 import { subscribe } from '@/lib/server/terminal-pty';
-import { requireAuth } from '@/lib/server/csrf';
+import { requireAdmin } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = requireAuth(req);
+  const auth = requireAdmin(req);
   if (!auth.ok) return auth.response;
   const { id } = await params;
   const encoder = new TextEncoder();

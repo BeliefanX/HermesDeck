@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { guardMutating, guardRequestBody, readLimitedFormData } from '@/lib/server/csrf';
 import { MAX_ATTACHMENT_BYTES, MAX_TEXT_CHARS } from '@/lib/attachments';
+import { requireActiveUser, requireProfileAccess } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,12 +21,19 @@ function jsonError(message: string, status = 400) {
 export async function POST(req: NextRequest) {
   const guard = guardMutating(req);
   if (!guard.ok) return guard.response;
+  const auth = requireActiveUser(req);
+  if (!auth.ok) return auth.response;
   const bodyGuard = guardRequestBody(req, { contentTypes: ['multipart/form-data'], maxBytes: MAX_ATTACHMENT_BYTES + 64_000 });
   if (!bodyGuard.ok) return bodyGuard.response;
 
   const parsedForm = await readLimitedFormData(req, MAX_ATTACHMENT_BYTES + 64_000);
   if (!parsedForm.ok) return parsedForm.response;
   const form = parsedForm.formData;
+  const profileId = form.get('profileId') || form.get('profile');
+  if (typeof profileId === 'string' && profileId.trim()) {
+    const access = requireProfileAccess(auth.user, profileId.trim(), { fallback: profileId.trim() });
+    if (!access.ok) return access.response;
+  }
   const file = form.get('file');
   if (!(file instanceof File)) return jsonError('missing "file" field', 400);
   if (file.size === 0) return jsonError('empty file', 400);

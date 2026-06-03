@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 export { HERMES_API_BASE, HERMES_DASHBOARD_BASE } from './core';
 export { hermesVersion, getHealth } from './health';
-export { getProfiles } from './profiles';
+export { getProfiles, getStrictProfiles } from './profiles';
 export { getSessions, tagSessionSource, deleteSession } from './sessions';
 export { getMessages, type GetMessagesOptions } from './messages';
 export { getTools } from './tools';
@@ -21,7 +21,7 @@ export { getRuns, getRunDetail } from './runs';
 export { getTokenStats } from './tokens';
 export { listTerminalActions, runTerminalAction } from './terminal';
 export { createChatStream, resumeChatStream, type ChatStreamBody } from './chat-stream';
-export { getActiveStream } from './stream-hub';
+export { ActiveStreamAuthorizationError, getActiveStream } from './stream-hub';
 export {
   getBoards,
   getBoardSnapshot,

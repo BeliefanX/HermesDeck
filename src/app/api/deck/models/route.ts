@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getModels } from '@/lib/server/hermes';
-import { requireAuth } from '@/lib/server/csrf';
+import { normalizeProfileId, requireActiveUser, requireProfileAccess } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const auth = requireAuth(req);
+  const auth = requireActiveUser(req);
   if (!auth.ok) return auth.response;
-  const profile = req.nextUrl.searchParams.get('profile') || 'default';
-  const safe = /^[\w.-]{1,64}$/.test(profile) ? profile : 'default';
+  const safe = normalizeProfileId(req.nextUrl.searchParams.get('profile'), 'default');
+  if (!safe) return NextResponse.json({ providers: [], orphanModels: [], error: 'invalid_profile' }, { status: 400 });
+  const access = requireProfileAccess(auth.user, safe, { fallback: safe });
+  if (!access.ok) return access.response;
   try {
     const models = await getModels(safe);
     return NextResponse.json(models, {

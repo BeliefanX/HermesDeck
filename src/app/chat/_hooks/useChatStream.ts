@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef } from 'react';
-import { deckApi } from '@/lib/api';
+import { deckApi, ApiError } from '@/lib/api';
 import { resumeChatStreamClient, streamChat, type StreamCallbacks } from '@/lib/client-sse';
 import {
   attachmentToPayload,
@@ -11,6 +11,17 @@ import type { DeckAttachment, DeckMessage } from '@/lib/types';
 import type { ChatT } from '../_lib/i18n';
 import { type LocalSession, genSessionId } from '../_lib/storage';
 import { extractUsage, type TurnUsage } from '../_lib/context-window';
+
+function apiErrorDetail(err: unknown): string {
+  if (err instanceof ApiError) {
+    const body = err.body;
+    const detail = body && typeof body === 'object' && 'detail' in body && typeof (body as { detail?: unknown }).detail === 'string'
+      ? `: ${(body as { detail: string }).detail}`
+      : '';
+    return `${err.status} ${err.message}${detail}`;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
 
 interface UseChatStreamParams {
   // Core state
@@ -500,7 +511,10 @@ export function useChatStream(params: UseChatStreamParams) {
         const r = await deckApi.messages(s.id, profile, ac.signal);
         if (seq !== openSessionSeqRef.current || ac.signal.aborted || profileRef.current !== requestProfile) return;
         if (r.messages.length) setMessages((m) => ({ ...m, [s.id]: r.messages }));
-      } catch { /* aborted or network failure — drop silently */ }
+      } catch (err) {
+        if (ac.signal.aborted || seq !== openSessionSeqRef.current) return;
+        setError(`Messages failed to load: ${apiErrorDetail(err)}`);
+      }
     }
   }, [abortRef, active, clearTimeline, messages, profile, setActive, setError, setMessages]);
 
@@ -920,6 +934,7 @@ export function useChatStream(params: UseChatStreamParams) {
           // session id. They may differ when Hermes assigned its own session id
           // mid-run and we already reconciled the messages-map key.
           hubKey,
+          profile,
           lastSeq,
           buildCallbacks({
             sid: sessionId, initialAssistantId: textAssistantId, streamId, profile, onSidReconcile: reconcileSid, isAbortedRef,

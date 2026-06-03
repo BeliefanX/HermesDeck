@@ -26,6 +26,10 @@ export interface HubEvent {
 
 export interface ActiveStream {
   sessionId: string;
+  /** Immutable authorization metadata captured at stream creation. */
+  profileId: string;
+  ownerUserId: string;
+  ownerRole: string;
   startedAt: number;
   /** Ring buffer of recent events. Capped to MAX_BUFFER. */
   buffer: HubEvent[];
@@ -41,6 +45,22 @@ export interface ActiveStream {
   subscribers: Set<(ev: HubEvent) => void>;
   /** Timer that evicts the buffer N minutes after `done`. */
   evictTimer?: ReturnType<typeof setTimeout>;
+}
+
+export interface ActiveStreamMetadata {
+  profileId: string;
+  ownerUserId: string;
+  ownerRole: string;
+}
+
+export class ActiveStreamAuthorizationError extends Error {
+  readonly status = 403;
+  readonly code = 'stream_supersede_forbidden';
+
+  constructor(message = 'Active stream belongs to another user or profile.') {
+    super(message);
+    this.name = 'ActiveStreamAuthorizationError';
+  }
 }
 
 const MAX_BUFFER = 4000;
@@ -59,12 +79,24 @@ function getRegistry(): HubRegistry {
   return g[HUB_KEY];
 }
 
-export function createActiveStream(sessionId: string): ActiveStream {
+function isAdminStreamOwner(role: string): boolean {
+  return role === 'admin' || role === 'super_admin';
+}
+
+export function canSupersedeActiveStream(prev: ActiveStream, metadata: ActiveStreamMetadata): boolean {
+  return prev.profileId === metadata.profileId
+    && (prev.ownerUserId === metadata.ownerUserId || isAdminStreamOwner(metadata.ownerRole));
+}
+
+export function createActiveStream(sessionId: string, metadata: ActiveStreamMetadata): ActiveStream {
   const reg = getRegistry();
   // Replace any existing stream for the same session — the new send() call
   // wins (the user's previous turn for this session is implicitly cancelled).
   const prev = reg.streams.get(sessionId);
   if (prev) {
+    if (!canSupersedeActiveStream(prev, metadata)) {
+      throw new ActiveStreamAuthorizationError();
+    }
     try { prev.abort.abort('superseded'); } catch {}
     if (prev.evictTimer) clearTimeout(prev.evictTimer);
     reg.streams.delete(sessionId);
@@ -78,6 +110,9 @@ export function createActiveStream(sessionId: string): ActiveStream {
   }
   const stream: ActiveStream = {
     sessionId,
+    profileId: metadata.profileId,
+    ownerUserId: metadata.ownerUserId,
+    ownerRole: metadata.ownerRole,
     startedAt: Date.now(),
     buffer: [],
     nextSeq: 1,

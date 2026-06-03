@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTokenStats } from '@/lib/server/hermes';
-import { requireAuth } from '@/lib/server/csrf';
+import { requireAdmin } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const auth = requireAuth(req);
+  const auth = requireAdmin(req);
   if (!auth.ok) return auth.response;
   const raw = req.nextUrl.searchParams.get('days');
   const days = raw === null ? 14 : Number(raw);

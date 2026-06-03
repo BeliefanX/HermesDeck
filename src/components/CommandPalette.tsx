@@ -8,6 +8,8 @@ import type { DeckProfile, DeckRun, DeckSession, ToolSummary } from '@/lib/types
 import { deckApi } from '@/lib/api';
 import { sourceMeta, shortTitle, relTime } from '@/lib/format';
 import { useT } from '@/lib/i18n';
+import { useActiveProfile } from '@/lib/profile-context';
+import { useDeckSession } from '@/lib/use-deck-session';
 
 type CommandItem = {
   id: string;
@@ -92,6 +94,10 @@ export function CommandPalette() {
   ], [t]);
 
   const router = useRouter();
+  const { activeProfile } = useActiveProfile();
+  const { capabilities } = useDeckSession();
+  const canUseTerminal = capabilities.canUseTerminal;
+  const canManageUsers = capabilities.canManageUsers;
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [idx, setIdx] = useState(0);
@@ -104,6 +110,7 @@ export function CommandPalette() {
   // Wall-clock of the last data load — drives a TTL refetch so the palette
   // doesn't show a stale snapshot for the whole page lifetime.
   const lastLoadRef = useRef(0);
+  const lastProfileRef = useRef('');
 
   // Open on ⌘K / Ctrl+K, or via the topbar button which dispatches a custom
   // `hermesdeck:open-palette` event.
@@ -135,9 +142,9 @@ export function CommandPalette() {
   // until a full page reload.
   useEffect(() => {
     if (!open) return;
-    if (loaded && Date.now() - lastLoadRef.current < 30_000) return;
+    if (loaded && lastProfileRef.current === activeProfile && Date.now() - lastLoadRef.current < 30_000) return;
     Promise.allSettled([
-      deckApi.profiles(), deckApi.sessions(), deckApi.tools(), deckApi.runs(),
+      deckApi.profiles(), activeProfile ? deckApi.sessions(activeProfile) : Promise.resolve({ sessions: [] }), deckApi.tools(), deckApi.runs(),
     ]).then(([p, s, tl, r]) => {
       if (p.status === 'fulfilled') setProfiles(p.value.profiles);
       if (s.status === 'fulfilled') setSessions(s.value.sessions);
@@ -145,15 +152,20 @@ export function CommandPalette() {
       if (r.status === 'fulfilled') setRuns(r.value.runs);
       setLoaded(true);
       lastLoadRef.current = Date.now();
+      lastProfileRef.current = activeProfile;
     });
-  }, [open, loaded]);
+  }, [open, loaded, activeProfile]);
 
   useEffect(() => {
     if (open) requestAnimationFrame(() => inputRef.current?.focus());
   }, [open]);
 
   const allItems: CommandItem[] = useMemo(() => {
-    const items: CommandItem[] = [...PAGE_ITEMS];
+    const items: CommandItem[] = PAGE_ITEMS.filter((item) => {
+      if (item.id === 'p:terminal' && !canUseTerminal) return false;
+      if (item.id === 'p:config' && !canManageUsers) return false;
+      return true;
+    });
     items.push({
       id: 'a:newchat', kind: 'action', title: t.aNewChat, hint: t.aNewChatHint,
       href: '/chat', search: 'new chat session start',
@@ -191,7 +203,7 @@ export function CommandPalette() {
       icon: <Radio size={14} />,
     }));
     return items;
-  }, [profiles, sessions, tools, runs, PAGE_ITEMS, t]);
+  }, [profiles, sessions, tools, runs, PAGE_ITEMS, t, canUseTerminal, canManageUsers]);
 
   // Defer the filter input so each keystroke doesn't block layout when the
   // candidate list is large (~200 items × tokenized substring scan).

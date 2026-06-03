@@ -4,12 +4,12 @@ import { deckApi } from './api';
 import type { DeckProfile } from './types';
 
 const STORAGE_KEY = 'hermesdeck.active-profile.v1';
-const FALLBACK_PROFILE = 'default';
+const NO_PROFILE = '';
 
 interface ProfileContextValue {
-  /** Currently active profile id. Always a non-empty string; defaults to 'default' before hydration. */
+  /** Currently active, authorized profile id. Empty when the user has no assigned/available Agent. */
   activeProfile: string;
-  /** Full profile list from /api/deck/profiles. Empty array while loading. */
+  /** Full authorized profile list from /api/deck/profiles. Empty while loading or when none are assigned. */
   profiles: DeckProfile[];
   /** True before the first /api/deck/profiles fetch resolves. */
   loading: boolean;
@@ -35,6 +35,25 @@ function writeStoredProfile(id: string): void {
   try { window.localStorage.setItem(STORAGE_KEY, id); } catch {}
 }
 
+function removeStoredProfile(): void {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.removeItem(STORAGE_KEY); } catch {}
+}
+
+function reconcileActiveProfile(prev: string, profiles: DeckProfile[]): string {
+  if (profiles.length === 0) {
+    removeStoredProfile();
+    return NO_PROFILE;
+  }
+  if (profiles.some((p) => p.id === prev)) return prev;
+  const next = profiles.find((p) => p.active)?.id
+    || profiles[0]?.id
+    || NO_PROFILE;
+  if (next) writeStoredProfile(next);
+  else removeStoredProfile();
+  return next;
+}
+
 /** Migrate the legacy chat-only `hermesdeck.chat.v1.profile` field into the
  *  global key. Only runs once and only when the global key is unset, so it
  *  doesn't clobber a profile the user picked from the new switcher.
@@ -56,8 +75,9 @@ function migrateLegacyChatProfile(): string | null {
 }
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
-  const [activeProfile, setActiveProfileState] = useState<string>(FALLBACK_PROFILE);
+  const [activeProfile, setActiveProfileState] = useState<string>(NO_PROFILE);
   const [profiles, setProfiles] = useState<DeckProfile[]>([]);
+  const [profilesLoaded, setProfilesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [hydrated, setHydrated] = useState(false);
 
@@ -67,26 +87,28 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const setActiveProfile = useCallback((id: string) => {
     if (!id) return;
     setActiveProfileState((prev) => {
+      if (profilesLoaded && profiles.length === 0) {
+        removeStoredProfile();
+        return NO_PROFILE;
+      }
+      if (profiles.length > 0 && !profiles.some((p) => p.id === id)) return prev;
       if (prev === id) return prev;
       writeStoredProfile(id);
       return id;
     });
-  }, []);
+  }, [profiles, profilesLoaded]);
 
   const refresh = useCallback(async () => {
     try {
       const r = await deckApi.profiles();
-      setProfiles(r.profiles || []);
+      const nextProfiles = r.profiles || [];
+      setProfiles(nextProfiles);
+      setProfilesLoaded(true);
       setActiveProfileState((prev) => {
-        // If the current selection no longer exists, fall back to the
-        // server-marked active profile, then to the first, then 'default'.
-        const exists = (r.profiles || []).some((p) => p.id === prev);
-        if (exists) return prev;
-        const next = r.profiles?.find((p) => p.active)?.id
-          || r.profiles?.[0]?.id
-          || FALLBACK_PROFILE;
-        writeStoredProfile(next);
-        return next;
+        // The server already filters /api/deck/profiles by RBAC. Reconcile the
+        // browser's prior/localStorage selection against that authorized list
+        // so a stale unassigned profile can never drive client requests.
+        return reconcileActiveProfile(prev, nextProfiles);
       });
     } catch {
       // Network / Hermes down — keep whatever we had.
@@ -95,28 +117,42 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Hydrate from localStorage (or migrate from chat) on the client, then fetch.
+  // Hydrate from localStorage (or migrate from chat) on the client, then fetch
+  // and reconcile against the server-filtered authorized profile list before
+  // consumers are marked ready.
   useEffect(() => {
+    let alive = true;
     let stored = readStoredProfile();
     if (!stored) {
       stored = migrateLegacyChatProfile();
       if (stored) writeStoredProfile(stored);
     }
     if (stored) setActiveProfileState(stored);
-    setHydrated(true);
-    void refresh();
+    void refresh().finally(() => { if (alive) setHydrated(true); });
+    return () => { alive = false; };
   }, [refresh]);
 
   // Cross-tab sync: when another tab changes the active profile, follow.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onStorage = (e: StorageEvent) => {
-      if (e.key !== STORAGE_KEY || !e.newValue) return;
-      setActiveProfileState((prev) => (prev === e.newValue ? prev : e.newValue!));
+      if (e.key !== STORAGE_KEY) return;
+      if (!e.newValue) {
+        setActiveProfileState(NO_PROFILE);
+        return;
+      }
+      setActiveProfileState((prev) => {
+        if (profilesLoaded && profiles.length === 0) {
+          removeStoredProfile();
+          return NO_PROFILE;
+        }
+        if (profiles.length > 0 && !profiles.some((p) => p.id === e.newValue)) return prev;
+        return prev === e.newValue ? prev : e.newValue!;
+      });
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, []);
+  }, [profiles, profilesLoaded]);
 
   const value = useMemo<ProfileContextValue>(() => ({
     activeProfile, profiles, loading, hydrated, setActiveProfile, refresh,
@@ -130,7 +166,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 // the same frozen object every time, which is what callers outside the
 // provider need anyway.
 const PROFILE_CONTEXT_FALLBACK: ProfileContextValue = Object.freeze({
-  activeProfile: FALLBACK_PROFILE,
+  activeProfile: NO_PROFILE,
   profiles: [] as DeckProfile[],
   loading: false,
   hydrated: false,

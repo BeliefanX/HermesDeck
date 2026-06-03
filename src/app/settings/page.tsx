@@ -4,7 +4,9 @@ import { deckApi } from '@/lib/api';
 import type { DeckHealth } from '@/lib/types';
 import { Sun, Moon, Monitor, Trash2, ShieldCheck, Server, Database, RefreshCw, LogOut, KeyRound, UserRound } from 'lucide-react';
 import { Page, Card, SectionHead, Chip, Btn, Tag, Kicker, Kbd, ListRow } from '@/components/Brand';
-import { useT } from '@/lib/i18n';
+import { AdminUsersPanel } from '@/components/AdminUsersPanel';
+import { localizeError, setLang, useLang, useT } from '@/lib/i18n';
+import { useDeckSession } from '@/lib/use-deck-session';
 
 type Theme = 'dark' | 'light';
 
@@ -15,6 +17,8 @@ export default function SettingsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [cleared, setCleared] = useState(false);
   const [storageUsed, setStorageUsed] = useState<number>(0);
+  const { session } = useDeckSession();
+  const immutableUsername = session?.role === 'super_admin';
 
   // Account section
   const [currentUsername, setCurrentUsername] = useState<string>('');
@@ -25,6 +29,7 @@ export default function SettingsPage() {
   const [accountSaving, setAccountSaving] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [accountSuccess, setAccountSuccess] = useState<string | null>(null);
+  const lang = useLang();
 
   const t = useT({
     zh: {
@@ -35,6 +40,10 @@ export default function SettingsPage() {
       dark: '深色',
       light: '浅色',
       followSystem: '跟随系统',
+      languageTitle: '语言',
+      languageDesc: '界面语言保存在浏览器中，并会同步到文档语言属性。',
+      chinese: '中文',
+      english: 'English',
       backend: '后端',
       connections: 'Hermes 连接',
       refreshing: '刷新中…',
@@ -65,6 +74,10 @@ export default function SettingsPage() {
       dark: 'Dark',
       light: 'Light',
       followSystem: 'Follow system',
+      languageTitle: 'Language',
+      languageDesc: 'UI language is stored in the browser and reflected on the document language attribute.',
+      chinese: '中文',
+      english: 'English',
       backend: 'BACKEND',
       connections: 'Hermes connections',
       refreshing: 'Refreshing…',
@@ -107,6 +120,8 @@ export default function SettingsPage() {
       noChange: '没有需要保存的修改。',
       saved: '已保存。',
       savedRelogin: '密码已更新，请使用新密码登录。',
+      immutableUsername: 'super_admin 用户名不能修改；仍然可以修改密码。',
+      immutableUsernamePlaceholder: 'super_admin 用户名不可修改',
     },
     en: {
       kicker: 'ACCOUNT',
@@ -125,6 +140,8 @@ export default function SettingsPage() {
       noChange: 'Nothing to save.',
       saved: 'Saved.',
       savedRelogin: 'Password updated — please sign in again.',
+      immutableUsername: 'super_admin username cannot be changed; password changes are still allowed.',
+      immutableUsernamePlaceholder: 'super_admin username is immutable',
     },
   });
 
@@ -133,22 +150,18 @@ export default function SettingsPage() {
     setThemeMounted(true);
     refreshHealth();
     measureStorage();
-    let alive = true;
-    const ac = new AbortController();
-    fetch('/api/deck/auth/session', { cache: 'no-store', signal: ac.signal })
-      .then((r) => r.json())
-      .then((data) => {
-        if (!alive) return;
-        if (data?.authenticated && typeof data.username === 'string') setCurrentUsername(data.username);
-      })
-      .catch(() => {});
-    return () => { alive = false; ac.abort(); };
   }, []);
+
+  useEffect(() => {
+    if (session?.authenticated && typeof session.username === 'string') {
+      setCurrentUsername(session.username);
+    }
+  }, [session]);
 
   async function saveAccount() {
     setAccountError(null);
     setAccountSuccess(null);
-    const wantsName = newUsername.trim().length > 0 && newUsername.trim() !== currentUsername;
+    const wantsName = !immutableUsername && newUsername.trim().length > 0 && newUsername.trim() !== currentUsername;
     const wantsPwd = newPassword.length > 0;
     if (!wantsName && !wantsPwd) {
       setAccountError(tAcc.noChange);
@@ -175,7 +188,7 @@ export default function SettingsPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) {
-        setAccountError(data?.error || 'Failed to save changes.');
+        setAccountError(localizeError(data?.error || 'Failed to save changes.', lang));
         setAccountSaving(false);
         return;
       }
@@ -186,7 +199,7 @@ export default function SettingsPage() {
       setConfirmPassword('');
       setAccountSuccess(data.passwordChanged ? tAcc.savedRelogin : tAcc.saved);
     } catch {
-      setAccountError('Network error.');
+      setAccountError(localizeError('Network error.', lang));
     } finally {
       setAccountSaving(false);
     }
@@ -279,12 +292,19 @@ export default function SettingsPage() {
               type="text"
               value={newUsername}
               onChange={(e) => setNewUsername(e.target.value)}
-              placeholder={currentUsername}
-              style={inputStyle}
+              placeholder={immutableUsername ? tAcc.immutableUsernamePlaceholder : currentUsername}
+              style={{ ...inputStyle, opacity: immutableUsername ? 0.62 : 1 }}
               autoComplete="username"
               spellCheck={false}
               autoCapitalize="none"
+              disabled={immutableUsername}
+              aria-describedby={immutableUsername ? 'super-admin-username-note' : undefined}
             />
+            {immutableUsername ? (
+              <span id="super-admin-username-note" style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                {tAcc.immutableUsername}
+              </span>
+            ) : null}
           </label>
           <label style={fieldStyle}>
             <span style={labelStyle}>{tAcc.currentPassword}</span>
@@ -338,6 +358,8 @@ export default function SettingsPage() {
         </div>
       </Card>
 
+      <AdminUsersPanel />
+
       <Card>
         <SectionHead kicker={t.appearance} title={t.themeTitle} />
         <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 12px' }}>
@@ -347,6 +369,17 @@ export default function SettingsPage() {
           <Chip active={themeMounted && theme === 'dark'} onClick={() => applyTheme('dark')} icon={<Moon size={11} />}>{t.dark}</Chip>
           <Chip active={themeMounted && theme === 'light'} onClick={() => applyTheme('light')} icon={<Sun size={11} />}>{t.light}</Chip>
           <Chip onClick={applySystemTheme} icon={<Monitor size={11} />}>{t.followSystem}</Chip>
+        </div>
+      </Card>
+
+      <Card>
+        <SectionHead kicker={t.appearance} title={t.languageTitle} />
+        <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 12px' }}>
+          {t.languageDesc}
+        </p>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <Chip active={lang === 'zh'} onClick={() => setLang('zh')}>{t.chinese}</Chip>
+          <Chip active={lang === 'en'} onClick={() => setLang('en')}>{t.english}</Chip>
         </div>
       </Card>
 
