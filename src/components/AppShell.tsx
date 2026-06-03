@@ -267,7 +267,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="sidebar" aria-label={t.primaryNav}>
         <div className="brand" style={{ alignItems: 'center' }}>
           <div className="brand-badge" aria-hidden>
-            <Image className="brand-mark" src="/icons/icon-192.png" alt="" width={32} height={32} />
+            <Image className="brand-mark" src="/icons/hermesdeck-mark.svg" alt="" width={32} height={32} />
           </div>
           {!collapsed && (
             <div className="brand-text">
@@ -418,7 +418,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="app-bar" role="banner">
           <div className="ab-brand">
             <div className="brand-badge" aria-hidden>
-              <Image className="brand-mark" src="/icons/icon-192.png" alt="" width={32} height={32} />
+              <Image className="brand-mark" src="/icons/hermesdeck-mark.svg" alt="" width={32} height={32} />
             </div>
             <div className="ab-title-row">
               <div className="ab-title">{active.label.label}</div>

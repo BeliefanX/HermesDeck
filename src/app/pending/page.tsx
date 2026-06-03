@@ -28,7 +28,7 @@ export default function PendingPage() {
       <LanguageToggle style={{ position: 'fixed', top: 16, right: 16, zIndex: 10 }} />
       <div className="login-card">
         <div className="login-brand">
-          <Image src="/icons/icon-192.png" alt="" width={48} height={48} />
+          <Image src="/icons/hermesdeck-mark.svg" alt="" width={48} height={48} />
           <div>
             <div className="login-title">{t.title}</div>
             <div className="login-subtitle">{t.subtitle}</div>

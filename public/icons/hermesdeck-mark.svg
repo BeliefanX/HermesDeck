@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">HermesDeck mark</title>
+  <desc id="desc">A restrained geometric deck and wing mark for HermesDeck.</desc>
+  <defs>
+    <radialGradient id="bg" cx="31%" cy="21%" r="82%">
+      <stop offset="0%" stop-color="#171b22"/>
+      <stop offset="56%" stop-color="#0b0d12"/>
+      <stop offset="100%" stop-color="#050609"/>
+    </radialGradient>
+    <linearGradient id="champagne" x1="120" y1="142" x2="382" y2="326" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f4e8c6"/>
+      <stop offset="46%" stop-color="#d8b46d"/>
+      <stop offset="100%" stop-color="#9c7940"/>
+    </linearGradient>
+    <linearGradient id="slate" x1="162" y1="288" x2="354" y2="318" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7f8798"/>
+      <stop offset="100%" stop-color="#404756"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000000" flood-opacity="0.36"/>
+    </filter>
+  </defs>
+  <rect x="32" y="32" width="448" height="448" rx="112" fill="url(#bg)"/>
+  <rect x="32.75" y="32.75" width="446.5" height="446.5" rx="111" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1.5"/>
+  <path d="M114 384C157 418 220 432 286 419C355 405 407 365 431 316" fill="none" stroke="#d8b46d" stroke-opacity="0.12" stroke-width="2" stroke-linecap="round"/>
+  <g filter="url(#softShadow)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M154 190L236 160" stroke="url(#champagne)" stroke-width="28"/>
+    <path d="M276 160L358 190" stroke="url(#champagne)" stroke-width="28"/>
+    <path d="M150 256L236 226" stroke="url(#champagne)" stroke-width="30"/>
+    <path d="M276 226L362 256" stroke="url(#champagne)" stroke-width="30"/>
+    <path d="M164 318L238 290" stroke="url(#slate)" stroke-width="24"/>
+    <path d="M274 290L348 318" stroke="url(#slate)" stroke-width="24"/>
+  </g>
+  <circle cx="256" cy="256" r="154" fill="none" stroke="#f4e8c6" stroke-opacity="0.055" stroke-width="1.5"/>
+</svg>

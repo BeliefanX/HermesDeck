@@ -21,11 +21,13 @@ export const metadata: Metadata = {
   formatDetection: { telephone: false },
   icons: {
     icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icons/hermesdeck-mark.svg', type: 'image/svg+xml' },
       { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
       { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
     apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
-    other: [{ rel: 'mask-icon', url: '/icons/maskable-512.png', color: '#38bdf8' }],
+    other: [{ rel: 'mask-icon', url: '/icons/hermesdeck-mark.svg', color: '#d8b46d' }],
   },
 };
 
