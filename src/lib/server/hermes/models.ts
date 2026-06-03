@@ -4,6 +4,18 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
+const BASE_REASONING_LEVELS = ['auto', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const;
+
+type ModelCandidate = { provider: string; model: string; baseUrl?: string };
+type ScannedModelConfig = {
+  defaultModel?: string;
+  defaultProvider?: string;
+  defaultBaseUrl?: string;
+  reasoningEffort?: string;
+  fallbackModels: ModelCandidate[];
+  providerModels: ModelCandidate[];
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -42,75 +54,139 @@ async function fetchApiModels(): Promise<string[]> {
   return ids;
 }
 
-/** Lightweight YAML scanner — only extracts model-related keys. */
-function scanModelConfig(text: string): { defaultModel?: string; defaultProvider?: string; fallbackModels: Array<{ provider: string; model: string }> } {
-  const lines = text.split(/\r?\n/);
-  let inModel = false;
-  let inFallback = false;
-  let fallbackIndent = 0;
-  let currentProvider: string | undefined;
+function stripYamlComment(raw: string): string {
+  let quote: '"' | "'" | '' = '';
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if ((ch === '"' || ch === "'") && raw[i - 1] !== '\\') {
+      quote = quote === ch ? '' : quote || ch;
+    }
+    if (ch === '#' && !quote) return raw.slice(0, i);
+  }
+  return raw;
+}
 
-  const result: { defaultModel?: string; defaultProvider?: string; fallbackModels: Array<{ provider: string; model: string }> } = { fallbackModels: [] };
+function cleanScalar(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.replace(/^['"]|['"]$/g, '').trim();
+}
+
+function parseKeyValue(line: string): { key: string; value: string } | null {
+  const m = line.match(/^([A-Za-z0-9_.-]+):\s*(.*)$/);
+  if (!m) return null;
+  return { key: m[1], value: cleanScalar(m[2]) };
+}
+
+/** Lightweight YAML scanner — only extracts non-secret model/reasoning catalog keys. */
+function scanModelConfig(text: string): ScannedModelConfig {
+  const result: ScannedModelConfig = { fallbackModels: [], providerModels: [] };
+  const lines = text.split(/\r?\n/);
+  let top: string | undefined;
+  let fallback: Partial<ModelCandidate> | undefined;
+  let provider: string | undefined;
+  let inProviderModels = false;
+  let providerModelsIndent = 0;
+
+  const pushFallback = () => {
+    if (fallback?.provider && fallback.model) result.fallbackModels.push(fallback as ModelCandidate);
+  };
+  const pushProviderModel = (model: string) => {
+    if (provider && model && !['timeout_seconds', 'request_timeout_seconds', 'stale_timeout_seconds'].includes(model)) {
+      result.providerModels.push({ provider, model });
+    }
+  };
 
   for (const raw of lines) {
-    const line = raw.replace(/#.*/, ''); // strip comments
-    const m = line.match(/^(\s*)(\S+):\s*(.*)/);
-    if (!m) {
-      // list item under fallback_providers
-      if (inFallback) {
-        const indent = (line.match(/^(\s*)/)?.[1] ?? '').length;
-        if (indent <= fallbackIndent && line.trim()) {
-          inFallback = false;
-          continue;
-        }
-        const prov = line.match(/^\s+-?\s*provider:\s*(\S+)/)?.[1];
-        const mod = line.match(/^\s+-?\s*model:\s*(\S+)/)?.[1];
-        if (prov) currentProvider = prov;
-        if (mod && currentProvider) {
-          result.fallbackModels.push({ provider: currentProvider, model: mod });
-        }
-      }
-      continue;
-    }
-    const indent = m[1].length;
-    const key = m[2];
-    const val = m[3].trim().replace(/^['"]|['"]$/g, '');
+    const line = stripYamlComment(raw).replace(/\s+$/, '');
+    if (!line.trim()) continue;
+    const indent = line.match(/^\s*/)?.[0].length ?? 0;
+    const trimmed = line.trim();
 
-    if (key === 'model') {
-      inModel = true;
-      inFallback = false;
-      continue;
-    }
-    if (key === 'providers') {
-      inModel = false;
-      inFallback = false;
-      continue;
-    }
-    if (key === 'fallback_providers') {
-      inFallback = true;
-      inModel = false;
-      fallbackIndent = indent;
+    if (indent === 0 && !trimmed.startsWith('-')) {
+      pushFallback();
+      fallback = undefined;
+      provider = undefined;
+      inProviderModels = false;
+      const kv = parseKeyValue(trimmed);
+      top = kv?.key;
       continue;
     }
 
-    if (inModel) {
-      if (key === 'default') result.defaultModel = val || undefined;
-      if (key === 'provider') result.defaultProvider = val || undefined;
+    if (top === 'model') {
+      const kv = parseKeyValue(trimmed);
+      if (kv?.key === 'default') result.defaultModel = kv.value || undefined;
+      if (kv?.key === 'provider') result.defaultProvider = kv.value || undefined;
+      if (kv?.key === 'base_url') result.defaultBaseUrl = kv.value || undefined;
+      continue;
     }
 
-    if (inFallback) {
-      if (indent <= fallbackIndent && line.trim() && !line.match(/^\s*-/)) {
-        inFallback = false;
+    if (top === 'agent') {
+      const kv = parseKeyValue(trimmed);
+      if (kv?.key === 'reasoning_effort') result.reasoningEffort = kv.value.toLowerCase() || undefined;
+      continue;
+    }
+
+    if (top === 'fallback_providers') {
+      const listProvider = trimmed.match(/^-\s*provider:\s*(.+)$/);
+      if (listProvider) {
+        pushFallback();
+        fallback = { provider: cleanScalar(listProvider[1]) };
         continue;
       }
-      if (key === 'provider') currentProvider = val || undefined;
-      if (key === 'model' && currentProvider) {
-        result.fallbackModels.push({ provider: currentProvider, model: val });
+      const kv = parseKeyValue(trimmed.replace(/^-\s*/, ''));
+      if (!kv) continue;
+      fallback ??= {};
+      if (kv.key === 'provider') fallback.provider = kv.value;
+      if (kv.key === 'model') fallback.model = kv.value;
+      if (kv.key === 'base_url') fallback.baseUrl = kv.value;
+      continue;
+    }
+
+    if (top === 'providers') {
+      if (indent === 2 && !trimmed.startsWith('-')) {
+        const kv = parseKeyValue(trimmed);
+        provider = kv?.key;
+        inProviderModels = false;
+        continue;
+      }
+      if (!provider) continue;
+      if (indent === 4 && trimmed === 'models:') {
+        inProviderModels = true;
+        providerModelsIndent = indent;
+        continue;
+      }
+      if (inProviderModels) {
+        if (indent <= providerModelsIndent) {
+          inProviderModels = false;
+          continue;
+        }
+        if (indent === providerModelsIndent + 2) {
+          const listModel = trimmed.match(/^-\s*(.+)$/);
+          if (listModel) {
+            pushProviderModel(cleanScalar(listModel[1].replace(/:.*$/, '')));
+            continue;
+          }
+          const kv = parseKeyValue(trimmed);
+          if (kv) pushProviderModel(kv.key);
+        }
       }
     }
   }
+  pushFallback();
 
   return result;
+}
+
+function mergeConfigs(profileCfg: ScannedModelConfig, defaultCfg?: ScannedModelConfig): ScannedModelConfig {
+  if (!defaultCfg) return profileCfg;
+  return {
+    defaultModel: profileCfg.defaultModel ?? defaultCfg.defaultModel,
+    defaultProvider: profileCfg.defaultProvider ?? defaultCfg.defaultProvider,
+    defaultBaseUrl: profileCfg.defaultBaseUrl ?? defaultCfg.defaultBaseUrl,
+    reasoningEffort: profileCfg.reasoningEffort ?? defaultCfg.reasoningEffort,
+    fallbackModels: [...profileCfg.fallbackModels, ...defaultCfg.fallbackModels],
+    providerModels: [...profileCfg.providerModels, ...defaultCfg.providerModels],
+  };
 }
 
 function readProfileConfigYaml(profile: string): string | null {
@@ -124,21 +200,24 @@ function readProfileConfigYaml(profile: string): string | null {
 
 async function getModelsUncached(profile = 'default'): Promise<DeckModelsResponse> {
   const modelIds = await fetchApiModels().catch(() => [] as string[]);
-  const cfgText = readProfileConfigYaml(profile);
-  const cfg = cfgText ? scanModelConfig(cfgText) : { fallbackModels: [] };
+  const profileText = readProfileConfigYaml(profile);
+  const profileCfg = profileText ? scanModelConfig(profileText) : { fallbackModels: [], providerModels: [] };
+  const defaultText = profile === 'default' ? null : readProfileConfigYaml('default');
+  const defaultCfg = defaultText ? scanModelConfig(defaultText) : undefined;
+  const cfg = mergeConfigs(profileCfg, defaultCfg);
 
   // Build a deduplicated list of (modelId, provider, isDefault)
-  const seen = new Map<string, { provider: string; isDefault: boolean }>();
+  const seen = new Map<string, { provider: string; isDefault: boolean; baseUrl?: string }>();
 
   // 1) Config default model
   if (cfg.defaultModel && cfg.defaultProvider) {
-    seen.set(cfg.defaultModel, { provider: cfg.defaultProvider, isDefault: true });
+    seen.set(cfg.defaultModel, { provider: cfg.defaultProvider, isDefault: true, baseUrl: cfg.defaultBaseUrl });
   }
 
-  // 2) Fallback provider models
-  for (const fb of cfg.fallbackModels) {
+  // 2) Configured provider catalog and fallback provider models
+  for (const fb of [...cfg.providerModels, ...cfg.fallbackModels]) {
     if (!seen.has(fb.model)) {
-      seen.set(fb.model, { provider: fb.provider, isDefault: false });
+      seen.set(fb.model, { provider: fb.provider, isDefault: false, baseUrl: fb.baseUrl });
     }
   }
 
@@ -172,11 +251,15 @@ async function getModelsUncached(profile = 'default'): Promise<DeckModelsRespons
 
   const defaultModel = cfg.defaultModel ?? Array.from(seen.keys())[0];
   const defaultProvider = cfg.defaultProvider ?? providers[0]?.id ?? 'hermes';
+  const reasoningEffort = cfg.reasoningEffort || 'auto';
+  const reasoningLevels = Array.from(new Set([...BASE_REASONING_LEVELS, reasoningEffort].filter(Boolean)));
 
   return {
-    default: defaultModel ? { provider: defaultProvider, model: defaultModel } : undefined,
+    default: defaultModel ? { provider: defaultProvider, model: defaultModel, baseUrl: cfg.defaultBaseUrl } : undefined,
     providers,
     orphanModels: [],
+    reasoningEffort,
+    reasoningLevels,
   };
 }
 

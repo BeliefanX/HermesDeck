@@ -213,6 +213,8 @@ export interface DeckModelsResponse {
   orphanModels: ModelInfo[];
   /** Configured `agent.reasoning_effort` from this profile's config.yaml. */
   reasoningEffort?: string;
+  /** Valid reasoning effort choices for the composer. */
+  reasoningLevels?: string[];
 }
 
 export interface DeckModelPreference {

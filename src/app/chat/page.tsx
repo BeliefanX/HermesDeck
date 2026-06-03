@@ -18,7 +18,7 @@ import { useChatGroups } from './_hooks/useChatGroups';
 import { useSessionMetaActions } from './_hooks/useSessionMetaActions';
 import { useChatStream } from './_hooks/useChatStream';
 import { useGoalAndQueue } from './_hooks/useGoalAndQueue';
-import { useChatModels, REASONING_LEVELS } from './_hooks/useChatModels';
+import { useChatModels } from './_hooks/useChatModels';
 import { useChatHydration } from './_hooks/useChatHydration';
 import { useChatScroll } from './_hooks/useChatScroll';
 import { useDragDropPaste } from './_hooks/useDragDropPaste';
@@ -77,7 +77,7 @@ function ChatPageInner() {
   const {
     modelOptions, selectedModel, setSelectedModel,
     reasoningEffort, setReasoningEffort,
-    defaultReasoning, reasoningTouchedRef,
+    defaultReasoning, reasoningLevels, reasoningTouchedRef,
   } = useChatModels(profile);
 
   // Run timeline — still aggregated by useChatStream for its own delta
@@ -470,7 +470,7 @@ function ChatPageInner() {
       selectedModel={selectedModel}
       reasoningEffort={reasoningEffort}
       defaultReasoning={defaultReasoning}
-      reasoningLevels={REASONING_LEVELS}
+      reasoningLevels={reasoningLevels}
       reasoningTouchedRef={reasoningTouchedRef}
       slashRange={slashRange}
       slashCommands={slashCommands}

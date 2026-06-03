@@ -12,9 +12,8 @@ import {
 import { type SlashCommand, extractSlashQuery } from '@/lib/prompts';
 import type { ChatT } from '../_lib/i18n';
 import type { UseGoalAndQueueResult } from '../_hooks/useGoalAndQueue';
+import type { ReasoningEffort } from '../_hooks/useChatModels';
 import { ComposerPicker, iconBtnStyle } from './InlineParts';
-
-type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
 
 export function ChatComposer({
   t, busy, input, attachments, taRef, fileInputRef,
