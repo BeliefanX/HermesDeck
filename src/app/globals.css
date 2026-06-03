@@ -1648,12 +1648,22 @@ p{line-height:1.6}
   /* Composer: shave a couple px off vertical padding */
   .composer{padding:4px calc(8px + var(--safe-right)) 6px calc(8px + var(--safe-left))}
   .composer .textarea{min-height:36px}
+  /* Hide the Goal/Target button in PWA standalone — space is at a premium */
+  .composer-goal-btn{display:none}
 }
 /* iOS PWA reports legacy display-mode value — match both */
 @media (max-width:880px) and (display-mode:fullscreen){
   :root{--mobile-nav-h:56px}
   .mobile-nav-label{display:none}
   .mobile-nav a,.mobile-nav button{min-height:44px;gap:0}
+}
+
+/* PWA standalone (any width) — hide Goal button since screen is limited */
+@media (display-mode:standalone){
+  .composer-goal-btn{display:none}
+}
+@media (display-mode:fullscreen){
+  .composer-goal-btn{display:none}
 }
 
 /* spinner */

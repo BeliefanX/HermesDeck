@@ -110,14 +110,15 @@ export function ComposerPicker({
     };
   }, [open]);
   const display = value || placeholder || '—';
+  const isReasoning = label === '模型' || label === 'Model' || label === '推理' || label === 'Reasoning';
   return (
-    <div ref={ref} style={{ position: 'relative', minWidth: 0, flexShrink: 1 }}>
+    <div ref={ref} style={{ position: 'relative', minWidth: 0, flex: 1 }}>
       <button
         type="button"
         onClick={() => !disabled && setOpen((o) => !o)}
         disabled={disabled}
         aria-label={label}
-        title={title}
+        title={title || label}
         aria-haspopup="listbox"
         aria-expanded={open}
         style={{
@@ -130,11 +131,12 @@ export function ComposerPicker({
           border: '1px solid var(--line)',
           background: 'var(--bg-soft)',
           color: 'var(--text)',
-          fontFamily: 'var(--font-mono)',
-          fontSize: 11,
+          fontFamily: isReasoning ? 'var(--font-mono)' : 'var(--font-sans)',
+          fontSize: 10.5,
           cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.6 : 1,
           maxWidth: '100%',
+          minWidth: 0,
           whiteSpace: 'nowrap',
         }}
       >

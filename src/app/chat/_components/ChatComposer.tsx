@@ -413,6 +413,7 @@ export function ChatComposer({
           {!goal && !goalEditing && (
             <button
               type="button"
+              className="composer-goal-btn"
               onClick={() => { setGoalDraft(''); setGoalEditing(true); }}
               aria-label={t.goalSet}
               title={t.goalEditHint}
