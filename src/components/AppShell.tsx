@@ -1,6 +1,5 @@
 'use client';
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import {
@@ -8,6 +7,7 @@ import {
   Radio, Search, Settings, Sun, Terminal, Wrench, X,
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
+import { BrandMark } from './BrandMark';
 import { ProfileChip } from './ProfileChip';
 import { deckApi } from '@/lib/api';
 import type { HealthStatus } from '@/lib/types';
@@ -267,7 +267,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="sidebar" aria-label={t.primaryNav}>
         <div className="brand" style={{ alignItems: 'center' }}>
           <div className="brand-badge" aria-hidden>
-            <Image className="brand-mark" src="/icons/hermesdeck-mark.svg" alt="" width={32} height={32} />
+            <BrandMark className="brand-mark" width={32} height={32} />
           </div>
           {!collapsed && (
             <div className="brand-text">
@@ -418,7 +418,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="app-bar" role="banner">
           <div className="ab-brand">
             <div className="brand-badge" aria-hidden>
-              <Image className="brand-mark" src="/icons/hermesdeck-mark.svg" alt="" width={32} height={32} />
+              <BrandMark className="brand-mark" width={32} height={32} />
             </div>
             <div className="ab-title-row">
               <div className="ab-title">{active.label.label}</div>

@@ -1,7 +1,7 @@
 'use client';
-import Image from 'next/image';
 import { ArrowLeft, Clock, LogOut } from 'lucide-react';
 import { Btn } from '@/components/Brand';
+import { BrandMark } from '@/components/BrandMark';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { useT } from '@/lib/i18n';
 
@@ -28,7 +28,7 @@ export default function PendingPage() {
       <LanguageToggle style={{ position: 'fixed', top: 16, right: 16, zIndex: 10 }} />
       <div className="login-card">
         <div className="login-brand">
-          <Image src="/icons/hermesdeck-mark.svg" alt="" width={48} height={48} />
+          <BrandMark alt="HermesDeck" width={48} height={48} />
           <div>
             <div className="login-title">{t.title}</div>
             <div className="login-subtitle">{t.subtitle}</div>
