@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 
 const BASE_REASONING_LEVELS = ['auto', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const;
+const HERMES_AGENT_PLACEHOLDER_MODEL = 'hermes agent';
 
 type ModelCandidate = { provider: string; model: string; baseUrl?: string };
 type ScannedModelConfig = {
@@ -33,6 +34,10 @@ function extractModelIds(payload: unknown): string[] {
     .map((id) => id.trim())
     .filter(Boolean);
   return Array.from(new Set(ids));
+}
+
+function isHermesAgentPlaceholder(provider: string | undefined, model: string | undefined): boolean {
+  return provider?.trim().toLowerCase() === 'hermes' && model?.trim().toLowerCase() === HERMES_AGENT_PLACEHOLDER_MODEL;
 }
 
 async function fetchApiModels(): Promise<string[]> {
@@ -210,27 +215,24 @@ async function getModelsUncached(profile = 'default'): Promise<DeckModelsRespons
   const seen = new Map<string, { provider: string; isDefault: boolean; baseUrl?: string }>();
 
   // 1) Config default model
-  if (cfg.defaultModel && cfg.defaultProvider) {
+  if (cfg.defaultModel && cfg.defaultProvider && !isHermesAgentPlaceholder(cfg.defaultProvider, cfg.defaultModel)) {
     seen.set(cfg.defaultModel, { provider: cfg.defaultProvider, isDefault: true, baseUrl: cfg.defaultBaseUrl });
   }
 
   // 2) Configured provider catalog and fallback provider models
   for (const fb of [...cfg.providerModels, ...cfg.fallbackModels]) {
-    if (!seen.has(fb.model)) {
+    if (!isHermesAgentPlaceholder(fb.provider, fb.model) && !seen.has(fb.model)) {
       seen.set(fb.model, { provider: fb.provider, isDefault: false, baseUrl: fb.baseUrl });
     }
   }
 
-  // 3) API-returned models
+  // 3) API-returned models. Hermes Agent returns a synthetic `Hermes Agent`
+  // placeholder from /v1/models; keep it internal and never expose it as a
+  // composer-selectable candidate.
   for (const id of modelIds) {
-    if (!seen.has(id)) {
+    if (!isHermesAgentPlaceholder('hermes', id) && !seen.has(id)) {
       seen.set(id, { provider: 'hermes', isDefault: seen.size === 0 });
     }
-  }
-
-  // 4) If still empty, add a safe fallback
-  if (seen.size === 0) {
-    seen.set('Hermes Agent', { provider: 'hermes', isDefault: true });
   }
 
   // Group by provider for the DeckModelsResponse shape
@@ -249,13 +251,19 @@ async function getModelsUncached(profile = 'default'): Promise<DeckModelsRespons
     models,
   }));
 
-  const defaultModel = cfg.defaultModel ?? Array.from(seen.keys())[0];
-  const defaultProvider = cfg.defaultProvider ?? providers[0]?.id ?? 'hermes';
+  let defaultModel: string | undefined = Array.from(seen.keys())[0];
+  let defaultProvider: string = defaultModel ? seen.get(defaultModel)?.provider ?? 'hermes' : providers[0]?.id ?? 'hermes';
+  let defaultBaseUrl = defaultModel ? seen.get(defaultModel)?.baseUrl : undefined;
+  if (cfg.defaultModel && cfg.defaultProvider && !isHermesAgentPlaceholder(cfg.defaultProvider, cfg.defaultModel)) {
+    defaultModel = cfg.defaultModel;
+    defaultProvider = cfg.defaultProvider;
+    defaultBaseUrl = cfg.defaultBaseUrl;
+  }
   const reasoningEffort = cfg.reasoningEffort || 'auto';
   const reasoningLevels = Array.from(new Set([...BASE_REASONING_LEVELS, reasoningEffort].filter(Boolean)));
 
   return {
-    default: defaultModel ? { provider: defaultProvider, model: defaultModel, baseUrl: cfg.defaultBaseUrl } : undefined,
+    default: defaultModel ? { provider: defaultProvider, model: defaultModel, baseUrl: defaultBaseUrl } : undefined,
     providers,
     orphanModels: [],
     reasoningEffort,
