@@ -74,9 +74,13 @@ interface ToolCallSlot {
   assistantId: string;
   name: string;
   args: string;
+  /** Responses item id (fc_*). Argument deltas often refer to this id. */
+  itemId?: string;
+  /** Stable tool call id (call_*). Tool outputs refer to this id. */
+  callId?: string;
 }
 
-type StoredToolCall = { id: string; assistantId: string; name: string; args: string };
+type StoredToolCall = { id: string; assistantId: string; name: string; args: string; itemId?: string; callId?: string };
 
 type InflightStorage = {
   /** Server-side hub identifier — never changes for a given run. */
@@ -109,7 +113,12 @@ function readInflight(): InflightStorage | null {
     const toolCalls = tcRaw
       .filter((x): x is StoredToolCall => !!x && typeof x === 'object'
         && typeof x.id === 'string' && typeof x.assistantId === 'string'
-        && typeof x.name === 'string' && typeof x.args === 'string');
+        && typeof x.name === 'string' && typeof x.args === 'string')
+      .map((x) => ({
+        ...x,
+        itemId: typeof x.itemId === 'string' ? x.itemId : undefined,
+        callId: typeof x.callId === 'string' ? x.callId : undefined,
+      }));
     return {
       hubKey: typeof v.hubKey === 'string' && v.hubKey ? v.hubKey : v.sessionId,
       sessionId: v.sessionId,
@@ -130,10 +139,62 @@ function clearInflight(): void {
 
 function serializeToolCalls(map: Map<string, ToolCallSlot>): StoredToolCall[] {
   const out: StoredToolCall[] = [];
+  const seenAssistantIds = new Set<string>();
   for (const [id, slot] of map) {
-    out.push({ id, assistantId: slot.assistantId, name: slot.name, args: slot.args });
+    // The live map may contain aliases (fc_* item id and call_* call id) that
+    // point at the same slot. Persist one canonical row, preferably the call id
+    // because function_call_output events use it to link results to calls.
+    if (seenAssistantIds.has(slot.assistantId)) continue;
+    seenAssistantIds.add(slot.assistantId);
+    out.push({
+      id: slot.callId || id,
+      assistantId: slot.assistantId,
+      name: slot.name,
+      args: slot.args,
+      itemId: slot.itemId,
+      callId: slot.callId,
+    });
   }
   return out;
+}
+
+function toolCallIds(item: Record<string, unknown>, fallback = ''): { primary: string; itemId: string; callId: string } {
+  const itemId = String((item.id as string) || fallback || '');
+  const callId = String((item.call_id as string) || (item.tool_call_id as string) || '');
+  return { primary: callId || itemId, itemId, callId };
+}
+
+function getToolSlot(map: Map<string, ToolCallSlot>, id: string): ToolCallSlot | undefined {
+  if (!id) return undefined;
+  const direct = map.get(id);
+  if (direct) return direct;
+  for (const slot of map.values()) {
+    if (slot.itemId === id || slot.callId === id) return slot;
+  }
+  return undefined;
+}
+
+function rememberToolSlot(map: Map<string, ToolCallSlot>, primary: string, slot: ToolCallSlot): void {
+  if (primary) map.set(primary, slot);
+  if (slot.itemId) map.set(slot.itemId, slot);
+  if (slot.callId) map.set(slot.callId, slot);
+}
+
+function visibleToolCallId(slot: ToolCallSlot, fallback: string): string {
+  return slot.callId || fallback;
+}
+
+function normalizeToolOutput(output: unknown): string {
+  if (typeof output === 'string') return output;
+  if (Array.isArray(output)) {
+    const parts = output.map((part) => {
+      if (!part || typeof part !== 'object') return '';
+      const rec = part as Record<string, unknown>;
+      return typeof rec.text === 'string' ? rec.text : '';
+    }).filter(Boolean);
+    if (parts.length) return parts.join('\n');
+  }
+  return JSON.stringify(output);
 }
 
 // Heuristic — does this raw event type correspond to a tool args delta?
@@ -183,11 +244,13 @@ function rebuildToolCallsMap(list: DeckMessage[]): Map<string, ToolCallSlot> {
     if (msg.role !== 'assistant' || !msg.toolCalls?.length) continue;
     for (const tc of msg.toolCalls) {
       if (!tc.id) continue;
-      m.set(tc.id, {
+      const slot = {
         assistantId: msg.id,
         name: tc.name || 'tool',
         args: tc.arguments || '',
-      });
+        callId: tc.id,
+      };
+      rememberToolSlot(m, tc.id, slot);
     }
   }
   return m;
@@ -286,14 +349,21 @@ export function useChatStream(params: UseChatStreamParams) {
 
     // Tool call started
     if (innerType === 'response.output_item.added' && isFunctionCallItemType(item.type)) {
-      const itemId = String((item.id as string) || (item.call_id as string) || `tc_${Date.now()}`);
-      if (inf.toolCalls.has(itemId)) return;
+      const ids = toolCallIds(item, `tc_${Date.now()}`);
+      const itemId = ids.primary;
+      if (getToolSlot(inf.toolCalls, itemId)) return;
       const fn = (item.function && typeof item.function === 'object') ? item.function as Record<string, unknown> : null;
       const name = String((item.name as string) || (fn?.name as string) || 'tool');
       const initArgs = typeof item.arguments === 'string' ? item.arguments : '';
       const newAssistantId = `tc_${itemId}_${Math.random().toString(36).slice(2, 6)}`;
       const newTextId = `a_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      inf.toolCalls.set(itemId, { assistantId: newAssistantId, name, args: initArgs });
+      rememberToolSlot(inf.toolCalls, itemId, {
+        assistantId: newAssistantId,
+        name,
+        args: initArgs,
+        itemId: ids.itemId || undefined,
+        callId: ids.callId || undefined,
+      });
       const prevTextId = inf.textAssistantId;
       inf.textAssistantId = newTextId;
       // Persist the new text bubble so a refresh-mid-stream targets the right row.
@@ -342,7 +412,7 @@ export function useChatStream(params: UseChatStreamParams) {
       const itemId = String((p.item_id as string) || (item.id as string) || '');
       const delta = typeof p.delta === 'string' ? p.delta : '';
       if (!itemId || !delta) return;
-      let tc = inf.toolCalls.get(itemId);
+      let tc = getToolSlot(inf.toolCalls, itemId);
       // Resume race: hub buffer may have dropped the upstream output_item.added
       // before we reconnected, but the args.delta still arrives. Without a
       // placeholder slot we'd silently drop the chunk and leave the tool call
@@ -350,8 +420,8 @@ export function useChatStream(params: UseChatStreamParams) {
       // fix the name later.
       if (!tc) {
         const newAssistantId = `tc_${itemId}_${Math.random().toString(36).slice(2, 6)}`;
-        tc = { assistantId: newAssistantId, name: 'tool', args: '' };
-        inf.toolCalls.set(itemId, tc);
+        tc = { assistantId: newAssistantId, name: 'tool', args: '', itemId };
+        rememberToolSlot(inf.toolCalls, itemId, tc);
         setMessages((m) => ({
           ...m,
           [sid]: [
@@ -371,7 +441,7 @@ export function useChatStream(params: UseChatStreamParams) {
       setMessages((m) => ({
         ...m,
         [sid]: (m[sid] || []).map((x) => x.id === slot.assistantId
-          ? { ...x, toolCalls: [{ id: itemId, name: slot.name, arguments: slot.args }] }
+          ? { ...x, toolCalls: [{ id: visibleToolCallId(slot, itemId), name: slot.name, arguments: slot.args }] }
           : x),
       }));
       return;
@@ -384,7 +454,7 @@ export function useChatStream(params: UseChatStreamParams) {
         ? (p.arguments as string)
         : (typeof item.arguments === 'string' ? (item.arguments as string) : null);
       if (!itemId || args == null) return;
-      const tc = inf.toolCalls.get(itemId);
+      const tc = getToolSlot(inf.toolCalls, itemId);
       if (!tc) return;
       tc.args = args;
       // Promote the tool name if the placeholder created in the delta path
@@ -396,7 +466,7 @@ export function useChatStream(params: UseChatStreamParams) {
       setMessages((m) => ({
         ...m,
         [sid]: (m[sid] || []).map((x) => x.id === tc.assistantId
-          ? { ...x, toolCalls: [{ id: itemId, name: tc.name, arguments: tc.args }] }
+          ? { ...x, toolCalls: [{ id: visibleToolCallId(tc, itemId), name: tc.name, arguments: tc.args }] }
           : x),
       }));
       return;
@@ -406,14 +476,18 @@ export function useChatStream(params: UseChatStreamParams) {
     // fully-resolved string) and a chance to detect tool-output items.
     if (innerType === 'response.output_item.done') {
       if (isFunctionCallItemType(item.type) && typeof item.arguments === 'string') {
-        const itemId = String((item.id as string) || (item.call_id as string) || '');
-        const tc = inf.toolCalls.get(itemId);
+        const ids = toolCallIds(item);
+        const itemId = ids.primary;
+        const tc = getToolSlot(inf.toolCalls, itemId);
         if (tc) {
+          tc.itemId = tc.itemId || ids.itemId || undefined;
+          tc.callId = tc.callId || ids.callId || undefined;
+          rememberToolSlot(inf.toolCalls, itemId, tc);
           tc.args = item.arguments as string;
           setMessages((m) => ({
             ...m,
             [sid]: (m[sid] || []).map((x) => x.id === tc.assistantId
-              ? { ...x, toolCalls: [{ id: itemId, name: tc.name, arguments: tc.args }] }
+              ? { ...x, toolCalls: [{ id: visibleToolCallId(tc, itemId), name: tc.name, arguments: tc.args }] }
               : x),
           }));
         }
@@ -423,11 +497,11 @@ export function useChatStream(params: UseChatStreamParams) {
       const itype = String(item.type || '');
       if (itype !== 'tool_result' && itype !== 'function_call_output' && itype !== 'tool_output') return;
       const itemId = String((item.call_id as string) || (item.tool_call_id as string) || (item.id as string) || '');
-      const tc = inf.toolCalls.get(itemId);
+      const tc = getToolSlot(inf.toolCalls, itemId);
       const toolName = tc?.name || String((item.name as string) || 'tool');
       const output = item.output ?? item.content;
       if (output == null) return;
-      const text = typeof output === 'string' ? output : JSON.stringify(output);
+      const text = normalizeToolOutput(output);
       setMessages((m) => {
         const list = m[sid] || [];
         if (list.some((x) => x.role === 'tool' && x.toolCallId === itemId)) return m;
@@ -464,11 +538,11 @@ export function useChatStream(params: UseChatStreamParams) {
         || (item.id as string)
         || ''
       );
-      const tc = inf.toolCalls.get(itemId);
+      const tc = getToolSlot(inf.toolCalls, itemId);
       const toolName = tc?.name || String((p.tool_name as string) || (item.name as string) || 'tool');
       const output = p.output ?? p.result ?? p.content;
       if (output == null) return;
-      const text = typeof output === 'string' ? output : JSON.stringify(output);
+      const text = normalizeToolOutput(output);
       setMessages((m) => {
         const list = m[sid] || [];
         if (list.some((x) => x.role === 'tool' && x.toolCallId === itemId)) return m;
