@@ -37,5 +37,47 @@ if (!/@media\s*\(max-width:\s*\d{3}px\)/.test(css)) {
   console.error('css missing mobile breakpoint @media (max-width: …px)');
   ok = false;
 }
+const registrar = existsSync(join(root, 'src/components/PWARegister.tsx')) ? readFileSync(join(root, 'src/components/PWARegister.tsx'), 'utf8') : '';
+for (const token of ['registration.waiting !== worker', 'pendingWorker.current', 'setUpdateReady(false)']) {
+  if (!registrar.includes(token)) {
+    console.error(`PWARegister missing stale waiting-worker guard token: ${token}`);
+    ok = false;
+  }
+}
+const sw = existsSync(join(root, 'public/sw.js')) ? readFileSync(join(root, 'public/sw.js'), 'utf8') : '';
+const appShellMatch = sw.match(/const\s+APP_SHELL\s*=\s*\[([\s\S]*?)\];/);
+if (!appShellMatch) {
+  console.error('service worker missing APP_SHELL declaration');
+  ok = false;
+} else {
+  const appShellLiteral = appShellMatch[1];
+  const protectedRoutes = ['/', '/chat', '/chat?source=pwa', '/profiles', '/runs', '/cron', '/tools', '/terminal', '/config', '/kanban', '/lcm', '/settings'];
+  for (const route of protectedRoutes) {
+    const quoted = route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`['\"]${quoted}['\"]`).test(appShellLiteral)) {
+      console.error(`service worker APP_SHELL must not precache protected route: ${route}`);
+      ok = false;
+    }
+  }
+}
+const navigateMatch = sw.match(/if\s*\(req\.mode\s*===\s*['"]navigate['"]\)\s*\{([\s\S]*?)\n\s*\}\n\s*\n\s*\/\/ Static assets/);
+if (!navigateMatch) {
+  console.error('service worker missing navigation fetch block');
+  ok = false;
+} else {
+  const navigateBlock = navigateMatch[1];
+  if (/putWithTrim|RUNTIME_CACHE|caches\.match\(req\)|chatHit|\/chat\?source=pwa/.test(navigateBlock)) {
+    console.error('service worker navigation block must not runtime-cache arbitrary protected HTML or use chat-specific fallback');
+    ok = false;
+  }
+  if (!/caches\.match\(['"]\/offline['"]\)/.test(navigateBlock)) {
+    console.error('service worker navigation block must fall back to /offline');
+    ok = false;
+  }
+}
+if (!/!res\.redirected[\s\S]*putWithTrim\(RUNTIME_CACHE/.test(sw)) {
+  console.error('service worker static runtime cache must skip redirected responses');
+  ok = false;
+}
 if (!ok) process.exit(1);
 console.log('PWA checks passed');

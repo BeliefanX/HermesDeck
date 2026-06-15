@@ -7,10 +7,25 @@
 // so the launcher (preview, supervisor, raw shell) can supervise it cleanly.
 
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const isStart = process.argv.includes('--start');
-const nextBin = 'next';
-const nextArgs = [isStart ? 'start' : 'dev', '-H', '0.0.0.0', '-p', '6118'];
+const canonicalPort = Number(process.env.CANONICAL_PORT || 6118);
+const legacyPort = Number(process.env.LEGACY_PORT || 6117);
+const nextHost = process.env.NEXT_HOST || '0.0.0.0';
+const canonicalHost = process.env.CANONICAL_HOST || '127.0.0.1';
+const localNextBin = fileURLToPath(new URL('../node_modules/.bin/next', import.meta.url));
+const localBinDir = fileURLToPath(new URL('../node_modules/.bin', import.meta.url));
+const nextBin = existsSync(localNextBin) ? localNextBin : 'next';
+const nextArgs = [isStart ? 'start' : 'dev', '-H', nextHost, '-p', String(canonicalPort)];
+const childEnv = {
+  ...process.env,
+  CANONICAL_PORT: String(canonicalPort),
+  LEGACY_PORT: String(legacyPort),
+  CANONICAL_HOST: canonicalHost,
+  PATH: `${localBinDir}:${process.env.PATH || ''}`,
+};
 
 const children = [];
 
@@ -21,8 +36,8 @@ function startChild(label, cmd, args, env = process.env) {
     console.log(`[dev] ${label} exited (code=${code}, signal=${signal ?? 'none'})`);
     // If next itself died, tear everything down — the redirect alone is useless.
     if (label === 'next') shutdown(code ?? 1);
-    if (label === 'redirect-6117' && code !== 0 && !shuttingDown) {
-      console.warn('[dev] WARNING: legacy :6117 redirect helper is unavailable; canonical :6118 may still work.');
+    if (label === `redirect-${legacyPort}` && code !== 0 && !shuttingDown) {
+      console.warn(`[dev] WARNING: legacy :${legacyPort} redirect helper is unavailable; canonical :${canonicalPort} may still work.`);
     }
   });
   child.on('error', (err) => {
@@ -47,8 +62,8 @@ process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
 // Start Next first; it's the load-bearing process.
-startChild('next', nextBin, nextArgs);
+startChild('next', nextBin, nextArgs, childEnv);
 
 // Start the redirect helper. If 6117 is occupied, the helper exits non-zero and
 // the parent emits an explicit warning instead of silently reporting success.
-startChild('redirect-6117', process.execPath, ['scripts/redirect-6117.mjs']);
+startChild(`redirect-${legacyPort}`, process.execPath, ['scripts/redirect-6117.mjs'], childEnv);

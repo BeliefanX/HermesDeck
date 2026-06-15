@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next';
+import { HERMES_THEME_COLORS } from '@/lib/theme-colors';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -11,8 +12,8 @@ export default function manifest(): MetadataRoute.Manifest {
     display: 'standalone',
     display_override: ['window-controls-overlay', 'standalone', 'browser'],
     orientation: 'any',
-    background_color: '#08090c',
-    theme_color: '#08090c',
+    background_color: HERMES_THEME_COLORS.light,
+    theme_color: HERMES_THEME_COLORS.light,
     categories: ['productivity', 'developer', 'utilities'],
     icons: [
       { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },

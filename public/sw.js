@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'hermesdeck-pwa-v17';
+const CACHE_VERSION = 'hermesdeck-pwa-v41';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -7,12 +7,11 @@ const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 // on iOS.
 const RUNTIME_CACHE_MAX = 40;
 
-// App shell — kept tight to the routes that actually exist.
-// /chat?source=pwa is the manifest start_url; cache the bare /chat too so
-// runtime upgrades to the query-string variant work even when offline.
-// Dynamic routes (/runs/[id]) can't be pre-cached; they fall back to /offline
-// when navigation fails AND the runtime cache has nothing.
-const APP_SHELL = ['/', '/chat', '/chat?source=pwa', '/profiles', '/runs', '/tools', '/terminal', '/settings', '/offline', '/manifest.webmanifest'];
+// App shell — only public/offline-safe assets. Authenticated navigation routes
+// (/, /chat, /profiles, /runs, /cron, /tools, /terminal, /config, /kanban,
+// /lcm, /settings) must never be precached or served as stale HTML across
+// users. Failed navigations land on /offline instead.
+const APP_SHELL = ['/offline', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -20,10 +19,15 @@ self.addEventListener('install', (event) => {
       // Cache entries individually so a single 404 doesn't fail the install.
       // Surface failures to the worker console — silent .catch() hid the case
       // where a typo'd shell URL never got cached.
-      Promise.all(APP_SHELL.map((url) => cache.add(url).catch((err) => {
-        console.warn('[sw] shell cache miss:', url, err && err.message);
-      })))
-    ).then(() => self.skipWaiting())
+      Promise.all(APP_SHELL.map(async (url) => {
+        try {
+          const res = await fetch(url, { cache: 'no-store' });
+          if (res.ok && !res.redirected) await cache.put(url, res);
+        } catch (err) {
+          console.warn('[sw] shell cache miss:', url, err && err.message);
+        }
+      }))
+    )
   );
 });
 
@@ -37,6 +41,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+  if (event.data?.type === 'GET_VERSION') {
+    event.ports?.[0]?.postMessage({ type: 'VERSION', version: CACHE_VERSION });
+  }
 });
 
 // LRU trim: oldest-inserted-first eviction. The Cache API has no natural
@@ -99,27 +106,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigations: network-first, fall back to cached page → /offline.
-  // Dynamic routes (/runs/[id]) won't have a cache entry on first offline
-  // visit; the /offline shell is a soft landing in that case.
+  // Navigations: network-first, but never runtime-cache authenticated HTML.
+  // When offline, return the public offline page only.
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req).then((res) => {
-        if (res.ok) {
-          const copy = res.clone();
-          putWithTrim(RUNTIME_CACHE, req, copy, RUNTIME_CACHE_MAX);
-        }
-        return res;
-      }).catch(() =>
-        caches.match(req).then(async (hit) => {
-          if (hit) return hit;
-          if (url.pathname === '/chat') {
-            const chatHit = await caches.match('/chat?source=pwa') || await caches.match('/chat');
-            if (chatHit) return chatHit;
-          }
-          return caches.match('/offline').then((off) => off || Response.error());
-        })
-      )
+      fetch(req).catch(() => caches.match('/offline').then((off) => off || Response.error()))
     );
     return;
   }
@@ -127,7 +118,7 @@ self.addEventListener('fetch', (event) => {
   // Static assets: cache-while-fetching for style/script/image/font.
   event.respondWith(
     fetch(req).then((res) => {
-      if (res.ok && ['style', 'script', 'image', 'font'].includes(req.destination)) {
+      if (res.ok && !res.redirected && ['style', 'script', 'image', 'font'].includes(req.destination)) {
         const copy = res.clone();
         putWithTrim(RUNTIME_CACHE, req, copy, RUNTIME_CACHE_MAX);
       }

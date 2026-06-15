@@ -9,3 +9,7 @@ tsconfig.tsbuildinfo
 .vscode
 .idea
 .claude/worktrees/
+.hallmark/
+.playwright-mcp/
+hermesdeck-current-login.png
+tally-reference-full.png

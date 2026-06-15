@@ -8,7 +8,7 @@
  * same Wi-Fi can hit the dev server without any manual edit. Operators can
  * still override / extend via DECK_DEV_ORIGINS.
  */
-const os = require('os');
+import os from 'node:os';
 function discoverLanHosts() {
   const out = new Set();
   try {
@@ -36,8 +36,9 @@ const securityHeaders = [
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
 ];
 
-module.exports = {
+const nextConfig = {
   reactStrictMode: true,
+  poweredByHeader: false,
   devIndicators: false,
   // Keep pdf-parse / mammoth out of the client bundle and let them resolve as
   // CJS at runtime on the server. They pull in fs/path/buffer and would break
@@ -53,3 +54,5 @@ module.exports = {
     ];
   },
 };
+
+export default nextConfig;

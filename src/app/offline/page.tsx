@@ -23,45 +23,30 @@ export default function OfflinePage() {
 
   return (
     <Page>
-      <Card hero>
-        <Kicker>{t.kicker}</Kicker>
-        <h1
-          style={{
-            margin: '6px 0 10px',
-            fontSize: 28,
-            fontWeight: 650,
-            letterSpacing: '-.03em',
-            color: 'var(--strong-text)',
-          }}
-        >
-          {t.title}
-        </h1>
-        <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.6, margin: 0, maxWidth: 560 }}>
-          {t.desc}
-        </p>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: 12,
-            marginTop: 18,
-            background: 'var(--surface-bg)',
-            border: '1px solid var(--line)',
-            borderRadius: 8,
-          }}
-        >
-          <WifiOff size={16} style={{ color: 'var(--muted)' }} />
-          <span style={{ fontSize: 12.5, color: 'var(--text)' }}>
-            {t.hint}
-          </span>
+      <div className="offline-page">
+        <div className="offline-card offline-card-pwa">
+          <Card hero>
+            <Kicker>{t.kicker}</Kicker>
+            <h1 className="offline-title">
+              {t.title}
+            </h1>
+            <p className="offline-desc">
+              {t.desc}
+            </p>
+            <div className="offline-hint">
+              <WifiOff size={16} />
+              <span>
+                {t.hint}
+              </span>
+            </div>
+            <div className="offline-actions">
+              <Btn variant="primary" icon={<RefreshCw size={14} />} onClick={() => location.reload()}>
+                {t.retry}
+              </Btn>
+            </div>
+          </Card>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-          <Btn variant="primary" icon={<RefreshCw size={14} />} onClick={() => location.reload()}>
-            {t.retry}
-          </Btn>
-        </div>
-      </Card>
+      </div>
     </Page>
   );
 }
