@@ -1,7 +1,15 @@
 import { hermesApiGet } from './core';
 import type { DeckCronJob } from '@/lib/types';
 
-type HermesCronJobsResponse = { jobs?: unknown[]; profile_id?: unknown; profileId?: unknown; profile?: unknown; routed_profile_id?: unknown } | unknown[];
+type HermesCronJobsResponse = {
+  jobs?: unknown[];
+  profile_id?: unknown;
+  profileId?: unknown;
+  profile?: unknown;
+  routed_profile_id?: unknown;
+  profile_routed?: unknown;
+  routing?: unknown;
+} | unknown[];
 
 export class CronProfileRoutingError extends Error {
   readonly code = 'profile_routing_unavailable';
@@ -74,11 +82,20 @@ function jobsFromPayload(payload: HermesCronJobsResponse): unknown[] {
 
 function confirmedProfileId(payload: HermesCronJobsResponse): string | undefined {
   if (Array.isArray(payload)) return undefined;
-  return str(payload.profile_id) || str(payload.profileId) || str(payload.routed_profile_id) || str(payload.profile);
+  const routing = obj(payload.routing);
+  return str(payload.profile_id)
+    || str(payload.profileId)
+    || str(payload.routed_profile_id)
+    || str(payload.profile)
+    || str(routing.profile_id)
+    || str(routing.profileId)
+    || str(routing.routed_profile_id)
+    || str(routing.profile);
 }
 
 function assertProfileRoutingConfirmed(payload: HermesCronJobsResponse, rawJobs: unknown[], requestedProfile: string): boolean {
-  if (confirmedProfileId(payload) === requestedProfile) return true;
+  const confirmed = confirmedProfileId(payload);
+  if (confirmed === requestedProfile) return true;
 
   const rowProfiles = rawJobs
     .map((job) => str(obj(job).profile))

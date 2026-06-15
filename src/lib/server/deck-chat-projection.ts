@@ -7,6 +7,7 @@ import {
   openSync,
   readFileSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -22,8 +23,16 @@ import {
 const STORE_VERSION = 1;
 const DATA_DIR = process.env.HERMESDECK_DATA_DIR || process.env.HERMESDECK_AUTH_DIR || join(homedir(), '.hermesdeck');
 const STORE_FILE = join(DATA_DIR, 'chat-projection.v1.json');
+const LOCK_FILE = `${STORE_FILE}.lock`;
 const MAX_IMPORTED_SESSIONS = 500;
 const MAX_MESSAGES_PER_SESSION = 1000;
+const MAX_STORED_SESSIONS = 750;
+const MAX_ACTIVE_OR_ERRORED_SESSIONS = 200;
+const COMPLETED_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const FAILED_OR_RUNNING_SESSION_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+const LOCK_STALE_MS = 5 * 60_000;
+const LOCK_RETRY_MS = 25;
+const LOCK_TIMEOUT_MS = 5_000;
 
 export type ProjectedSessionStatus = 'running' | 'completed' | 'failed';
 
@@ -219,8 +228,89 @@ function readStore(): ProjectionStore {
   }
 }
 
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function withStoreLock<T>(fn: () => T): T {
+  ensureDataDir();
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  const owner = `${process.pid}:${randomUUID()}`;
+  let fd: number | undefined;
+  while (fd === undefined) {
+    try {
+      fd = openSync(LOCK_FILE, 'wx', 0o600);
+      writeFileSync(fd, `${owner}\n${nowIso()}\n`);
+      try { fsyncSync(fd); } catch {}
+      break;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'EEXIST') throw err;
+      try {
+        const stat = readFileSync(LOCK_FILE, 'utf8');
+        const ts = isoTimestamp(stat.split(/\r?\n/)[1]);
+        if (!ts || Date.now() - new Date(ts).getTime() > LOCK_STALE_MS) {
+          rmSync(LOCK_FILE, { force: true });
+          continue;
+        }
+      } catch {}
+      if (Date.now() >= deadline) throw new Error('Timed out acquiring Deck chat projection store lock.');
+      sleepSync(LOCK_RETRY_MS);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    if (fd !== undefined) {
+      try { closeSync(fd); } catch {}
+      try {
+        const currentOwner = readFileSync(LOCK_FILE, 'utf8').split(/\r?\n/)[0];
+        if (currentOwner === owner) rmSync(LOCK_FILE, { force: true });
+      } catch {}
+    }
+  }
+}
+
+function sessionTime(session: ProjectedSession): number {
+  const ts = isoTimestamp(session.updatedAt) || isoTimestamp(session.createdAt);
+  return ts ? new Date(ts).getTime() : 0;
+}
+
+function pruneStore(store: ProjectionStore): void {
+  const now = Date.now();
+  const entries = Object.entries(store.sessions);
+  const keep = new Set<string>();
+
+  entries
+    .filter(([, session]) => session.status === 'running' || session.status === 'failed')
+    .sort((a, b) => sessionTime(b[1]) - sessionTime(a[1]))
+    .slice(0, Math.min(MAX_ACTIVE_OR_ERRORED_SESSIONS, MAX_STORED_SESSIONS))
+    .forEach(([id]) => keep.add(id));
+
+  const ttlEligible = entries
+    .filter(([id, session]) => {
+      if (keep.has(id)) return false;
+      const age = now - sessionTime(session);
+      const ttl = session.status === 'completed' ? COMPLETED_SESSION_TTL_MS : FAILED_OR_RUNNING_SESSION_TTL_MS;
+      return age <= ttl;
+    })
+    .sort((a, b) => sessionTime(b[1]) - sessionTime(a[1]));
+
+  for (const [id] of ttlEligible) {
+    if (keep.size >= MAX_STORED_SESSIONS) break;
+    keep.add(id);
+  }
+
+  const retained = Object.fromEntries(entries.filter(([id]) => keep.has(id))) as Record<string, ProjectedSession>;
+  store.sessions = retained;
+  store.aliases = Object.fromEntries(
+    Object.entries(store.aliases).filter(([alias, target]) => Boolean(retained[target] || retained[alias])),
+  );
+}
+
 function writeStore(store: ProjectionStore): void {
   ensureDataDir();
+  pruneStore(store);
   const next = { ...store, updatedAt: nowIso() };
   const tmp = `${STORE_FILE}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tmp, JSON.stringify(next, null, 2), { mode: 0o600 });
@@ -231,10 +321,12 @@ function writeStore(store: ProjectionStore): void {
 }
 
 function mutateStore<T>(fn: (store: ProjectionStore) => T): T {
-  const store = readStore();
-  const result = fn(store);
-  writeStore(store);
-  return result;
+  return withStoreLock(() => {
+    const store = readStore();
+    const result = fn(store);
+    writeStore(store);
+    return result;
+  });
 }
 
 function resolveAlias(store: ProjectionStore, sessionId: string): string {

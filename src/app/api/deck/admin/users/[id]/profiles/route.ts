@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getStrictProfiles } from '@/lib/server/hermes';
 import { replaceDeckUserProfileAssignments } from '@/lib/server/auth';
 import { guardMutating, guardRequestBody, readLimitedJsonObject } from '@/lib/server/csrf';
-import { localProfileIdsForCatalogFallback } from '@/lib/server/profile-catalog-fallback';
 import { profileIdOf, requireAdmin } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
@@ -24,25 +23,20 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!parsed.ok) return parsed.response;
 
   let validProfileIds: string[];
-  let profileCatalogWarning: string | undefined;
   try {
     const profiles = await getStrictProfiles();
     validProfileIds = [...new Set(profiles.map((profile) => profileIdOf(profile)).filter((id): id is string => !!id))];
     if (!validProfileIds.length) throw new Error('Hermes Agent returned no profiles.');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    validProfileIds = localProfileIdsForCatalogFallback();
-    profileCatalogWarning = `profiles_catalog_unavailable: ${msg.slice(0, 180)}`;
-    if (!validProfileIds.length) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'profiles_fetch_failed',
-          detail: `Unable to validate profile assignments against Hermes Agent profiles: ${msg.slice(0, 180)}`,
-        },
-        { status: 502 },
-      );
-    }
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'profiles_fetch_failed',
+        detail: `Unable to validate profile assignments against Hermes Agent profiles: ${msg.slice(0, 180)}`,
+      },
+      { status: 502 },
+    );
   }
 
   const requestedAssignments = parsed.value.assignedProfileIds ?? parsed.value.profileIds;
@@ -55,6 +49,5 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     ok: true,
     user: result.user,
     validProfileIds,
-    ...(profileCatalogWarning ? { warning: 'profiles_catalog_unavailable', detail: profileCatalogWarning } : {}),
   });
 }

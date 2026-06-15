@@ -1,5 +1,4 @@
 import type { DeckModelsResponse, ModelInfo } from '@/lib/types';
-import { localModelCatalogForProfile } from '@/lib/server/local-model-catalog';
 import { apiHeaders, getHermesApiBase, makeKeyedCache } from './core';
 
 const BASE_REASONING_LEVELS = ['auto', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const;
@@ -9,7 +8,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function extractModelIds(payload: unknown): string[] {
+type ApiModelItem = { id: string; provider?: string; isDefault?: boolean; baseUrl?: string };
+
+function extractModelItems(payload: unknown): ApiModelItem[] {
   const rawItems = Array.isArray(payload)
     ? payload
     : isRecord(payload) && Array.isArray(payload.data)
@@ -17,18 +18,28 @@ function extractModelIds(payload: unknown): string[] {
       : isRecord(payload) && Array.isArray(payload.models)
         ? payload.models
         : [];
-  const ids = rawItems
-    .map((item) => (typeof item === 'string' ? item : isRecord(item) && typeof item.id === 'string' ? item.id : ''))
-    .map((id) => id.trim())
-    .filter(Boolean);
-  return Array.from(new Set(ids));
+  const seen = new Set<string>();
+  const items: ApiModelItem[] = [];
+  for (const item of rawItems) {
+    const row = isRecord(item) ? item : undefined;
+    const id = (typeof item === 'string' ? item : row && typeof row.id === 'string' ? row.id : '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    items.push({
+      id,
+      provider: row && typeof row.provider === 'string' && row.provider.trim() ? row.provider.trim() : undefined,
+      isDefault: row?.default === true || row?.is_default === true || row?.isDefault === true,
+      baseUrl: row && typeof row.base_url === 'string' ? row.base_url : row && typeof row.baseUrl === 'string' ? row.baseUrl : undefined,
+    });
+  }
+  return items;
 }
 
 function isHermesAgentPlaceholder(provider: string | undefined, model: string | undefined): boolean {
   return provider?.trim().toLowerCase() === 'hermes' && model?.trim().toLowerCase() === HERMES_AGENT_PLACEHOLDER_MODEL;
 }
 
-async function fetchApiModels(profile = 'default'): Promise<string[]> {
+async function fetchApiModels(profile = 'default'): Promise<ApiModelItem[]> {
   const apiBase = getHermesApiBase(profile);
   if (!apiBase) throw new Error(`profile '${profile}' has no configured API server base`);
   const base = apiBase.replace(/\/+$/, '');
@@ -44,64 +55,42 @@ async function fetchApiModels(profile = 'default'): Promise<string[]> {
   } catch {
     throw new Error('/v1/models returned invalid JSON.');
   }
-  const ids = extractModelIds(payload);
-  if (!ids.length) throw new Error('/v1/models returned no model ids.');
-  return ids;
+  const items = extractModelItems(payload);
+  if (!items.length) throw new Error('/v1/models returned no model ids.');
+  return items;
 }
 
 async function getModelsUncached(profile = 'default'): Promise<DeckModelsResponse> {
-  const modelIds = await fetchApiModels(profile);
-  const cfg = localModelCatalogForProfile(profile);
-  const seen = new Map<string, { provider: string; isDefault: boolean; baseUrl?: string }>();
+  const modelItems = (await fetchApiModels(profile))
+    .filter((item) => !isHermesAgentPlaceholder(item.provider || 'hermes', item.id));
 
-  if (cfg.defaultModel && cfg.defaultProvider && !isHermesAgentPlaceholder(cfg.defaultProvider, cfg.defaultModel)) {
-    seen.set(cfg.defaultModel, { provider: cfg.defaultProvider, isDefault: true, baseUrl: cfg.defaultBaseUrl });
-  }
-
-  for (const candidate of [...cfg.providerModels, ...cfg.fallbackModels]) {
-    if (!isHermesAgentPlaceholder(candidate.provider, candidate.model) && !seen.has(candidate.model)) {
-      seen.set(candidate.model, { provider: candidate.provider, isDefault: false, baseUrl: candidate.baseUrl });
-    }
-  }
-
-  for (const id of modelIds) {
-    if (!isHermesAgentPlaceholder('hermes', id) && !seen.has(id)) {
-      seen.set(id, { provider: 'hermes', isDefault: seen.size === 0 });
-    }
-  }
-
-  if (!seen.size) {
+  if (!modelItems.length) {
     throw new Error('/v1/models returned no selectable profile models.');
   }
 
   const byProvider = new Map<string, ModelInfo[]>();
-  for (const [id, meta] of seen) {
-    const list = byProvider.get(meta.provider) ?? [];
-    list.push({ id, available: true, isDefault: meta.isDefault });
-    byProvider.set(meta.provider, list);
+  let defaultItem = modelItems.find((item) => item.isDefault) || modelItems[0];
+  for (const item of modelItems) {
+    const provider = item.provider || 'hermes';
+    const list = byProvider.get(provider) ?? [];
+    list.push({ id: item.id, available: true, isDefault: item.id === defaultItem.id });
+    byProvider.set(provider, list);
   }
 
-  const providers = Array.from(byProvider.entries()).map(([id, models], idx) => ({
+  const providers = Array.from(byProvider.entries()).map(([id, models]) => ({
     id,
     name: id === 'hermes' ? 'Hermes' : id,
-    isDefault: idx === 0,
+    isDefault: id === (defaultItem.provider || 'hermes'),
     credentialCount: undefined,
+    baseUrl: modelItems.find((item) => (item.provider || 'hermes') === id)?.baseUrl,
     models,
   }));
 
-  let defaultModel: string | undefined = Array.from(seen.keys())[0];
-  let defaultProvider = defaultModel ? seen.get(defaultModel)?.provider ?? 'hermes' : providers[0]?.id ?? 'hermes';
-  let defaultBaseUrl = defaultModel ? seen.get(defaultModel)?.baseUrl : undefined;
-  if (cfg.defaultModel && cfg.defaultProvider && !isHermesAgentPlaceholder(cfg.defaultProvider, cfg.defaultModel)) {
-    defaultModel = cfg.defaultModel;
-    defaultProvider = cfg.defaultProvider;
-    defaultBaseUrl = cfg.defaultBaseUrl;
-  }
-  const reasoningEffort = cfg.reasoningEffort || 'auto';
-  const reasoningLevels = Array.from(new Set([...BASE_REASONING_LEVELS, reasoningEffort].filter(Boolean)));
+  const reasoningEffort = 'auto';
+  const reasoningLevels = Array.from(new Set(BASE_REASONING_LEVELS));
 
   return {
-    default: defaultModel ? { provider: defaultProvider, model: defaultModel, baseUrl: defaultBaseUrl } : undefined,
+    default: defaultItem ? { provider: defaultItem.provider || 'hermes', model: defaultItem.id, baseUrl: defaultItem.baseUrl } : undefined,
     providers,
     orphanModels: [],
     reasoningEffort,

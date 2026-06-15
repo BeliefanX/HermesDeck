@@ -29,7 +29,6 @@ const hermesCoreModulePath = resolve('src/lib/server/hermes/core.ts');
 const hermesSessionsModulePath = resolve('src/lib/server/hermes/sessions.ts');
 const hermesMessagesModulePath = resolve('src/lib/server/hermes/messages.ts');
 const deckChatProjectionModulePath = resolve('src/lib/server/deck-chat-projection.ts');
-const profileCatalogFallbackModulePath = resolve('src/lib/server/profile-catalog-fallback.ts');
 const cronRoutePath = resolve('src/app/api/deck/cron/route.ts');
 const hermesCronModulePath = resolve('src/lib/server/hermes/cron.ts');
 let importNonce = 0;
@@ -584,40 +583,6 @@ test('server RBAC helpers enforce admin roles, active status, and profile assign
 
 });
 
-test('profile catalog fallback enumerates local Hermes profiles for admins and respects user assignments', async () => {
-  const home = makeHome();
-  const hermesRoot = join(home, '.hermes');
-  const profilesRoot = join(hermesRoot, 'profiles');
-  mkdirSync(join(profilesRoot, 'agent-b'), { recursive: true });
-  mkdirSync(join(profilesRoot, 'agent-a'), { recursive: true });
-  mkdirSync(join(profilesRoot, 'bad id'), { recursive: true });
-
-  const oldHome = process.env.HOME;
-  const oldUserprofile = process.env.USERPROFILE;
-  const oldHermesHome = process.env.HERMES_HOME;
-  try {
-    process.env.HOME = home;
-    process.env.USERPROFILE = home;
-    process.env.HERMES_HOME = join(profilesRoot, 'agent-a');
-    const fallback = await import(`${pathToFileURL(profileCatalogFallbackModulePath).href}?case=${Date.now()}-${importNonce++}`);
-
-    assert.deepEqual(fallback.localProfileIdsForCatalogFallback(), ['default', 'agent-a', 'agent-b']);
-    assert.deepEqual(
-      fallback.fallbackProfilesForUser({ role: 'super_admin', assignedProfileIds: [] }).map((profile) => profile.id),
-      ['default', 'agent-a', 'agent-b'],
-    );
-    assert.deepEqual(
-      fallback.fallbackProfilesForUser({ role: 'user', assignedProfileIds: ['agent-b', 'bad id', 'agent-b'] }).map((profile) => profile.id),
-      ['agent-b'],
-    );
-  } finally {
-    process.env.HOME = oldHome;
-    process.env.USERPROFILE = oldUserprofile;
-    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
-    else process.env.HERMES_HOME = oldHermesHome;
-  }
-});
-
 async function withMockedHermesFetch(responder, fn) {
   const originalFetch = globalThis.fetch;
   const calls = [];
@@ -755,6 +720,70 @@ test('Deck chat projection is profile scoped and rejects cross-profile message r
       () => projection.getProjectedMessages('sensgift-local-1', 'default'),
       (err) => err?.code === 'session_profile_mismatch' && err?.status === 403,
     );
+  } finally {
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+  }
+});
+
+test('Deck chat projection uses a lock, atomic writes and prunes stale sessions', async () => {
+  const home = makeHome();
+  const dataDir = join(home, '.hermesdeck');
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  try {
+    mkdirSync(dataDir, { recursive: true });
+    process.env.HERMESDECK_DATA_DIR = dataDir;
+    delete process.env.HERMESDECK_AUTH_DIR;
+    const stale = '2020-01-01T00:00:00.000Z';
+    const sessions = {};
+    for (let i = 0; i < 780; i += 1) {
+      sessions[`old-${i}`] = {
+        id: `old-${i}`,
+        profileId: 'sensgift',
+        title: `old ${i}`,
+        source: 'hermesdeck',
+        createdAt: stale,
+        updatedAt: stale,
+        messageCount: 0,
+        status: 'completed',
+        messages: [],
+      };
+    }
+    sessions['failed-keep'] = {
+      id: 'failed-keep',
+      profileId: 'sensgift',
+      title: 'failed keep',
+      source: 'hermesdeck',
+      createdAt: stale,
+      updatedAt: stale,
+      messageCount: 0,
+      status: 'failed',
+      messages: [],
+    };
+    writeFileSync(join(dataDir, 'chat-projection.v1.json'), JSON.stringify({ version: 1, sessions, aliases: { staleAlias: 'old-0' }, createdAt: stale, updatedAt: stale }));
+
+    const projection = await import(`${pathToFileURL(deckChatProjectionModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    projection.startProjectedTurn({
+      sessionId: 'new-running',
+      profileId: 'sensgift',
+      ownerUserId: 'kevinchen',
+      ownerRole: 'user',
+      message: 'fresh',
+    });
+
+    const stored = JSON.parse(readFileSync(join(dataDir, 'chat-projection.v1.json'), 'utf8'));
+    assert.ok(Object.keys(stored.sessions).length <= 750);
+    assert.ok(stored.sessions['failed-keep']);
+    assert.ok(stored.sessions['new-running']);
+    assert.equal(stored.aliases.staleAlias, undefined);
+    const source = readFileSync(deckChatProjectionModulePath, 'utf8');
+    assert.match(source, /LOCK_FILE/);
+    assert.match(source, /openSync\(LOCK_FILE, 'wx'/);
+    assert.match(source, /renameSync\(tmp, STORE_FILE\)/);
+    assert.match(source, /MAX_STORED_SESSIONS/);
   } finally {
     if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
     else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
@@ -1072,10 +1101,9 @@ test('model preference route and chat stream enforce profile access and use stor
   assert.match(modelsSource, /fetchApiModels\(profile\)/);
   assert.match(modelsSource, /getHermesApiBase\(profile\)/);
   assert.match(modelsSource, /apiHeaders\(profile\)/);
-  assert.doesNotMatch(modelsSource, /fetchApiModels\(\)\.catch\(\(\) => \[\]/);
-  assert.match(modelsSource, /isHermesAgentPlaceholder\('hermes', id\)/);
+  assert.doesNotMatch(modelsSource, /localModelCatalogForProfile|config\.yaml|state\.db|execFileAsync|spawn\(|runPythonOr/);
+  assert.match(modelsSource, /extractModelItems/);
   assert.match(modelsSource, /throw new Error\('\/v1\/models returned no selectable profile models\.'\)/);
-  assert.doesNotMatch(modelsSource, /config\.yaml|state\.db|execFileAsync|spawn\(|runPythonOr/);
   assert.match(clientApiSource, /\/api\/deck\/model-preferences/);
   assert.doesNotMatch(hookSource, /localStorage/);
 });
@@ -1084,6 +1112,7 @@ test('admin routes are guarded and validate profiles without leaking auth secret
   const usersRoute = readFileSync(resolve('src/app/api/deck/admin/users/route.ts'), 'utf8');
   const userRoute = readFileSync(resolve('src/app/api/deck/admin/users/[id]/route.ts'), 'utf8');
   const profilesRoute = readFileSync(resolve('src/app/api/deck/admin/users/[id]/profiles/route.ts'), 'utf8');
+  const deckProfilesRoute = readFileSync(resolve('src/app/api/deck/profiles/route.ts'), 'utf8');
   const csrfSource = readFileSync(csrfPath, 'utf8');
   const profilesSource = readFileSync(profilesModulePath, 'utf8');
   assert.match(usersRoute, /requireAdmin\(req\)/);
@@ -1094,6 +1123,8 @@ test('admin routes are guarded and validate profiles without leaking auth secret
   assert.match(profilesRoute, /replaceDeckUserProfileAssignments/);
   assert.doesNotMatch(usersRoute + userRoute + profilesRoute, /passwordHash|passwordSalt|sessionSecret/);
   assert.match(profilesRoute, /profiles_fetch_failed|Unable to validate profile assignments/);
+  assert.match(deckProfilesRoute, /profiles_fetch_failed/);
+  assert.doesNotMatch(deckProfilesRoute + profilesRoute, /fallbackProfilesForUser|localProfileIdsForCatalogFallback|profiles_catalog_unavailable/);
   assert.match(userRoute, /readLimitedJsonObject\(req, 16_000\)/);
   assert.match(profilesRoute, /readLimitedJsonObject\(req, 16_000\)/);
   assert.doesNotMatch(userRoute + profilesRoute, /readLimitedJson\([^\n]*,\s*\{\}\)/);
@@ -1308,6 +1339,8 @@ test('cron profile routing errors preserve typed error code at route boundary', 
   const routeSource = readFileSync(cronRoutePath, 'utf8');
   assert.match(cronSource, /export class CronProfileRoutingError extends Error/);
   assert.match(cronSource, /readonly code = 'profile_routing_unavailable'/);
+  assert.match(cronSource, /routed_profile_id/);
+  assert.match(cronSource, /routing\.profile_id/);
   assert.match(cronSource, /throw new CronProfileRoutingError\(requestedProfile\)/);
   assert.match(routeSource, /err instanceof CronProfileRoutingError/);
   assert.match(routeSource, /error: err\.code/);
