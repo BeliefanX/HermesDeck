@@ -1,10 +1,11 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { deckApi } from './api';
-import type { DeckProfile } from './types';
+import type { DeckAuthSession, DeckProfile } from './types';
 
 const STORAGE_KEY = 'hermesdeck.active-profile.v1';
 const NO_PROFILE = '';
+const PROFILE_ID_RE = /^[\w.-]{1,64}$/;
 
 interface ProfileContextValue {
   /** Currently active, authorized profile id. Empty when the user has no assigned/available Agent. */
@@ -54,6 +55,23 @@ function reconcileActiveProfile(prev: string, profiles: DeckProfile[]): string {
   return next;
 }
 
+function isAdminSession(session: DeckAuthSession | null): boolean {
+  return session?.authenticated === true && (session.role === 'admin' || session.role === 'super_admin');
+}
+
+function adminEmergencyProfileId(prev: string, pending: string | null): string {
+  // Admin/super_admin profile access is authorized server-side by RBAC for any
+  // valid profile id. If the Hermes profile catalog endpoint is down, keep the
+  // account usable with the previous explicit selection or the conventional
+  // default profile. This is not a production local catalog fallback: it does
+  // not enumerate ~/.hermes/profiles and is never used for ordinary users or
+  // assignment validation.
+  for (const candidate of [pending, prev, 'default']) {
+    if (candidate && PROFILE_ID_RE.test(candidate)) return candidate;
+  }
+  return 'default';
+}
+
 /** Migrate the legacy chat-only `hermesdeck.chat.v1.profile` field into the
  *  global key. Only runs once and only when the global key is unset, so it
  *  doesn't clobber a profile the user picked from the new switcher.
@@ -81,6 +99,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [hydrated, setHydrated] = useState(false);
   const pendingStoredProfileRef = useRef<string | null>(null);
+  const activeProfileRef = useRef<string>(NO_PROFILE);
+
+  useEffect(() => {
+    activeProfileRef.current = activeProfile;
+  }, [activeProfile]);
 
   // Same-tab consumers re-render through this provider's context value;
   // cross-tab sync rides the native `storage` event below. No custom event
@@ -119,9 +142,23 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         return reconcileActiveProfile(pending || prev, nextProfiles);
       });
     } catch {
-      // Fail closed: until the server-filtered list is known, expose no Agent.
-      setProfiles([]);
-      setActiveProfileState(NO_PROFILE);
+      const pending = pendingStoredProfileRef.current;
+      pendingStoredProfileRef.current = null;
+      let session: DeckAuthSession | null = null;
+      try { session = await deckApi.session(); } catch {}
+      if (isAdminSession(session)) {
+        const id = adminEmergencyProfileId(activeProfileRef.current, pending);
+        setProfilesLoaded(true);
+        setProfiles([{ id, name: id, active: true, toolsets: [] }]);
+        writeStoredProfile(id);
+        setActiveProfileState(id);
+      } else {
+        // Fail closed for non-admins: until the server-filtered list is known,
+        // expose no Agent and do not trust localStorage.
+        setProfilesLoaded(true);
+        setProfiles([]);
+        setActiveProfileState(NO_PROFILE);
+      }
     } finally {
       setLoading(false);
     }

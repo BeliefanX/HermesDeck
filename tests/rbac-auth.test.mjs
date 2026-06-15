@@ -1148,6 +1148,9 @@ test('settings page includes admin-only user management UI with immutable super_
   assert.match(source, /immutable super_admin/i);
   assert.match(source, /Approve/);
   assert.match(source, /Assign Agents/);
+  assert.match(source, /profileCatalogWarning/);
+  assert.match(source, /user approvals remain available/i);
+  assert.match(source, /Profile assignment must stay fail-closed/);
 });
 
 test('phase 6 UI gates terminal and config navigation by session capabilities', () => {
@@ -1195,6 +1198,9 @@ test('phase 6 active profile reconciliation clears unauthorized stale selections
   assert.match(contextSource, /pendingStoredProfileRef\.current = stored/);
   assert.doesNotMatch(contextSource, /if \(stored\) setActiveProfileState\(stored\)/);
   assert.match(contextSource, /const pending = pendingStoredProfileRef\.current;[\s\S]*return reconcileActiveProfile\(pending \|\| prev, nextProfiles\)/);
+  assert.match(contextSource, /isAdminSession\(session\)[\s\S]*adminEmergencyProfileId/);
+  assert.match(contextSource, /not a production local catalog fallback/);
+  assert.match(contextSource, /setProfiles\(\[\{ id, name: id, active: true, toolsets: \[\] \}\]\)/);
   assert.match(contextSource, /catch \{[\s\S]*setProfiles\(\[\]\);[\s\S]*setActiveProfileState\(NO_PROFILE\)/);
   assert.match(contextSource, /setProfilesLoaded\(true\)/);
   assert.match(contextSource, /const setActiveProfile = useCallback\([\s\S]*profilesLoaded && profiles\.length === 0[\s\S]*removeStoredProfile\(\)[\s\S]*return NO_PROFILE/);

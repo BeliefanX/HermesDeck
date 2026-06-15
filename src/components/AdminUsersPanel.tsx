@@ -79,6 +79,7 @@ export function AdminUsersPanel() {
       assignAgents: '分配 Agent',
       immutableAssignments: '不可变 super_admin 禁用 Agent 分配。',
       noProfiles: 'Hermes Agent 未返回任何 Agent Profile。',
+      profileCatalogUnavailable: 'Hermes Agent Profile 目录暂不可用；用户审批仍可继续，但 Agent 分配会保持关闭，直到目录恢复。',
       updatedAssignments: (u: string) => `已更新 ${u} 的 Agent 分配。`,
       approved: (u: string) => `已批准 ${u}。`,
       disabled: (u: string) => `已停用 ${u}。`,
@@ -109,6 +110,7 @@ export function AdminUsersPanel() {
       assignAgents: 'Assign Agents',
       immutableAssignments: 'Assignments are disabled for immutable super_admin.',
       noProfiles: 'No Agent profiles were returned by Hermes Agent.',
+      profileCatalogUnavailable: 'Hermes Agent profile catalog is unavailable; user approvals remain available, but Agent assignment stays disabled until the catalog recovers.',
       updatedAssignments: (u: string) => `Updated Agent assignments for ${u}.`,
       approved: (u: string) => `Approved ${u}.`,
       disabled: (u: string) => `Disabled ${u}.`,
@@ -131,6 +133,7 @@ export function AdminUsersPanel() {
   const [loading, setLoading] = useState(true);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [profileCatalogWarning, setProfileCatalogWarning] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const profileIds = useMemo(
@@ -141,6 +144,7 @@ export function AdminUsersPanel() {
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setProfileCatalogWarning(null);
     try {
       const sessionRes = await fetch('/api/deck/auth/session', { cache: 'no-store' });
       const session = await sessionRes.json().catch(() => ({})) as SessionResponse;
@@ -148,18 +152,27 @@ export function AdminUsersPanel() {
       setCanManageUsers(allowed);
       setCurrentRole(session.role || 'user');
       if (!allowed) return;
-      const [usersData, profilesData] = await Promise.all([
-        fetch('/api/deck/admin/users', { cache: 'no-store' }).then((res) => readJson<{ users: AdminUser[] }>(res)),
-        fetch('/api/deck/profiles', { cache: 'no-store' }).then((res) => readJson<{ profiles: DeckProfile[] }>(res)),
-      ]);
+      const usersData = await fetch('/api/deck/admin/users', { cache: 'no-store' })
+        .then((res) => readJson<{ users: AdminUser[] }>(res));
       setUsers(usersData.users || []);
-      setProfiles(profilesData.profiles || []);
+
+      try {
+        const profilesData = await fetch('/api/deck/profiles', { cache: 'no-store' })
+          .then((res) => readJson<{ profiles: DeckProfile[] }>(res));
+        setProfiles(profilesData.profiles || []);
+      } catch {
+        // Profile assignment must stay fail-closed when Hermes Agent cannot
+        // validate the catalog, but that outage must not block unrelated admin
+        // actions such as approving or disabling users.
+        setProfiles([]);
+        setProfileCatalogWarning(t.profileCatalogUnavailable);
+      }
     } catch (err) {
       setError(localizeError(err instanceof Error ? err.message : String(err), lang));
     } finally {
       setLoading(false);
     }
-  }, [lang]);
+  }, [lang, t.profileCatalogUnavailable]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -239,6 +252,9 @@ export function AdminUsersPanel() {
       ) : null}
       {error ? (
         <div style={{ marginBottom: 10, fontSize: 12.5, color: 'var(--red)', background: 'var(--status-red-bg)', border: '1px solid var(--status-red-border)', borderRadius: 8, padding: '8px 10px' }}>{error}</div>
+      ) : null}
+      {profileCatalogWarning ? (
+        <div style={{ marginBottom: 10, fontSize: 12.5, color: 'var(--yellow)', background: 'var(--status-yellow-bg)', border: '1px solid var(--status-yellow-border)', borderRadius: 8, padding: '8px 10px' }}>{profileCatalogWarning}</div>
       ) : null}
       {success ? (
         <div style={{ marginBottom: 10, fontSize: 12.5, color: 'var(--green)', background: 'var(--status-green-bg)', border: '1px solid var(--status-green-border)', borderRadius: 8, padding: '8px 10px' }}>{success}</div>
