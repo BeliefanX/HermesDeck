@@ -10,7 +10,7 @@ const POPOVER_GAP = 6;
 const POPOVER_PAD = 8;
 
 export function ProfileChip() {
-  const { activeProfile, profiles, loading, setActiveProfile } = useActiveProfile();
+  const { activeProfile, profiles, loading, catalogError, setActiveProfile } = useActiveProfile();
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
@@ -23,6 +23,7 @@ export function ProfileChip() {
       sessions: (n: number) => `${n} 个会话`,
       manage: '管理 profiles…',
       empty: '暂无可用 Agent；请联系管理员分配。',
+      catalogUnavailable: 'Agent 目录暂不可用。管理员仍可继续使用当前 Agent；分配权限会保持关闭，直到目录恢复。',
       loading: '加载中…',
       sheetTitle: '选择 Agent Profile',
       close: '关闭',
@@ -34,6 +35,7 @@ export function ProfileChip() {
       sessions: (n: number) => `${n} session${n === 1 ? '' : 's'}`,
       manage: 'Manage profiles…',
       empty: 'No assigned Agents. Contact an admin to request access.',
+      catalogUnavailable: 'Agent catalog unavailable. Admins can keep using the current Agent; profile assignment stays disabled until the catalog recovers.',
       loading: 'Loading…',
       sheetTitle: 'Select agent profile',
       close: 'Close',
@@ -61,7 +63,7 @@ export function ProfileChip() {
   }, [open, isMobile]);
 
   const activeMeta = profiles.find((p) => p.id === activeProfile);
-  const displayName = activeMeta?.name || (loading ? t.loading : t.label);
+  const displayName = activeMeta?.name || (catalogError && activeProfile ? activeProfile : (loading ? t.loading : t.label));
 
   return (
     <>
@@ -87,6 +89,7 @@ export function ProfileChip() {
           profiles={profiles}
           activeProfile={activeProfile}
           loading={loading}
+          catalogError={catalogError}
           onSelect={(id) => { setActiveProfile(id); setOpen(false); }}
           onClose={() => setOpen(false)}
           t={t}
@@ -98,6 +101,7 @@ export function ProfileChip() {
           profiles={profiles}
           activeProfile={activeProfile}
           loading={loading}
+          catalogError={catalogError}
           onSelect={(id) => { setActiveProfile(id); setOpen(false); }}
           onClose={() => setOpen(false)}
           t={t}
@@ -109,16 +113,17 @@ export function ProfileChip() {
 
 type T = ReturnType<typeof useT<{
   label: string; switch: string; activeSuffix: string; sessions: (n: number) => string;
-  manage: string; empty: string; loading: string; sheetTitle: string; close: string;
+  manage: string; empty: string; catalogUnavailable: string; loading: string; sheetTitle: string; close: string;
 }>>;
 
 function ProfilePopover({
-  anchor, profiles, activeProfile, loading, onSelect, onClose, t,
+  anchor, profiles, activeProfile, loading, catalogError, onSelect, onClose, t,
 }: {
   anchor: HTMLElement | null;
   profiles: DeckProfile[];
   activeProfile: string;
   loading: boolean;
+  catalogError: string | null;
   onSelect: (id: string) => void;
   onClose: () => void;
   t: T;
@@ -198,6 +203,7 @@ function ProfilePopover({
         profiles={profiles}
         activeProfile={activeProfile}
         loading={loading}
+        catalogError={catalogError}
         onSelect={onSelect}
         t={t}
         onAfterNavigate={onClose}
@@ -207,11 +213,12 @@ function ProfilePopover({
 }
 
 function ProfileSheet({
-  profiles, activeProfile, loading, onSelect, onClose, t,
+  profiles, activeProfile, loading, catalogError, onSelect, onClose, t,
 }: {
   profiles: DeckProfile[];
   activeProfile: string;
   loading: boolean;
+  catalogError: string | null;
   onSelect: (id: string) => void;
   onClose: () => void;
   t: T;
@@ -238,6 +245,7 @@ function ProfileSheet({
             profiles={profiles}
             activeProfile={activeProfile}
             loading={loading}
+            catalogError={catalogError}
             onSelect={onSelect}
             t={t}
             onAfterNavigate={onClose}
@@ -250,11 +258,12 @@ function ProfileSheet({
 }
 
 function ProfileList({
-  profiles, activeProfile, loading, onSelect, t, onAfterNavigate, mobile,
+  profiles, activeProfile, loading, catalogError, onSelect, t, onAfterNavigate, mobile,
 }: {
   profiles: DeckProfile[];
   activeProfile: string;
   loading: boolean;
+  catalogError: string | null;
   onSelect: (id: string) => void;
   t: T;
   onAfterNavigate: () => void;
@@ -270,7 +279,7 @@ function ProfileList({
   if (profiles.length === 0) {
     return (
       <div style={{ padding: '14px 12px', color: 'var(--muted)', fontSize: 12.5 }}>
-        {t.empty}
+        {catalogError ? t.catalogUnavailable : t.empty}
       </div>
     );
   }

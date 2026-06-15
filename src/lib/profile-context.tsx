@@ -16,6 +16,8 @@ interface ProfileContextValue {
   loading: boolean;
   /** True once we've read localStorage on the client. */
   hydrated: boolean;
+  /** Set when the server could not fetch the authoritative Hermes profile catalog. */
+  catalogError: string | null;
   setActiveProfile: (id: string) => void;
   /** Re-fetch the profile list. */
   refresh: () => Promise<void>;
@@ -98,6 +100,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profilesLoaded, setProfilesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [hydrated, setHydrated] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const pendingStoredProfileRef = useRef<string | null>(null);
   const activeProfileRef = useRef<string>(NO_PROFILE);
 
@@ -131,6 +134,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     try {
       const r = await deckApi.profiles();
       const nextProfiles = r.profiles || [];
+      setCatalogError(null);
       setProfiles(nextProfiles);
       setProfilesLoaded(true);
       setActiveProfileState((prev) => {
@@ -141,7 +145,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         pendingStoredProfileRef.current = null;
         return reconcileActiveProfile(pending || prev, nextProfiles);
       });
-    } catch {
+    } catch (err) {
       const pending = pendingStoredProfileRef.current;
       pendingStoredProfileRef.current = null;
       let session: DeckAuthSession | null = null;
@@ -149,7 +153,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       if (isAdminSession(session)) {
         const id = adminEmergencyProfileId(activeProfileRef.current, pending);
         setProfilesLoaded(true);
-        setProfiles([{ id, name: id, active: true, toolsets: [] }]);
+        setProfiles([]);
+        setCatalogError(err instanceof Error && err.message ? err.message : 'Hermes profile catalog is unavailable.');
         writeStoredProfile(id);
         setActiveProfileState(id);
       } else {
@@ -157,6 +162,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         // expose no Agent and do not trust localStorage.
         setProfilesLoaded(true);
         setProfiles([]);
+        setCatalogError(null);
         setActiveProfileState(NO_PROFILE);
       }
     } finally {
@@ -209,8 +215,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   }, [profiles, profilesLoaded]);
 
   const value = useMemo<ProfileContextValue>(() => ({
-    activeProfile, profiles, loading, hydrated, setActiveProfile, refresh,
-  }), [activeProfile, profiles, loading, hydrated, setActiveProfile, refresh]);
+    activeProfile, profiles, loading, hydrated, catalogError, setActiveProfile, refresh,
+  }), [activeProfile, profiles, loading, hydrated, catalogError, setActiveProfile, refresh]);
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
 }
@@ -224,6 +230,7 @@ const PROFILE_CONTEXT_FALLBACK: ProfileContextValue = Object.freeze({
   profiles: [] as DeckProfile[],
   loading: false,
   hydrated: false,
+  catalogError: null,
   setActiveProfile: () => {},
   refresh: async () => {},
 });

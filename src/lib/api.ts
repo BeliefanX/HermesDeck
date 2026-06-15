@@ -131,7 +131,7 @@ export const deckApi = {
     const qs = profileId ? `?profile=${encodeURIComponent(profileId)}` : '';
     return request<DeckStats>(`/api/deck/stats${qs}`, { signal });
   },
-  profiles: (signal?: AbortSignal) => request<{ profiles: DeckProfile[] }>('/api/deck/profiles', { signal }),
+  profiles: (signal?: AbortSignal) => request<{ profiles: DeckProfile[]; error?: string; detail?: string }>('/api/deck/profiles', { signal }),
   sessions: (profileId = 'default', signal?: AbortSignal) =>
     request<{ sessions: DeckSession[] }>(`/api/deck/sessions?profile=${encodeURIComponent(profileId)}`, { signal }),
   messages: (sessionId: string, profileId = 'default', signal?: AbortSignal) =>

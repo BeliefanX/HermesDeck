@@ -1135,9 +1135,22 @@ test('admin routes are guarded and validate profiles without leaking auth secret
   const strictEnd = profilesSource.indexOf('export const getStrictProfiles');
   const strictProfileBlock = profilesSource.slice(strictStart, strictEnd);
   assert.match(strictProfileBlock, /fetch\(`\$\{base\}\$\{path\}`/);
+  assert.match(strictProfileBlock, /const candidates: DeckProfile\[\]\[\] = \[\]/);
+  assert.match(strictProfileBlock, /item\.length > winner\.length/);
   assert.match(strictProfileBlock, /Hermes Agent profile list unavailable/);
   assert.doesNotMatch(strictProfileBlock, /execFileAsync\(|runPythonOr\(|id: 'default'|getProfileActivity/);
   assert.match(profilesSource, /export const getProfiles = getStrictProfiles/);
+});
+
+test('profile catalog UI does not fabricate a default-only list for admin outage mode', () => {
+  const providerSource = readFileSync(resolve('src/lib/profile-context.tsx'), 'utf8');
+  const chipSource = readFileSync(resolve('src/components/ProfileChip.tsx'), 'utf8');
+
+  assert.match(providerSource, /catalogError: string \| null/);
+  assert.match(providerSource, /setProfiles\(\[\]\);\s*setCatalogError/);
+  assert.doesNotMatch(providerSource, /setProfiles\(\[\{ id, name: id, active: true, toolsets: \[\] \}\]\)/);
+  assert.match(chipSource, /catalogUnavailable/);
+  assert.match(chipSource, /catalogError \? t\.catalogUnavailable : t\.empty/);
 });
 
 test('settings page includes admin-only user management UI with immutable super_admin copy', () => {
@@ -1200,15 +1213,15 @@ test('phase 6 active profile reconciliation clears unauthorized stale selections
   assert.match(contextSource, /const pending = pendingStoredProfileRef\.current;[\s\S]*return reconcileActiveProfile\(pending \|\| prev, nextProfiles\)/);
   assert.match(contextSource, /isAdminSession\(session\)[\s\S]*adminEmergencyProfileId/);
   assert.match(contextSource, /not a production local catalog fallback/);
-  assert.match(contextSource, /setProfiles\(\[\{ id, name: id, active: true, toolsets: \[\] \}\]\)/);
-  assert.match(contextSource, /catch \{[\s\S]*setProfiles\(\[\]\);[\s\S]*setActiveProfileState\(NO_PROFILE\)/);
+  assert.match(contextSource, /isAdminSession\(session\)[\s\S]*setProfiles\(\[\]\);[\s\S]*setCatalogError/);
+  assert.match(contextSource, /catch \(err\) \{[\s\S]*setProfiles\(\[\]\);[\s\S]*setActiveProfileState\(NO_PROFILE\)/);
   assert.match(contextSource, /setProfilesLoaded\(true\)/);
   assert.match(contextSource, /const setActiveProfile = useCallback\([\s\S]*profilesLoaded && profiles\.length === 0[\s\S]*removeStoredProfile\(\)[\s\S]*return NO_PROFILE/);
   assert.match(contextSource, /const onStorage = \(e: StorageEvent\) => \{[\s\S]*if \(!e\.newValue\) \{[\s\S]*setActiveProfileState\(NO_PROFILE\)/);
   assert.match(contextSource, /const onStorage = \(e: StorageEvent\) => \{[\s\S]*profilesLoaded && profiles\.length === 0[\s\S]*removeStoredProfile\(\)[\s\S]*return NO_PROFILE/);
   assert.match(contextSource, /if \(!profilesLoaded\) \{[\s\S]*pendingStoredProfileRef\.current = e\.newValue;[\s\S]*return NO_PROFILE/);
-  assert.match(profileChipSource, /activeMeta\?\.name \|\| \(loading \? t\.loading : t\.label\)/);
-  assert.doesNotMatch(profileChipSource, /activeMeta\?\.name \|\| activeProfile/);
+  assert.match(profileChipSource, /activeMeta\?\.name \|\| \(catalogError && activeProfile \? activeProfile : \(loading \? t\.loading : t\.label\)\)/);
+  assert.match(profileChipSource, /catalogError \? t\.catalogUnavailable : t\.empty/);
   assert.match(chatHookSource, /if \(!profile\) \{[\s\S]*setError\(t\.profileUnavailable\);[\s\S]*return;[\s\S]*\}/);
   assert.match(chatHookSource, /profileId: profile/);
   assert.doesNotMatch(contextSource, /\|\| FALLBACK_PROFILE/);

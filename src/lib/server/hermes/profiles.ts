@@ -89,14 +89,25 @@ async function fetchProfilesApi(path: string): Promise<DeckProfile[]> {
 
 async function getStrictProfilesUncached(): Promise<DeckProfile[]> {
   const errors: string[] = [];
+  const candidates: DeckProfile[][] = [];
   for (const path of ['/v1/profiles', '/api/profiles']) {
     try {
       const profiles = await fetchProfilesApi(path);
       if (!profiles.length) throw new Error(`${path} returned no profiles.`);
-      return normalizeActiveProfile(profiles);
+      candidates.push(profiles);
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
     }
+  }
+
+  if (candidates.length) {
+    // Some Hermes API builds expose both endpoints, with /v1/profiles scoped to
+    // the current/default runtime and /api/profiles carrying the full profile
+    // catalog. Never stop at the first singleton response: choose the richest
+    // API-backed catalog so admin/super_admin can see all Agents while still
+    // avoiding any local filesystem enumeration fallback in Deck.
+    const best = candidates.reduce((winner, item) => (item.length > winner.length ? item : winner), candidates[0]!);
+    return normalizeActiveProfile(best);
   }
 
   throw new Error(`Hermes Agent profile list unavailable: ${errors.join('; ')}`);
