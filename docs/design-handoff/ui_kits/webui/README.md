@@ -8,7 +8,7 @@ Pixel-faithful recreation of the HermesDeck WebUI — the Hermes-native multi-se
 - `AppShell.jsx` — sidebar + topbar + (collapsed) mobile bottom nav. Bilingual nav labels, lucide icons, brand badge with live status dot.
 - `Dashboard.jsx` — Command Deck page: hero card, metric cards, sparkline, top-models bar list, recent sessions list.
 - `ChatView.jsx` — sessions panel + thread + timeline rail, plus the slash-command-aware composer.
-- `Terminal.jsx` — Safe Ops console with allowlisted commands.
+- `Terminal.jsx` — terminal prototype surface. Current product semantics include bounded terminal actions and an opt-in Live Terminal real shell (`HERMESDECK_LIVE_TERMINAL=1`) backed by tmux/node-pty; verify behavior against `src/components/LiveTerminal.tsx` before reuse.
 - `Primitives.jsx` — `Card`, `Tag`, `Kicker`, `MetricCard`, `BarRow`, `Sparkline`, `Btn`, `Icon` — used by every screen.
 
 ## Coverage

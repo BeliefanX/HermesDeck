@@ -1,107 +1,66 @@
 # HermesDeck
 
-> Hermes-native WebUI · 多会话聊天 · Profile / Run / Tool 一等公民 · 安全运维终端 · PWA。
+HermesDeck 是 Hermes Agent 的浏览器控制台：多会话聊天、profile-aware 运行视图、配置编辑、能力/任务面板、受控终端与可安装 PWA。Deck 的运行时 source of truth 是 Hermes Agent API Server；Deck 不把 Hermes 的本地数据库、CLI 或本地 catalog 当作生产回退路径。
 
-HermesDeck 是 [Hermes Agent](https://hermes-agent.nousresearch.com/docs) 的原生控制台。它把 Hermes
-的 API Server、状态库（`~/.hermes/state.db`）、Profile 体系与 CLI 工具整合
-成一个浏览器即可访问的工作台：可以多会话聊天、流式查看每一次 Run、按
-Profile 切换执行上下文、浏览能力清单（toolsets / skills / MCP）、在受
-限白名单内运行 Hermes 维护命令、嵌入 tmux 实时终端，并支持 PWA 安装。
+## 当前架构要点
 
-> ClawDeck 与 open-webui 仅作为产品参考；运行时代码完全为 Hermes 重写。
-
----
-
-## 技术栈
-
-| 层 | 选择 |
-| --- | --- |
-| Runtime / Framework | Next.js 16 (App Router) · React 19 · TypeScript（strict） |
-| 客户端状态 | React Hooks · Zustand · localStorage（按 Profile 命名空间） |
-| 流式协议 | Server-Sent Events（in-memory 重放 Hub） |
-| 后端封装 | Next Route Handlers（BFF）+ 内嵌 Python 脚本读取 sqlite |
-| 终端 | tmux + node-pty（可选）+ Hermes 安全 Action 白名单 |
-| PWA | `next/manifest` · `public/sw.js` · `/offline` 降级页 |
-| 文档处理 | `pdf-parse` · `mammoth`（DOCX）· `remark-gfm` · `mermaid` · `katex` |
-
----
+- **API-only runtime**：聊天、profiles、models、cron proof、runs/stats/messages 等运行时数据通过 Hermes Agent API Server 暴露给 Deck BFF；BFF 再以 `/api/deck/*` 给前端提供稳定契约。
+- **RBAC fail-closed**：Deck 有自己的登录 cookie、用户/角色和 profile assignment。生产多用户场景中，未能证明权限或 profile 归属时拒绝访问，而不是枚举本地 profile/model 目录补齐结果。
+- **Canonical visible entrypoint：`http://<host>:6117`**。项目脚本启动 Next 服务在 `6118`，同时启动 `6117 -> 6118` 的同源反向代理；用户、PWA、反向代理/launchd 对外应以 `6117` 为入口，`6118` 是内部目标。
+- **聊天流**：Deck BFF 调 Hermes API Server `/v1/responses`，用 SSE 向浏览器转发文本、run-event、attachment、done/error，并发送 keep-alive 注释保持长连接活性。
+- **Deck-owned chat projection**：`~/.hermesdeck/chat-projection.v1.json`（或 `HERMESDECK_DATA_DIR`）只保存 Deck UX/proof 状态，用 lock、atomic write、TTL/cap prune 维护；它不是 Hermes runtime 数据源。
+- **安全 PWA cache**：Service Worker 只预缓存公开离线 shell 和图标；认证页面、API 响应、聊天 HTML 不被持久缓存。
 
 ## 快速开始
 
-要求：Node.js 22+（与 CI 保持一致）。实时终端为可选功能，启用前请确保系统已安装 `tmux`，且 `node-pty` 的原生依赖可编译/加载（macOS 通常需要 Xcode Command Line Tools；Linux CI/部署通常需要 `python3 make g++`）。默认 `HERMESDECK_LIVE_TERMINAL=0`，需要实时 PTY 时显式设为 `1`。
+要求：Node.js 22+。Live Terminal 可选，需要 `tmux` 和可加载的 `node-pty`；默认关闭。
 
 ```bash
-git clone <repo> ~/HermesDeck
-cd ~/HermesDeck
+cd /Users/fanxuxin/Hermes_Sync/HermesDeck
 npm install
-cp .env.example .env.local        # 按需填入 Hermes API_BASE / KEY
-npm run dev                        # http://localhost:6118
-# 或正式启动
-npm run build && npm start
+npm run dev
+# 浏览器打开 http://127.0.0.1:6117
 ```
 
-启动时如未发现 `~/.hermesdeck/auth.json`，会一次性在终端打印出 `admin` 的
-随机密码。登录后请在 **Settings → 账号** 中修改用户名 / 密码。
+生产式本地启动：
 
-> 端口约定：进程绑定在 `6118`；`6117` 被一个轻量 301 重定向占位（旧 PWA
-> 安装锁定在该端口，参见 [scripts/redirect-6117.mjs](scripts/redirect-6117.mjs)）。
+```bash
+npm run build
+npm start
+# 仍以 http://127.0.0.1:6117 访问；6118 仅作为内部 Next 目标。
+```
 
----
-
-## 主要功能
-
-- **多会话聊天**：左栏会话索引（pin / 文件夹 / 归档 / 标签 / 搜索 / 来源
-  过滤 / 子代理折叠），中栏流式时间线，右栏 Run 时间线 / Inspector。
-  支持图片 + DOCX/PDF/纯文本附件，斜杠命令（`/new`、`/regen`、`/stop`、
-  `/clear` 与若干提示模板）。
-- **刷新可恢复的流**：所有聊天 SSE 走服务端 in-memory Hub；浏览器刷新
-  后用 `?since=<seq>` 重新订阅，丢失的事件由缓冲区回放或回退到落库消息。
-- **Profile 切换**：顶部 ProfileChip 全局切换，每个 Profile 自带独立的
-  `state.db`、模型默认值、`agent.reasoning_effort` 等。
-- **Run 时间线**：从 `messages` 表反推每一次「用户问 → 助手答 + 工具调用」
-  为一条 Run，列表 + 详情（Summary / Timeline / Raw）。
-- **Tools 注册表**：合并 `hermes tools list`（toolsets / MCP）与
-  `hermes skills list`，按任务分类、状态、来源筛选；技能支持在线编辑
-  `SKILL.md`（realpath + 原子写 + mtime 乐观锁）。
-- **安全终端**：白名单化的 `runTerminalAction`（`hermes --version`、
-  `tools list`、`skills list`、Deck 健康检查等）+ 可选的 tmux + node-pty
-  实时 PTY（`HERMESDECK_LIVE_TERMINAL=1` 启用）。
-- **PWA & 移动端**：Manifest、Service Worker、离线降级页、底部导航、
-  iOS 键盘 inset 适配。
-- **i18n**：界面中英双语切换；浏览器存储优先，回退 `navigator.language`。
-
----
-
-## 文档索引
-
-| 文档 | 内容 |
-| --- | --- |
-| [docs/architecture.md](docs/architecture.md) | 架构、模块、数据流、Hub/SSE、Python 子进程协议 |
-| [docs/api.md](docs/api.md) | 每条 `/api/deck/*` 路由的契约、错误码、限速 |
-| [docs/configuration.md](docs/configuration.md) | 环境变量、Hermes 连接、认证存储、PWA 资源 |
-| [docs/development.md](docs/development.md) | 本地开发、脚本、调试、PWA 验证、Lint/Typecheck |
-| [docs/deployment.md](docs/deployment.md) | 反向代理、HTTPS、Cookie Secure、PWA 安装 |
-| [docs/glossary.md](docs/glossary.md) | Profile / Session / Run / Trace / Toolset 等概念 |
-
----
+第一次启动如未发现 Deck auth store，会在终端打印一次性 `admin`/`super_admin` bootstrap 密码。登录后请在 Settings 中修改凭据并按需创建/审批用户。
 
 ## 常用脚本
 
 ```bash
-npm run dev         # next dev + 6117 重定向辅助进程
-npm run build       # next build --webpack
-npm start           # next start + 6117 重定向辅助进程（默认 HERMESDECK_LIVE_TERMINAL=0）
-npm run typecheck   # tsc --noEmit
-npm run lint        # eslint .
-npm run verify:pwa  # 检查 manifest / sw.js / icons / CSS 关键 token
-npm run smoke       # build 后启动 next start 并检查 /login /offline /manifest.webmanifest /sw.js
+npm run dev          # free 6118/6117，启动 Next dev(6118) + 6117 reverse proxy
+npm run build        # next build --webpack
+npm start            # free 6118/6117，启动 Next start(6118) + 6117 reverse proxy
+npm run typecheck    # tsc --noEmit
+npm run lint         # eslint .
+npm run verify:pwa   # 检查 manifest / sw.js / icons / CSS 关键项
+npm run smoke        # build 后启动并 smoke /login /offline /manifest /sw.js
+npm run test:rbac    # RBAC route/auth 单测
+npm run test:csrf    # CSRF/auth 单测
 ```
 
-详细脚本见 [docs/development.md](docs/development.md#scripts)。
+## 文档索引
 
----
+- [docs/architecture.md](docs/architecture.md)：系统边界、数据流、RBAC、SSE、projection、PWA 策略。
+- [docs/api.md](docs/api.md)：`/api/deck/*` BFF 契约与关键错误语义。
+- [docs/configuration.md](docs/configuration.md)：环境变量、端口、auth/data store、Hermes API Server 连接。
+- [docs/development.md](docs/development.md)：本地开发、验证、调试纪律。
+- [docs/deployment.md](docs/deployment.md)：launchd/反代/HTTPS/PWA/安全边界。
+- [docs/deck-chat-projection.md](docs/deck-chat-projection.md)：Deck-owned chat projection 的用途和不变量。
+- [docs/design-handoff/README.md](docs/design-handoff/README.md)：设计交接包；以 `design.md`、`globals.css` 和当前主文档为准。
+- [docs/glossary.md](docs/glossary.md)：Profile、Session、Run、Projection、RBAC 等术语。
+- [design.md](design.md)：Hallmark UI/design system 约束。
 
-## 反馈
+## 非目标与安全边界
 
-- 问题 / 改进建议：在仓库内开 issue 或在 PR 里附改动说明。
-- 安全反馈：直接联系仓库 owner，不要在 issue 公开 PoC。
+- HermesDeck 只改 Deck；不要从 Deck 文档或代码中要求修改 Hermes Agent 内部行为。
+- 不把本地数据库读取、Hermes CLI 或本地 profile/model 枚举描述为运行时数据路径。
+- 不在普通用户会话中缓存受保护 HTML/API 响应。
+- Live Terminal 一旦启用即等价于给登录用户一条真实 shell；只应授予可信 admin/super_admin。

@@ -1,190 +1,90 @@
-# 配置参考
+# Configuration
 
-> 配置入口：`.env.local` 优先于 `~/.hermes/.env`，再回退到内置默认值。
-> 本页列出全部可用的环境变量、外部依赖、运行期文件以及它们的默认行为。
+HermesDeck 配置分三层：Deck 进程环境、Deck-owned auth/data store、Hermes Agent API Server 连接。Deck 不使用 Hermes 本地数据库、CLI 或本地 catalog 作为生产运行时数据源。
 
----
+## 端口与入口
 
-## 1. 环境变量
+默认脚本：
 
-> 完整模板见 [.env.example](../.env.example)。
+- `CANONICAL_PORT=6118`：Next.js 内部监听端口。
+- `LEGACY_PORT=6117`：浏览器/PWA/反向代理可见入口；`scripts/redirect-6117.mjs` 当前是透明 reverse proxy。
+- `NEXT_HOST=0.0.0.0`：Next bind host。
+- `CANONICAL_HOST=127.0.0.1`：6117 proxy 连接 6118 的目标 host。
 
-### 1.1 Hermes 连接
+推荐访问与部署入口：`http://127.0.0.1:6117` 或反代到 `127.0.0.1:6117`。只有在显式自定义进程管理时才直接碰 6118。
 
-| 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `HERMES_API_BASE` | `http://127.0.0.1:8642`（可被 `~/.hermes/.env` 的 `API_SERVER_PORT` / `HERMES_API_SERVER_PORT` / `HERMES_API_BASE` 覆盖） | Hermes API Server 根 URL，所有聊天流都发到 `${HERMES_API_BASE}/v1/responses`。 |
-| `HERMES_API_KEY` / `API_SERVER_KEY` | 同左 | Bearer token；当存在时所有 API Server 请求加 `Authorization: Bearer …`。 |
-| `HERMES_DASHBOARD_BASE` | `http://127.0.0.1:9120` | Dashboard 根 URL，仅作 `/api/deck/health` 探活用。 |
+## Deck 环境变量
 
-`~/.hermes/.env` 也会被 `core.ts` 读入，以便操作员只在 Hermes 端维护一份
-连接参数（`.env.local` 仍然优先）。
+- `HERMESDECK_PUBLIC_ORIGIN`：写请求 same-origin allowlist。生产 HTTPS 必设，例如 `https://deck.example.com`；多个 origin 可按代码解析支持的分隔方式填写。
+- `HERMESDECK_AUTH_DIR`：Deck auth store 目录，默认 `~/.hermesdeck`。
+- `HERMESDECK_DATA_DIR`：Deck data/projection 目录；默认 `HERMESDECK_AUTH_DIR` 或 `~/.hermesdeck`。
+- `HERMESDECK_FORCE_SECURE_COOKIE=1`：强制 session cookie `Secure`，适合 TLS 反代后部署。
+- `HERMESDECK_TRUST_PROXY=1`：登录限速信任 proxy forwarded 地址；仅在可信反代后启用。
+- `HERMESDECK_LIVE_TERMINAL=1`：启用 Live Terminal。默认关闭。
+- `HERMESDECK_TMUX_BIN`：tmux 可执行文件路径，默认 `tmux`。
+- `HERMESDECK_TMUX_CONF`：tmux config，默认 `/dev/null`。
+- `HERMESDECK_DEBUG_HEALTH=1`：生产中 health response 显示未脱敏 URL；仅排查时使用。
+- `HERMES_HOME`：Hermes root。若指向 `.../profiles/<id>`，Deck 会归一到 root。用于 config editor/profile env discovery；不是 runtime DB source。
+- `HERMES_PROFILE`：初始 active profile hint，仅当 API-backed catalog 中存在该 profile 时生效。
 
-### 1.2 HermesDeck 服务器
+## Hermes API Server 连接
 
-| 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `HERMESDECK_PUBLIC_ORIGIN` | _（未设置）_ | 生产环境必须设置。逗号分隔的允许 origin 列表，写路由的同源校验靠它。例：`https://deck.example.com,https://deck-internal.example.com`。 |
-| `HERMESDECK_TRUST_PROXY` | `0` | 设为 `1` 时登录路由按 `X-Forwarded-For` / `X-Real-IP` 取客户端 IP（仅限确实有反代剥离这些头的场景）。 |
-| `DECK_DEV_ORIGINS` | `localhost,127.0.0.1,0.0.0.0` | `next dev` 允许的跨源访问列表。`next.config.js` 还会自动加入所有非 loopback 的 IPv4，便于手机直连。 |
-| `HERMESDECK_FORCE_SECURE_COOKIE` | _（未设置）_ | 当反代终止 TLS、上游为 HTTP 时设 `1`，强制把会话 cookie 写为 `Secure`。 |
-| `HERMESDECK_SESSION_SECRET` | _自动生成_ | HMAC 签名密钥；首次启动若 `~/.hermesdeck/auth.json` 不存在会随机生成 32 字节。一般无需手动设置。 |
-| `LANG` | `en_US.UTF-8` | 仅当 Live Terminal 用到，避免 zsh 默认 C locale 丢失多字节输入。 |
+Default profile 连接优先级：
 
-### 1.3 实时终端
+1. 进程环境 `HERMES_API_BASE`。
+2. `~/.hermes/.env` 中的 `HERMES_API_BASE` 或 `HERMES_API_SERVER_BASE`。
+3. `~/.hermes/.env` 中 `API_SERVER_HOST`/`HERMES_API_SERVER_HOST` + `API_SERVER_PORT`/`HERMES_API_SERVER_PORT`。
+4. 默认 `http://127.0.0.1:6117`。
 
-| 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `HERMESDECK_LIVE_TERMINAL` | `0`（`npm run dev` / `npm start` 通过 `package.json` 默认关闭） | 设为 `1` 才启用 PTY 路由 + tmux 会话。安全敏感部署建议保持关闭。 |
-| `HERMESDECK_TMUX_BIN` | `tmux` | tmux 可执行文件路径，自定义编译时使用。 |
-| `HERMESDECK_TERMINAL_ENV_PASSTHROUGH` | _（未设置）_ | `terminal-pty.ts` 默认从子进程环境剥掉一组敏感变量；该项预留给将来主动添加白名单变量。 |
+API key: default profile reads process env `HERMES_API_KEY`/`API_SERVER_KEY`, then default `.env`; named profiles read only that profile `.env`. When a key exists, Deck sends `Authorization: Bearer REDACTED`.
 
-### 1.4 PWA 与端口
+Named profile 连接：`~/.hermes/profiles/<id>/.env` 必须提供 API base/port，且 `API_SERVER_ENABLED` 不能显式为 false/0/no。缺少 base 时，Deck 返回 profile routing error，不把请求路由到 default API。
 
-| 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `LEGACY_PORT` | `6117` | `scripts/redirect-6117.mjs` 监听端口；EADDRINUSE 时直接退出 0。 |
-| `CANONICAL_PORT` | `6118` | 重定向目标端口。 |
+## Deck-owned stores
 
-> 端口 6118 由 `package.json` 的 `dev`/`start` 脚本通过 `node
-> scripts/free-port.mjs 6118` 强制释放后启动。`free-port.mjs` 不会杀掉
-> 不属于当前 uid 的进程。
+默认目录：`~/.hermesdeck`。
 
----
+- `auth.json`：Deck 用户、角色、password hash、session secret、registration 状态。
+- `chat-projection.v1.json`：Deck chat UX/proof projection。
+- `chat-projection.v1.json.lock`：projection 写锁。
 
-## 2. 外部依赖
+这些文件是 Deck 自有状态。Projection 保存 observed sessions/messages、owner、profile、status、response aliases，支持 UX 和 named-profile proof；不是 Hermes runtime 数据源。
 
-### 2.1 系统命令
+## Profile config editor
 
-| 命令 | 用途 | 必需性 |
-| --- | --- | --- |
-| `python3` | `runPython` 调度全部 sqlite 与 Hermes 内部模块查询 | 必需 |
-| `hermes` | 通过 `execFile` 调用 `--version` / `profile` / `tools` / `skills` / `auth list` | 必需 |
-| `tmux` | 实时终端会话管理 | 仅在 `HERMESDECK_LIVE_TERMINAL=1` 时必需 |
-| `lsof` / `ps` | `scripts/free-port.mjs` 释放占用端口 | 启动脚本必需 |
+`GET/PUT /api/deck/config?profile=<id>` 只处理固定文件：
 
-### 2.2 Node 包
+- `config.yaml`
+- `SOUL.md`
+- `memories/USER.md`
+- `memories/MEMORY.md`
 
-`postinstall` 钩子运行 [scripts/fix-pty-helper.mjs](../scripts/fix-pty-helper.mjs)，
-为 `node-pty` 的预编译 `spawn-helper` 二进制补 `chmod 0755`，并在 macOS
-上去掉 `com.apple.quarantine` xattr —— 没有这一步，App Store 安装的 Node
-会让 `pty.fork()` 静默失败。
+安全措施：
 
-`pdf-parse`、`mammoth`、`node-pty` 三个包带 native / 文件系统依赖，
-`next.config.js` 把前两个加进 `serverExternalPackages`（让 Next 在 server
-runtime 直接 `require` 它们的 CJS 入口而不是打包进 NFT）。
+- profile id 使用 `^[\w.-]{1,64}$`。
+- realpath containment：目标必须在 Hermes root/profile base 内。
+- size cap 与 NUL byte 拒绝。
+- `config.yaml` 保存前用 PyYAML（可用时）验证；验证器不可用时允许保存但返回 `validationSkipped`。
+- mtime 乐观锁防止覆盖他人修改。
+- 临时文件 + rename 原子写，mode 0600。
 
----
+## PWA cache
 
-## 3. 运行期文件
+当前 `public/sw.js`：`CACHE_VERSION='hermesdeck-pwa-v41'`。
 
-### 3.1 `~/.hermesdeck/`（本应用）
+- shell cache：只包含 `/offline`、manifest 和 icons。
+- runtime cache：只缓存同源 static `style/script/image/font`，LRU 上限 40。
+- API：网络直通；只有 fetch 抛错才合成离线 503 JSON。
+- navigation：网络优先；离线返回公开 `/offline`。
+- 受保护认证页面和聊天 HTML 不预缓存、不 runtime-cache。
+- `/api/deck/cache-image` 每次网络请求，并清理旧 SW cache 命中，避免跨用户 artifact 泄漏。
 
-| 文件 | 描述 |
-| --- | --- |
-| `auth.json` | 单用户凭据 + `sessionSecret`，scrypt 哈希。mode 600。 |
+清缓存时应删除 `hermesdeck-pwa-v41-*` 及旧版本 cache；不要恢复旧版 image cache 语义。
 
-第一次启动时如果不存在，会自动创建并把一次性 admin 密码打到 stdout。
-不会把这个密码写回任何文件 / log。
+## 安全 checklist
 
-### 3.2 `~/.hermes/`（Hermes 状态目录）
-
-> HermesDeck **只读** state.db / config.yaml / skills；删除 session 时会
-> 写 state.db。其余 Hermes 状态保持原样。
-
-```
-~/.hermes/
-├─ .env                # HermesDeck 也会解析这份做 fallback
-├─ config.yaml         # default profile 的配置（model.default、agent.reasoning_effort）
-├─ state.db            # default profile 的 sqlite
-├─ skills/             # 全局 skills 树（HermesDeck 在线编辑 SKILL.md 用）
-├─ cache/              # /api/deck/cache-image 暴露的二进制目录
-└─ profiles/<id>/
-   ├─ config.yaml      # 该 profile 的 model/auth/etc
-   ├─ state.db         # 独立 sqlite
-   └─ skills/          # （目前 HermesDeck Tools 页只展示全局 skills）
-```
-
-预期的 sqlite 表（HermesDeck 兼容老 / 新 schema 字段）：
-
-- `sessions(id|session_id, source, model, title?, prompt?, created_at?,
-  updated_at?, started_at?, ended_at?, message_count?, total_messages?,
-  parent_session_id?, billing_provider?, input_tokens?, output_tokens?,
-  cache_read_tokens?, cache_write_tokens?, reasoning_tokens?,
-  actual_cost_usd?, estimated_cost_usd?, api_call_count?)`
-- `messages(id, session_id|conversation_id, role|speaker, content|message,
-  tool_name?, tool_call_id?, tool_calls?, timestamp|created_at?)`
-
-字段不存在时由 BFF 自适配（见
-[src/lib/server/hermes/sessions.ts](../src/lib/server/hermes/sessions.ts) 与
-[runs.ts](../src/lib/server/hermes/runs.ts) 中的 `cols`/`mcols` 探测）。
-
-### 3.3 浏览器存储
-
-HermesDeck 在浏览器写多份 `localStorage` key；它们都按 profile 命名
-空间隔离（除明确说明外）。
-
-| Key | 用途 |
-| --- | --- |
-| `hermesdeck-theme` | 主题：`dark` / `light` |
-| `hermesdeck-lang` | 语言：`zh` / `en` |
-| `hermesdeck-sidebar-collapsed` | 桌面 sidebar 折叠 |
-| `hermesdeck.active-profile.v1` | 当前激活 profile |
-| `hermesdeck.chat.v1.<profile>` | 聊天主缓存：sessions / messages / responseIds / active |
-| `hermesdeck.chat.panels.v1` | 聊天页左 / 右栏可见性 |
-| `hermesdeck.chat.sourcefilter.v1` | 来源过滤白名单 |
-| `hermesdeck.chat.show-subagents.v1` | 是否展示子代理会话 |
-| `hermesdeck.chat.show-tool-details.v1` | 是否在主线程展示工具调用 |
-| `hermesdeck.session.meta.v1` | pin / folder / archive / tag / customTitle |
-| `hermesdeck.chat.inflight.v1` | 刷新可恢复的流元数据（30 分钟 TTL） |
-
-> 同时由 Service Worker 维护若干 cache：`hermesdeck-pwa-v8-{shell,
-> runtime, images}`。Settings 页提供「清除 HermesDeck 缓存」按钮，会一并
-> 清空上述 localStorage + 触发 SW caches 的删除。
-
----
-
-## 4. Next.js 安全头
-
-`next.config.js` 在所有路径下追加：
-
-```
-X-Frame-Options: DENY
-X-Content-Type-Options: nosniff
-Referrer-Policy: strict-origin-when-cross-origin
-Permissions-Policy: camera=(), microphone=(), geolocation=()
-Cross-Origin-Opener-Policy: same-origin
-```
-
-`/api/deck/cache-image` 单独发 `Cache-Control: private, max-age=86400,
-immutable`，并且对 SVG 强制 `Content-Disposition: attachment`。
-
----
-
-## 5. 默认行为速查
-
-- 未配置 `HERMES_API_BASE` → 用 `http://127.0.0.1:8642`，BFF 健康检查会标
-  `degraded` 但 CLI fallback 仍可工作。
-- 未配置 `HERMES_API_KEY` → 不发 `Authorization`。Hermes API Server 可在
-  本地 0-credential 部署模式下使用。
-- 未提供 Hermes CLI（`hermes` 不在 PATH） → `health.version` 显示
-  `Hermes (… version unavailable)`，`profiles` / `tools` / `terminal/run`
-  返回 502 + `detail`。
-- 未启用实时终端 → `/api/deck/term/*` 全部 400；UI 终端页改为只展示安全
-  Action 入口。
-
----
-
-## 6. 安全配置 checklist（生产环境）
-
-1. 反代到 HTTPS，把 HTTP 到 6118 仅暴露在内网。
-2. 设置 `HERMESDECK_PUBLIC_ORIGIN=https://your-host`，确保写路由的
-   `Origin/Referer` 校验有依据。
-3. 反代后端为 HTTP 时设置 `HERMESDECK_FORCE_SECURE_COOKIE=1`。
-4. `HERMESDECK_TRUST_PROXY=1` 仅在反代真的剥离/重写 `X-Forwarded-For`
-   时启用，否则登录限速会被伪造 IP 绕过。
-5. 启动后立刻登录、改密；改密会自增 `passwordVersion`，所有旧 cookie
-   立即失效。
-6. 如不需要 PTY，设 `HERMESDECK_LIVE_TERMINAL=0`，并保持 `tmux` /
-   `node-pty` 无害（即使没装也不会启动）。
-7. 检查 `~/.hermesdeck/auth.json` 是否仍是 `mode 600`、属主是当前用户。
+1. 反代/外网访问使用 HTTPS，并设置 `HERMESDECK_PUBLIC_ORIGIN`。
+2. TLS 后设置 `HERMESDECK_FORCE_SECURE_COOKIE=1`。
+3. 只在可信 admin/super_admin 环境启用 `HERMESDECK_LIVE_TERMINAL=1`。
+4. 确认 Hermes Agent API Server profiles/models/cron endpoints 可用；Deck 不会在 outage 时本地枚举补齐。
+5. 对 named profiles 配置独立 API base/port 与 API key，避免请求落到 default profile。
