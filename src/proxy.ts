@@ -72,7 +72,10 @@ export function proxy(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = '/login';
     url.search = '';
-    if (pathname && pathname !== '/' && pathname !== '/login') {
+    if (pathname === '/') {
+      return NextResponse.rewrite(url);
+    }
+    if (pathname && pathname !== '/login') {
       url.searchParams.set('next', pathname + (search || ''));
     }
     return NextResponse.redirect(url);

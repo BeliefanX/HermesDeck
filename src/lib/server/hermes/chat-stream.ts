@@ -1,8 +1,8 @@
 import {
-  HERMES_API_BASE,
   PROFILE_ID_RE,
   apiHeaders,
   combineAbortSignals,
+  getHermesApiBase,
   redactSecrets,
 } from './core';
 import {
@@ -32,6 +32,20 @@ export interface ChatStreamBody {
   sessionId?: unknown;
   attachments?: unknown;
   timeoutMs?: unknown;
+  /** Server-computed: only true when Deck has proven this session id belongs to the requested profile. */
+  __trustedSessionIdForProfile?: unknown;
+}
+
+export interface ChatStreamProjectionHooks {
+  onStart?: (input: { sessionId: string; body: ChatStreamBody; metadata: ActiveStreamMetadata }) => void;
+  onCanonicalSessionId?: (input: { oldSessionId: string; sessionId: string; profileId: string }) => void;
+  onDone?: (input: { sessionId: string; profileId: string; content?: string; responseId?: string; attachments?: unknown }) => void;
+  onError?: (input: { sessionId: string; profileId: string; error: string; detail?: string }) => void;
+}
+
+function runProjectionHook(fn: (() => void) | undefined): void {
+  if (!fn) return;
+  try { fn(); } catch { /* projection failures must not break live chat */ }
 }
 
 // Hermes /v1/responses currently rejects request bodies > 1MB. We pre-check
@@ -151,19 +165,30 @@ function buildSubscriberStream(stream: ActiveStream, opts: SubscribeOptions = {}
  *  into the hub. Resolves once the upstream stream has terminated (success or
  *  error). The returned promise is not awaited by the route — its purpose is
  *  to keep error handling co-located. */
-async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody): Promise<void> {
-  emitToHub(stream, 'status', { phase: 'connecting', backend: 'hermes-api-server' });
+async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: ChatStreamProjectionHooks): Promise<void> {
+  emitToHub(stream, 'status', {
+    phase: 'connecting',
+    backend: 'hermes-api-server',
+    profile: stream.profileId,
+    sessionId: stream.sessionId,
+  });
   const message = typeof body?.message === 'string' ? body.message : '';
-  const rawProfile = typeof body?.profileId === 'string' ? body.profileId : 'default';
+  const rawProfile = stream.profileId || (typeof body?.profileId === 'string' ? body.profileId : 'default');
   const profile = PROFILE_ID_RE.test(rawProfile) ? rawProfile : 'default';
   const model = typeof body?.model === 'string' ? body.model : undefined;
   const reasoningEffort = typeof body?.reasoningEffort === 'string' ? body.reasoningEffort : undefined;
   const previousResponseId = typeof body?.previousResponseId === 'string' ? body.previousResponseId : undefined;
-  // Only a real, client-supplied session id may be forwarded to Hermes or
-  // reported back as the canonical id. `stream.sessionId` can be a synthetic
-  // `pending_*` hub key (minted when the POST carried no sessionId) — that is
-  // an internal placeholder and must never reach the upstream or the client.
-  const clientSessionId = typeof body?.sessionId === 'string' && body.sessionId ? body.sessionId : undefined;
+  // Only a Deck-trusted session id may be forwarded to Hermes or treated as a
+  // continuation handle. For named profiles, the route replaces unproven
+  // client-provided ids with a server-generated Deck id before setting this
+  // flag, so the upstream runtime session can share Deck's projection id
+  // without accepting arbitrary cross-profile continuation handles.
+  const clientSessionId = typeof body?.sessionId === 'string' && body.sessionId.trim() ? body.sessionId.trim() : '';
+  const canForwardClientSessionId = body?.__trustedSessionIdForProfile !== false;
+  const profileMatchesClientSession = (sessionId: string) => {
+    if (!sessionId || sessionId === stream.sessionId) return;
+    runProjectionHook(() => hooks?.onCanonicalSessionId?.({ oldSessionId: stream.sessionId, sessionId, profileId: profile }));
+  };
   const attachments = normalizeAttachments(body?.attachments);
   const hasImages = attachments.some((a) => a.kind === 'image');
   const enrichedMessage = buildPromptWithAttachments(message, attachments);
@@ -202,8 +227,19 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody): Promise
     if (model) apiBody.model = model;
     if (reasoningEffort && reasoningEffort !== 'auto') apiBody.reasoning = { effort: reasoningEffort };
     if (previousResponseId) apiBody.previous_response_id = previousResponseId;
+    apiBody.metadata = {
+      ...((apiBody.metadata && typeof apiBody.metadata === 'object') ? apiBody.metadata as Record<string, unknown> : {}),
+      profileId: profile,
+      source: 'hermesdeck',
+    };
     const apiBodyJson = JSON.stringify(apiBody);
     if (apiBodyJson.length > HERMES_REQUEST_BODY_BYTE_LIMIT) {
+      runProjectionHook(() => hooks?.onError?.({
+        sessionId: stream.sessionId,
+        profileId: profile,
+        error: 'payload_too_large',
+        detail: 'Total request size exceeds the upstream 1MB cap — shrink any image attachments and retry.',
+      }));
       emitToHub(stream, 'error', {
         error: 'payload_too_large',
         backend: 'hermes-api-server',
@@ -215,13 +251,32 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody): Promise
       return;
     }
 
-    const reqHeaders = { ...apiHeaders() } as Record<string, string>;
-    if (clientSessionId && reqHeaders.Authorization) {
+    const apiBase = getHermesApiBase(profile);
+    if (!apiBase) {
+      const detail = `Selected Hermes profile '${profile}' has no configured API server base/port; refusing to route chat to the default profile API.`;
+      runProjectionHook(() => hooks?.onError?.({
+        sessionId: stream.sessionId,
+        profileId: profile,
+        error: 'profile_routing_unavailable',
+        detail,
+      }));
+      emitToHub(stream, 'error', {
+        error: 'profile_routing_unavailable',
+        detail,
+        backend: 'hermes-api-server',
+        profile,
+      });
+      markStreamDone(stream);
+      return;
+    }
+
+    const reqHeaders = { ...apiHeaders(profile) } as Record<string, string>;
+    if (clientSessionId && canForwardClientSessionId && reqHeaders.Authorization) {
       reqHeaders['X-Hermes-Session-Id'] = clientSessionId;
     }
 
     const fetchSignal = combineAbortSignals([AbortSignal.timeout(timeoutMs), stream.abort.signal]);
-    const response = await fetch(`${HERMES_API_BASE}/v1/responses`, {
+    const response = await fetch(`${apiBase.replace(/\/+$/, '')}/v1/responses`, {
       method: 'POST', headers: reqHeaders, body: apiBodyJson, signal: fetchSignal,
     });
     if (!response.ok || !response.body) {
@@ -229,7 +284,10 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody): Promise
       const safe = redactSecrets(rawBody.slice(0, 480));
       throw new Error(`Hermes API Server /v1/responses failed: ${response.status} ${safe}`);
     }
-    const sessionId = response.headers.get('X-Hermes-Session-Id') || clientSessionId || '';
+    const sessionId = response.headers.get('X-Hermes-Session-Id')
+      || (canForwardClientSessionId ? clientSessionId : stream.sessionId)
+      || '';
+    profileMatchesClientSession(sessionId);
     emitToHub(stream, 'status', { phase: 'streaming', backend: 'hermes-api-server', profile, sessionId });
 
     const reader = response.body.getReader();
@@ -324,18 +382,32 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody): Promise
     const slimAtts = emittedAtts.length
       ? emittedAtts.map((a) => ({ id: a.id, name: a.name, mime: a.mime, size: a.size, kind: a.kind, url: a.url }))
       : undefined;
-    emitToHub(stream, 'done', {
+    const donePayload = {
       ok: true,
       backend: 'hermes-api-server',
       content: full.trim(),
       responseId: responseId || undefined,
       sessionId: sessionId || undefined,
       attachments: slimAtts,
-    });
+    };
+    runProjectionHook(() => hooks?.onDone?.({
+      sessionId: sessionId || stream.sessionId,
+      profileId: profile,
+      content: donePayload.content,
+      responseId: responseId || undefined,
+      attachments: slimAtts,
+    }));
+    emitToHub(stream, 'done', donePayload);
     markStreamDone(stream);
   } catch (apiError) {
     const rawReason = apiError instanceof Error ? apiError.message : String(apiError);
     const reason = redactSecrets(rawReason);
+    runProjectionHook(() => hooks?.onError?.({
+      sessionId: stream.sessionId,
+      profileId: profile,
+      error: hasImages ? 'image_chat_failed' : 'hermes_api_unavailable',
+      detail: reason.slice(0, 480),
+    }));
     emitToHub(stream, 'error', {
       error: hasImages ? `图片对话失败：${reason}` : 'hermes_api_unavailable',
       detail: reason.slice(0, 480),
@@ -349,7 +421,12 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody): Promise
  *  for the session, kicks off the upstream pump in the background, and returns
  *  a subscriber stream for the calling client. Refresh-resumability is provided
  *  by the GET resume route which subscribes to the same hub stream. */
-export function createChatStream(body: ChatStreamBody, metadata: ActiveStreamMetadata, clientSignal?: AbortSignal): ReadableStream<Uint8Array> {
+export function createChatStream(
+  body: ChatStreamBody,
+  metadata: ActiveStreamMetadata,
+  clientSignal?: AbortSignal,
+  hooks?: ChatStreamProjectionHooks,
+): ReadableStream<Uint8Array> {
   const incomingSession = typeof body?.sessionId === 'string' && body.sessionId
     ? body.sessionId
     : `pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -365,8 +442,12 @@ export function createChatStream(body: ChatStreamBody, metadata: ActiveStreamMet
     // No additional handler — buildSubscriberStream's cancel() handles detach.
   }
 
+  // Persist a Deck-owned projection before the upstream starts. This is only
+  // metadata/messages observed by HermesDeck, not a Hermes runtime DB fallback.
+  runProjectionHook(() => hooks?.onStart?.({ sessionId: incomingSession, body, metadata }));
+
   // Fire and forget. Errors are emitted into the hub.
-  void pumpUpstream(stream, body);
+  void pumpUpstream(stream, body, hooks);
 
   return buildSubscriberStream(stream);
 }

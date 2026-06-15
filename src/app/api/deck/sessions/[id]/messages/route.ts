@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getMessages } from '@/lib/server/hermes';
+import { getMessages, SessionProfileRoutingError } from '@/lib/server/hermes';
+import { getProjectedMessages } from '@/lib/server/deck-chat-projection';
 import { normalizeProfileId, requireActiveUser, requireProfileAccess } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
@@ -16,9 +17,18 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const beforeRaw = req.nextUrl.searchParams.get('before') || undefined;
   const limit = limitRaw ? Number(limitRaw) : undefined;
   try {
-    const messages = await getMessages(decodeURIComponent(id), profile, { limit, before: beforeRaw });
+    const decodedId = decodeURIComponent(id);
+    const projected = getProjectedMessages(decodedId, profile, { limit, before: beforeRaw });
+    if (projected) return NextResponse.json({ messages: projected });
+    const messages = await getMessages(decodedId, profile, { limit, before: beforeRaw });
     return NextResponse.json({ messages });
   } catch (err) {
+    if (err instanceof SessionProfileRoutingError) {
+      return NextResponse.json(
+        { messages: [], error: err.code, detail: err.message },
+        { status: err.status },
+      );
+    }
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
       { messages: [], error: 'messages_fetch_failed', detail: msg.slice(0, 200) },

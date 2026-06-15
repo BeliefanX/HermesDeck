@@ -49,6 +49,33 @@ export interface DeckProfile {
   lastActiveAt?: string;
 }
 
+export interface DeckCronJob {
+  id: string;
+  name?: string;
+  status: 'enabled' | 'paused' | 'disabled' | 'running';
+  state?: string;
+  enabled: boolean;
+  schedule: string;
+  nextRunAt?: string;
+  lastRunAt?: string;
+  lastStatus?: string;
+  promptPreview?: string;
+  deliver?: string;
+  skills: string[];
+  skill?: string;
+  toolsets: string[];
+  model?: string;
+  provider?: string;
+  workdir?: string;
+  profile?: string;
+  script?: string;
+  noAgent?: boolean;
+  repeat?: Record<string, unknown>;
+  lastError?: string;
+  lastDeliveryError?: string;
+  createdAt?: string;
+}
+
 export interface DeckSession {
   id: string;
   profileId: string;

@@ -1,6 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
-import { ActiveStreamAuthorizationError, createChatStream } from '@/lib/server/hermes';
+import { ActiveStreamAuthorizationError, createChatStream, type ChatStreamProjectionHooks } from '@/lib/server/hermes';
 import { getDeckModelPreference } from '@/lib/server/auth';
+import {
+  finalizeProjectedTurn,
+  hasProjectedSession,
+  projectedResponseIdMatches,
+  reconcileProjectedSessionId,
+  recordProjectedTurnError,
+  startProjectedTurn,
+} from '@/lib/server/deck-chat-projection';
 import { guardMutating, guardRequestBody, readLimitedJson } from '@/lib/server/csrf';
 import { normalizeProfileId, rbacJsonError, requireActiveUser, requireProfileAccess } from '@/lib/server/rbac';
 
@@ -39,19 +48,80 @@ export async function POST(req: NextRequest) {
   const access = requireProfileAccess(auth.user, profileId, { fallback: profileId });
   if (!access.ok) return access.response;
   const hasExplicitModel = typeof bodyRecord.model === 'string' && bodyRecord.model.trim().length > 0;
+  const requestedSessionId = typeof bodyRecord.sessionId === 'string' && bodyRecord.sessionId.trim()
+    ? bodyRecord.sessionId.trim()
+    : '';
+  const hasPreviousResponseId = typeof bodyRecord.previousResponseId === 'string' && bodyRecord.previousResponseId.trim().length > 0;
+  const previousResponseId = hasPreviousResponseId ? (bodyRecord.previousResponseId as string).trim() : '';
+  const projectedSessionIsTrusted = requestedSessionId ? hasProjectedSession(requestedSessionId, profileId) : false;
+  if (profileId !== 'default' && hasPreviousResponseId && !projectedSessionIsTrusted) {
+    return rbacJsonError(
+      403,
+      'session_profile_unverified',
+      'Cannot continue a named-profile session without a Deck-owned proof that it belongs to the selected agent.',
+    );
+  }
+  if (profileId !== 'default' && hasPreviousResponseId && !projectedResponseIdMatches(requestedSessionId, profileId, previousResponseId)) {
+    return rbacJsonError(
+      403,
+      'response_profile_unverified',
+      'Cannot continue a named-profile response chain without a Deck-owned proof that it belongs to the selected agent session.',
+    );
+  }
+  const generatedDeckSessionId = profileId !== 'default' && requestedSessionId && !projectedSessionIsTrusted
+    ? `deck_${randomUUID()}`
+    : '';
+  const sessionIdForStream = generatedDeckSessionId || requestedSessionId;
+  // For named profiles, never forward a user/client-provided unproven session
+  // id to Hermes Agent. If we had to replace it above, the replacement is a
+  // server-generated Deck id scoped by this authenticated request, so it is safe
+  // to use as the upstream session id. That keeps the API-created runtime
+  // session and the Deck projection under one id instead of showing a separate
+  // "api" topic for the same turn.
+  const trustedSessionIdForProfile = profileId === 'default'
+    || (requestedSessionId !== '' && projectedSessionIsTrusted)
+    || generatedDeckSessionId !== '';
   const preference = hasExplicitModel ? null : getDeckModelPreference(auth.user.id, profileId);
   const effectiveBody = {
     ...bodyRecord,
     profileId,
+    ...(sessionIdForStream ? { sessionId: sessionIdForStream } : {}),
+    __trustedSessionIdForProfile: trustedSessionIdForProfile,
     ...(!hasExplicitModel && preference?.modelId ? { model: preference.modelId } : {}),
   };
   let stream: ReadableStream<Uint8Array>;
+  const projectionHooks: ChatStreamProjectionHooks = {
+    onStart({ sessionId, body: streamBody, metadata }) {
+      startProjectedTurn({
+        sessionId,
+        profileId: metadata.profileId,
+        ownerUserId: metadata.ownerUserId,
+        ownerRole: metadata.ownerRole,
+        message: typeof streamBody.message === 'string' ? streamBody.message : '',
+        attachments: streamBody.attachments,
+        model: typeof streamBody.model === 'string' ? streamBody.model : undefined,
+        previousResponseId: typeof streamBody.previousResponseId === 'string' ? streamBody.previousResponseId : undefined,
+      });
+      if (requestedSessionId && requestedSessionId !== sessionId) {
+        reconcileProjectedSessionId(requestedSessionId, sessionId, metadata.profileId);
+      }
+    },
+    onCanonicalSessionId({ oldSessionId, sessionId, profileId: projectedProfileId }) {
+      reconcileProjectedSessionId(oldSessionId, sessionId, projectedProfileId);
+    },
+    onDone({ sessionId, profileId: projectedProfileId, content, responseId, attachments: doneAttachments }) {
+      finalizeProjectedTurn({ sessionId, profileId: projectedProfileId, content, responseId, attachments: doneAttachments });
+    },
+    onError({ sessionId, profileId: projectedProfileId, error, detail }) {
+      recordProjectedTurnError({ sessionId, profileId: projectedProfileId, error, detail });
+    },
+  };
   try {
     stream = createChatStream(effectiveBody, {
       profileId,
       ownerUserId: auth.user.id,
       ownerRole: auth.user.role,
-    }, req.signal);
+    }, req.signal, projectionHooks);
   } catch (error) {
     if (error instanceof ActiveStreamAuthorizationError) {
       return rbacJsonError(403, 'stream_supersede_forbidden', error.message);

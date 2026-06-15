@@ -12,8 +12,9 @@ export async function GET(req: NextRequest) {
   if (!Number.isFinite(days) || days <= 0) {
     return NextResponse.json({ error: 'invalid_days' }, { status: 400 });
   }
+  const profile = req.nextUrl.searchParams.get('profile')?.trim() || undefined;
   try {
-    const stats = await getTokenStats(days);
+    const stats = await getTokenStats(days, profile);
     return NextResponse.json(stats, {
       headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=60' },
     });

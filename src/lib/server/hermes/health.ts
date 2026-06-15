@@ -1,5 +1,5 @@
 import type { DeckHealth } from '@/lib/types';
-import { makeCache, apiHeaders, HERMES_API_BASE, HERMES_DASHBOARD_BASE, startedAt, redactSecrets } from './core';
+import { makeCache, apiHeaders, HERMES_API_BASE, startedAt, redactSecrets } from './core';
 
 function exposeBaseUrl(url: string): string {
   if (process.env.NODE_ENV !== 'production' || process.env.HERMESDECK_DEBUG_HEALTH === '1') return url;
@@ -29,10 +29,9 @@ export async function hermesVersion(): Promise<string> {
 }
 
 async function getHealthUncached(): Promise<DeckHealth> {
-  const [apiRes, dashRes] = await Promise.allSettled([
-    fetch(`${HERMES_API_BASE}/health`, { cache: 'no-store', headers: apiHeaders(), signal: AbortSignal.timeout(2500) }),
-    fetch(`${HERMES_DASHBOARD_BASE}/api/sessions`, { cache: 'no-store', signal: AbortSignal.timeout(1200) }),
-  ]);
+  const apiRes = await fetch(`${HERMES_API_BASE}/health`, { cache: 'no-store', headers: apiHeaders(), signal: AbortSignal.timeout(2500) })
+    .then((response) => ({ status: 'fulfilled' as const, value: response }))
+    .catch((reason: unknown) => ({ status: 'rejected' as const, reason }));
   const version = await hermesVersion();
   let apiHealthy = false;
   let apiDetail = '';
@@ -45,21 +44,13 @@ async function getHealthUncached(): Promise<DeckHealth> {
   } else {
     apiDetail = safeDetail(apiRes.reason instanceof Error ? apiRes.reason.message : String(apiRes.reason));
   }
-  let dashHealthy = false;
-  let dashDetail = '';
-  if (dashRes.status === 'fulfilled') {
-    const r = dashRes.value;
-    dashHealthy = r.ok || r.status === 401 || r.status === 403;
-    dashDetail = `HTTP ${r.status}`;
-  } else {
-    dashDetail = safeDetail(dashRes.reason instanceof Error ? dashRes.reason.message : String(dashRes.reason));
-  }
   return {
     ok: apiHealthy,
     status: apiHealthy ? 'connected' : 'unreachable',
     version,
     apiServer: { baseUrl: exposeBaseUrl(HERMES_API_BASE), healthy: apiHealthy, detail: apiDetail },
-    dashboard: { baseUrl: exposeBaseUrl(HERMES_DASHBOARD_BASE), healthy: dashHealthy, detail: dashDetail },
+    // Kept for UI/type compatibility, but only reflects the Hermes Agent API.
+    dashboard: { baseUrl: exposeBaseUrl(HERMES_API_BASE), healthy: apiHealthy, detail: 'Hermes Agent API only' },
     uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
   };
 }

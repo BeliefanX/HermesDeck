@@ -36,6 +36,24 @@ function normalizeApiProfile(raw: unknown): DeckProfile | null {
   };
 }
 
+function sortProfiles(profiles: DeckProfile[]): DeckProfile[] {
+  return [...profiles].sort((a, b) => {
+    if (a.id === 'default') return -1;
+    if (b.id === 'default') return 1;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  });
+}
+
+function normalizeActiveProfile(profiles: DeckProfile[]): DeckProfile[] {
+  const sorted = sortProfiles(profiles);
+  const requestedActive = coerceProfileId(process.env.HERMES_PROFILE);
+  const activeId = requestedActive && sorted.some((profile) => profile.id === requestedActive)
+    ? requestedActive
+    : sorted.find((profile) => profile.active)?.id || sorted[0]?.id || '';
+
+  return sorted.map((profile) => ({ ...profile, active: profile.id === activeId }));
+}
+
 function extractApiProfiles(payload: unknown): unknown[] {
   if (Array.isArray(payload)) return payload;
   if (!isRecord(payload)) throw new Error('profiles API returned a non-object payload.');
@@ -70,18 +88,17 @@ async function fetchProfilesApi(path: string): Promise<DeckProfile[]> {
 }
 
 async function getStrictProfilesUncached(): Promise<DeckProfile[]> {
-  // Strict profile discovery is backed only by Hermes Agent's HTTP API.
-  // Do not synthesize default profiles and do not fall back to local runtime stores.
   const errors: string[] = [];
   for (const path of ['/v1/profiles', '/api/profiles']) {
     try {
       const profiles = await fetchProfilesApi(path);
       if (!profiles.length) throw new Error(`${path} returned no profiles.`);
-      return profiles;
+      return normalizeActiveProfile(profiles);
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
     }
   }
+
   throw new Error(`Hermes Agent profile list unavailable: ${errors.join('; ')}`);
 }
 

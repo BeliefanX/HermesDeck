@@ -1,5 +1,6 @@
 import type { DeckAttachment, DeckMessage } from '@/lib/types';
-import { hermesApiGet, PROFILE_ID_RE } from './core';
+import { hermesApiGet, PROFILE_ID_RE } from './core.ts';
+import { assertSessionBelongsToProfile } from './sessions.ts';
 
 export interface GetMessagesOptions {
   /** Maximum number of messages to return; clamped by API-backed implementations. */
@@ -151,24 +152,18 @@ function validateProfile(profile: string): string {
   return normalized;
 }
 
-export async function getMessages(sessionId: string, profile = 'default', opts: GetMessagesOptions = {}): Promise<DeckMessage[]> {
-  if (!sessionId.trim()) throw new Error('getMessages: session id is required');
-  const scopedProfile = validateProfile(profile);
-  const limit = normalizeLimit(opts.limit);
-  const params = new URLSearchParams({ profile: scopedProfile });
-  if (limit) params.set('limit', String(limit));
-  if (opts.before) params.set('before', opts.before);
-  const payload = await hermesApiGet<HermesMessagesResponse | HermesMessageRow[]>(
-    `/api/sessions/${encodeURIComponent(sessionId)}/messages?${params.toString()}`,
-    10_000,
-  );
-  const rows = Array.isArray(payload)
+function rowsFromPayload(payload: HermesMessagesResponse | HermesMessageRow[]): HermesMessageRow[] {
+  return Array.isArray(payload)
     ? payload
     : Array.isArray(payload.data)
       ? payload.data
       : Array.isArray(payload.messages)
         ? payload.messages
         : [];
+}
+
+function finalizeMessages(rows: HermesMessageRow[], sessionId: string, opts: GetMessagesOptions): DeckMessage[] {
+  const limit = normalizeLimit(opts.limit);
   let messages = rows
     .filter(isRecord)
     .map((row, idx) => normalizeMessage(row as HermesMessageRow, `${sessionId}_${idx}`));
@@ -185,4 +180,21 @@ export async function getMessages(sessionId: string, profile = 'default', opts: 
   }
   if (limit && messages.length > limit) messages = messages.slice(-limit);
   return messages;
+}
+
+export async function getMessages(sessionId: string, profile = 'default', opts: GetMessagesOptions = {}): Promise<DeckMessage[]> {
+  const trimmedSessionId = sessionId.trim();
+  if (!trimmedSessionId) throw new Error('getMessages: session id is required');
+  const scopedProfile = validateProfile(profile);
+  await assertSessionBelongsToProfile(trimmedSessionId, scopedProfile);
+  const limit = normalizeLimit(opts.limit);
+  const params = new URLSearchParams({ profile: scopedProfile });
+  if (limit) params.set('limit', String(limit));
+  if (opts.before) params.set('before', opts.before);
+  const payload = await hermesApiGet<HermesMessagesResponse | HermesMessageRow[]>(
+    `/api/sessions/${encodeURIComponent(trimmedSessionId)}/messages?${params.toString()}`,
+    10_000,
+    scopedProfile,
+  );
+  return finalizeMessages(rowsFromPayload(payload), trimmedSessionId, opts);
 }

@@ -10,6 +10,7 @@ const authModuleUrl = pathToFileURL(resolve('src/lib/server/auth.ts')).href;
 const rbacModuleUrl = pathToFileURL(resolve('src/lib/server/rbac.ts')).href;
 const sessionAuthModuleUrl = pathToFileURL(resolve('src/lib/server/session-auth.ts')).href;
 const tokenRoutePath = resolve('src/app/api/deck/tokens/route.ts');
+const statsRoutePath = resolve('src/app/api/deck/stats/route.ts');
 const modelPreferencesRoutePath = resolve('src/app/api/deck/model-preferences/route.ts');
 const chatStreamRoutePath = resolve('src/app/api/deck/chat/stream/route.ts');
 const chatResumeRoutePath = resolve('src/app/api/deck/chat/resume/route.ts');
@@ -19,10 +20,18 @@ const lcmRoutePath = resolve('src/app/api/deck/lcm/route.ts');
 const cacheImageRoutePath = resolve('src/app/api/deck/cache-image/route.ts');
 const serviceWorkerPath = resolve('public/sw.js');
 const useChatModelsPath = resolve('src/app/chat/_hooks/useChatModels.ts');
+const modelsModulePath = resolve('src/lib/server/hermes/models.ts');
 const clientApiPath = resolve('src/lib/api.ts');
 const proxyPath = resolve('src/proxy.ts');
 const csrfPath = resolve('src/lib/server/csrf.ts');
 const profilesModulePath = resolve('src/lib/server/hermes/profiles.ts');
+const hermesCoreModulePath = resolve('src/lib/server/hermes/core.ts');
+const hermesSessionsModulePath = resolve('src/lib/server/hermes/sessions.ts');
+const hermesMessagesModulePath = resolve('src/lib/server/hermes/messages.ts');
+const deckChatProjectionModulePath = resolve('src/lib/server/deck-chat-projection.ts');
+const profileCatalogFallbackModulePath = resolve('src/lib/server/profile-catalog-fallback.ts');
+const cronRoutePath = resolve('src/app/api/deck/cron/route.ts');
+const hermesCronModulePath = resolve('src/lib/server/hermes/cron.ts');
 let importNonce = 0;
 
 function makeHome() {
@@ -506,6 +515,15 @@ test('server RBAC helpers enforce admin roles, active status, and profile assign
   assert.equal(deniedProfile.ok, false);
   assert.equal(deniedProfile.response.status, 403);
 
+  const superAdminToken = authWithUsers.issueSessionToken(superAdmin.id);
+  const superAdminGuard = rbac.requireActiveUser(reqFor(superAdminToken));
+  assert.equal(superAdminGuard.ok, true);
+  assert.deepEqual(
+    rbac.filterProfilesForUser(superAdminGuard.user, [{ id: 'default' }, { id: 'agent-a' }, { id: 'agent-b' }]),
+    [{ id: 'default' }, { id: 'agent-a' }, { id: 'agent-b' }],
+  );
+  assert.equal(rbac.requireProfileAccess(superAdminGuard.user, 'agent-b').ok, true);
+
   const adminGuard = rbac.requireActiveUser(reqFor(adminToken));
   assert.equal(adminGuard.ok, true);
   assert.deepEqual(
@@ -564,6 +582,296 @@ test('server RBAC helpers enforce admin roles, active status, and profile assign
     assert.equal(inactiveSession.user.status, status);
   }
 
+});
+
+test('profile catalog fallback enumerates local Hermes profiles for admins and respects user assignments', async () => {
+  const home = makeHome();
+  const hermesRoot = join(home, '.hermes');
+  const profilesRoot = join(hermesRoot, 'profiles');
+  mkdirSync(join(profilesRoot, 'agent-b'), { recursive: true });
+  mkdirSync(join(profilesRoot, 'agent-a'), { recursive: true });
+  mkdirSync(join(profilesRoot, 'bad id'), { recursive: true });
+
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMES_HOME = join(profilesRoot, 'agent-a');
+    const fallback = await import(`${pathToFileURL(profileCatalogFallbackModulePath).href}?case=${Date.now()}-${importNonce++}`);
+
+    assert.deepEqual(fallback.localProfileIdsForCatalogFallback(), ['default', 'agent-a', 'agent-b']);
+    assert.deepEqual(
+      fallback.fallbackProfilesForUser({ role: 'super_admin', assignedProfileIds: [] }).map((profile) => profile.id),
+      ['default', 'agent-a', 'agent-b'],
+    );
+    assert.deepEqual(
+      fallback.fallbackProfilesForUser({ role: 'user', assignedProfileIds: ['agent-b', 'bad id', 'agent-b'] }).map((profile) => profile.id),
+      ['agent-b'],
+    );
+  } finally {
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+  }
+});
+
+async function withMockedHermesFetch(responder, fn) {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    const href = String(url);
+    calls.push(href);
+    const body = await responder(new URL(href));
+    return Response.json(body);
+  };
+  try {
+    return await fn(calls);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function loadHermesSessionsModule() {
+  return import(`${pathToFileURL(hermesSessionsModulePath).href}?case=${Date.now()}-${importNonce++}`);
+}
+
+async function loadHermesMessagesModule() {
+  return import(`${pathToFileURL(hermesMessagesModulePath).href}?case=${Date.now()}-${importNonce++}`);
+}
+
+test('profile-scoped Hermes sessions fail closed when upstream omits profile metadata', async () => {
+  await withMockedHermesFetch(async () => ({ data: [{ id: 'legacy-default', title: 'Default legacy row' }] }), async () => {
+    const sessions = await loadHermesSessionsModule();
+    await assert.rejects(
+      () => sessions.getSessions('sensgift'),
+      (err) => err?.code === 'profile_routing_unavailable' && err?.status === 502,
+    );
+  });
+});
+
+test('profile-scoped Hermes sessions fail closed on mismatched upstream profile metadata', async () => {
+  await withMockedHermesFetch(async () => ({ data: [{ id: 'default-owned', profile_id: 'default' }] }), async () => {
+    const sessions = await loadHermesSessionsModule();
+    await assert.rejects(
+      () => sessions.getSessions('sensgift'),
+      (err) => err?.code === 'session_profile_mismatch' && err?.status === 403,
+    );
+  });
+});
+
+test('profile-scoped Hermes sessions accept matching upstream profile metadata', async () => {
+  await withMockedHermesFetch(async () => ({ data: [{ id: 'sensgift-owned', profile_id: 'sensgift', title: 'Sensgift' }] }), async () => {
+    const sessions = await loadHermesSessionsModule();
+    const rows = await sessions.getSessions('sensgift');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, 'sensgift-owned');
+    assert.equal(rows[0].profileId, 'sensgift');
+  });
+});
+
+test('message reads prove session profile ownership before fetching upstream messages', async () => {
+  await withMockedHermesFetch(async (url) => {
+    if (url.pathname === '/api/sessions') return { data: [{ id: 'default-owned', profile_id: 'default' }] };
+    if (url.pathname.endsWith('/messages')) return { data: [{ id: 'leaked-message', role: 'user', content: 'should not be read' }] };
+    return { data: [] };
+  }, async (calls) => {
+    const messages = await loadHermesMessagesModule();
+    await assert.rejects(
+      () => messages.getMessages('default-owned', 'sensgift'),
+      (err) => err?.code === 'session_profile_mismatch' && err?.status === 403,
+    );
+    assert.equal(calls.some((href) => href.includes('/api/sessions/default-owned/messages')), false);
+  });
+});
+
+test('named-profile API messages are fetched after session ownership is proven', async () => {
+  await withMockedHermesFetch(async (url) => {
+    if (url.pathname === '/api/sessions') {
+      assert.equal(url.searchParams.get('profile'), 'sensgift');
+      return { data: [{ id: 'sensgift-owned', profile_id: 'sensgift' }] };
+    }
+    if (url.pathname === '/api/sessions/sensgift-owned/messages') {
+      assert.equal(url.searchParams.get('profile'), 'sensgift');
+      assert.equal(url.searchParams.get('limit'), '5');
+      return { data: [{ id: 'sensgift-message', role: 'assistant', content: 'sensgift history' }] };
+    }
+    return { data: [] };
+  }, async (calls) => {
+    const messages = await loadHermesMessagesModule();
+    const rows = await messages.getMessages('sensgift-owned', 'sensgift', { limit: 5 });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, 'sensgift-message');
+    assert.equal(rows[0].content, 'sensgift history');
+    assert.equal(calls.some((href) => href.includes('/api/sessions/sensgift-owned/messages')), true);
+  });
+});
+
+test('default Hermes sessions still accept legacy upstream rows without profile metadata', async () => {
+  await withMockedHermesFetch(async () => ({ data: [{ id: 'legacy-default', title: 'Default legacy row' }] }), async () => {
+    const sessions = await loadHermesSessionsModule();
+    const rows = await sessions.getSessions('default');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, 'legacy-default');
+    assert.equal(rows[0].profileId, 'default');
+  });
+});
+
+test('Deck chat projection is profile scoped and rejects cross-profile message reads', async () => {
+  const home = makeHome();
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  try {
+    delete process.env.HERMESDECK_DATA_DIR;
+    process.env.HERMESDECK_AUTH_DIR = join(home, '.hermesdeck');
+    const projection = await import(`${pathToFileURL(deckChatProjectionModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    projection.startProjectedTurn({
+      sessionId: 'sensgift-local-1',
+      profileId: 'sensgift',
+      ownerUserId: 'kevinchen',
+      ownerRole: 'user',
+      message: 'hello sensgift',
+    });
+    projection.finalizeProjectedTurn({
+      sessionId: 'sensgift-local-1',
+      profileId: 'sensgift',
+      content: 'sensgift answer',
+      responseId: 'resp_sensgift_1',
+    });
+
+    assert.equal(projection.hasProjectedSession('sensgift-local-1', 'sensgift'), true);
+    assert.equal(projection.projectedResponseIdMatches('sensgift-local-1', 'sensgift', 'resp_sensgift_1'), true);
+    assert.equal(projection.projectedResponseIdMatches('sensgift-local-1', 'sensgift', 'resp_other_profile'), false);
+    assert.equal(projection.hasProjectedSession('sensgift-local-1', 'default'), false);
+    assert.deepEqual(projection.listProjectedSessions('default'), []);
+    assert.equal(projection.listProjectedSessions('sensgift')[0].profileId, 'sensgift');
+    assert.deepEqual(
+      projection.getProjectedMessages('sensgift-local-1', 'sensgift').map((message) => message.role),
+      ['user', 'assistant'],
+    );
+    assert.throws(
+      () => projection.getProjectedMessages('sensgift-local-1', 'default'),
+      (err) => err?.code === 'session_profile_mismatch' && err?.status === 403,
+    );
+  } finally {
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+  }
+});
+
+test('named-profile chat stream does not forward unproven client session ids upstream', () => {
+  const routeSource = readFileSync(chatStreamRoutePath, 'utf8');
+  const streamSource = readFileSync(chatStreamModulePath, 'utf8');
+
+  assert.match(routeSource, /hasProjectedSession\(requestedSessionId, profileId\)/);
+  assert.match(routeSource, /projectedResponseIdMatches\(requestedSessionId, profileId, previousResponseId\)/);
+  assert.match(routeSource, /session_profile_unverified/);
+  assert.match(routeSource, /response_profile_unverified/);
+  assert.match(routeSource, /`deck_\$\{randomUUID\(\)\}`/);
+  assert.match(routeSource, /__trustedSessionIdForProfile: trustedSessionIdForProfile/);
+  assert.match(streamSource, /const canForwardClientSessionId = body\?\.__trustedSessionIdForProfile !== false/);
+  assert.match(streamSource, /clientSessionId && canForwardClientSessionId && reqHeaders\.Authorization/);
+  assert.match(streamSource, /sessionId: stream\.sessionId/);
+  assert.match(streamSource, /getHermesApiBase\(profile\)/);
+  assert.match(streamSource, /apiHeaders\(profile\)/);
+  assert.match(streamSource, /refusing to route chat to the default profile API/);
+  assert.match(streamSource, /hooks\?\.onError\?\.\(\{[\s\S]*error: 'profile_routing_unavailable'/);
+  assert.doesNotMatch(streamSource, /HERMES_API_BASE/);
+  assert.doesNotMatch(streamSource, /X-Hermes-Profile/);
+});
+
+test('Hermes chat API base selection is per profile and fails closed for unconfigured named profiles', async () => {
+  const home = makeHome();
+  const hermesRoot = join(home, '.hermes');
+  mkdirSync(join(hermesRoot, 'profiles', 'coder'), { recursive: true });
+  mkdirSync(join(hermesRoot, 'profiles', 'missing'), { recursive: true });
+  mkdirSync(join(hermesRoot, 'profiles', 'disabled'), { recursive: true });
+  writeFileSync(join(hermesRoot, '.env'), 'API_SERVER_HOST=0.0.0.0\nAPI_SERVER_PORT=18642\nAPI_SERVER_KEY=default-secret\n');
+  writeFileSync(join(hermesRoot, 'profiles', 'coder', '.env'), 'API_SERVER_HOST=127.0.0.2\nAPI_SERVER_PORT=18643\nAPI_SERVER_KEY=coder-secret\n');
+  writeFileSync(join(hermesRoot, 'profiles', 'disabled', '.env'), 'API_SERVER_ENABLED=false\nAPI_SERVER_PORT=18644\nAPI_SERVER_KEY=disabled-secret\n');
+
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  const oldHermesApiBase = process.env.HERMES_API_BASE;
+  const oldHermesApiKey = process.env.HERMES_API_KEY;
+  const oldApiServerKey = process.env.API_SERVER_KEY;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    delete process.env.HERMES_HOME;
+    delete process.env.HERMES_API_BASE;
+    delete process.env.HERMES_API_KEY;
+    delete process.env.API_SERVER_KEY;
+    const core = await import(`${pathToFileURL(hermesCoreModulePath).href}?case=${Date.now()}-${importNonce++}`);
+
+    assert.equal(core.getHermesApiBase('default'), 'http://127.0.0.1:18642');
+    assert.equal(core.getHermesApiBase('coder'), 'http://127.0.0.2:18643');
+    assert.equal(core.getHermesApiBase('missing'), null);
+    assert.equal(core.getHermesApiBase('disabled'), null);
+    assert.equal(core.apiHeaders('default').Authorization, 'Bearer default-secret');
+    assert.equal(core.apiHeaders('coder').Authorization, 'Bearer coder-secret');
+
+    const originalFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, init = {}) => {
+      calls.push({ url: String(url), auth: init.headers?.Authorization });
+      return Response.json({ ok: true });
+    };
+    try {
+      await core.hermesApiGet('/api/sessions?profile=coder', 5000, 'coder');
+      assert.deepEqual(calls[0], {
+        url: 'http://127.0.0.2:18643/api/sessions?profile=coder',
+        auth: 'Bearer coder-secret',
+      });
+      await assert.rejects(
+        () => core.hermesApiGet('/api/sessions?profile=disabled', 5000, 'disabled'),
+        /profile 'disabled' has no configured API server base/,
+      );
+      assert.equal(calls.length, 1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    process.env.API_SERVER_KEY = 'global-default-secret';
+    assert.equal(core.apiHeaders('default').Authorization, 'Bearer global-default-secret');
+    assert.equal(core.apiHeaders('coder').Authorization, 'Bearer coder-secret');
+  } finally {
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+    if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
+    else process.env.HERMES_API_BASE = oldHermesApiBase;
+    if (oldHermesApiKey === undefined) delete process.env.HERMES_API_KEY;
+    else process.env.HERMES_API_KEY = oldHermesApiKey;
+    if (oldApiServerKey === undefined) delete process.env.API_SERVER_KEY;
+    else process.env.API_SERVER_KEY = oldApiServerKey;
+  }
+});
+
+test('session and stats routes preserve profile-routing errors instead of generic fetch failures', () => {
+  const sessionsRouteSource = readFileSync(resolve('src/app/api/deck/sessions/route.ts'), 'utf8');
+  const messagesRouteSource = readFileSync(resolve('src/app/api/deck/sessions/[id]/messages/route.ts'), 'utf8');
+  const statsRouteSource = readFileSync(statsRoutePath, 'utf8');
+  for (const source of [sessionsRouteSource, messagesRouteSource, statsRouteSource]) {
+    assert.match(source, /SessionProfileRoutingError/);
+    assert.match(source, /err instanceof SessionProfileRoutingError/);
+    assert.match(source, /error: err\.code/);
+    assert.match(source, /status: err\.status/);
+  }
+  assert.match(sessionsRouteSource, /const api = await getSessions\(profile\)/);
+  assert.match(sessionsRouteSource, /const sessions = mergeSessions\(projected, api\)/);
+  assert.match(messagesRouteSource, /const messages = await getMessages\(decodedId, profile/);
+  assert.doesNotMatch(messagesRouteSource, /noProjectedSessionError|profile !== 'default'/);
+  assert.doesNotMatch(sessionsRouteSource, /profile === 'default'\s*\?/);
+  assert.match(statsRouteSource, /listProjectedSessions\('default'\)/);
+  assert.match(statsRouteSource, /getSessionsForStats\('default'\)/);
+  assert.match(statsRouteSource, /statsFromSessions\(mergeSessionRows\(projected, api\), 'default'\)/);
 });
 
 test('admin user helpers approve users, assign profiles, reject invalid actors, and keep super_admin immutable', async () => {
@@ -737,6 +1045,7 @@ test('model preference route and chat stream enforce profile access and use stor
   const routeSource = readFileSync(modelPreferencesRoutePath, 'utf8');
   const chatStreamSource = readFileSync(chatStreamRoutePath, 'utf8');
   const hookSource = readFileSync(useChatModelsPath, 'utf8');
+  const modelsSource = readFileSync(modelsModulePath, 'utf8');
   const clientApiSource = readFileSync(clientApiPath, 'utf8');
 
   assert.match(routeSource, /requireActiveUser\(req\)/);
@@ -751,12 +1060,22 @@ test('model preference route and chat stream enforce profile access and use stor
   // Regression: raw/whitespace profile ids must be replaced by the normalized, authorized id before streaming.
   assert.match(chatStreamSource, /const profileId = normalizeProfileId\(bodyRecord\.profileId, 'default'\);[\s\S]*const effectiveBody = \{\s*\.\.\.bodyRecord,\s*profileId,/);
   assert.match(chatStreamSource, /!hasExplicitModel && preference\?\.modelId \? \{ model: preference\.modelId \} : \{\}/);
-  assert.match(chatStreamSource, /stream = createChatStream\(effectiveBody, \{[\s\S]*profileId,[\s\S]*ownerUserId: auth\.user\.id,[\s\S]*ownerRole: auth\.user\.role,[\s\S]*\}, req\.signal\)/);
+  assert.match(chatStreamSource, /stream = createChatStream\(effectiveBody, \{[\s\S]*profileId,[\s\S]*ownerUserId: auth\.user\.id,[\s\S]*ownerRole: auth\.user\.role,[\s\S]*\}, req\.signal, projectionHooks\)/);
   assert.match(chatStreamSource, /ActiveStreamAuthorizationError[\s\S]*stream_supersede_forbidden/);
   assert.doesNotMatch(chatStreamSource, /updateDeckModelPreference|saveProfileConfig|saveProfileConfigFile/);
 
   assert.match(hookSource, /deckApi\.modelPreference\(profile/);
   assert.match(hookSource, /deckApi\.saveModelPreference\(profile/);
+  assert.match(hookSource, /const saved = pref\?\.preference\?\.modelId[\s\S]*const def = saved\s*\|\|\s*\(r\.default\?\.model/);
+  assert.match(hookSource, /if \(def\) setSelectedModelState\(def\.id\)/);
+  assert.doesNotMatch(hookSource, /if \(def\) setSelectedModel\(def\.id\)/);
+  assert.match(modelsSource, /fetchApiModels\(profile\)/);
+  assert.match(modelsSource, /getHermesApiBase\(profile\)/);
+  assert.match(modelsSource, /apiHeaders\(profile\)/);
+  assert.doesNotMatch(modelsSource, /fetchApiModels\(\)\.catch\(\(\) => \[\]/);
+  assert.match(modelsSource, /isHermesAgentPlaceholder\('hermes', id\)/);
+  assert.match(modelsSource, /throw new Error\('\/v1\/models returned no selectable profile models\.'\)/);
+  assert.doesNotMatch(modelsSource, /config\.yaml|state\.db|execFileAsync|spawn\(|runPythonOr/);
   assert.match(clientApiSource, /\/api\/deck\/model-preferences/);
   assert.doesNotMatch(hookSource, /localStorage/);
 });
@@ -814,6 +1133,13 @@ test('phase 6 UI gates terminal and config navigation by session capabilities', 
   assert.match(paletteSource, /useDeckSession\(\)/);
   assert.match(paletteSource, /item\.id === 'p:terminal'[\s\S]*!canUseTerminal/);
   assert.match(paletteSource, /item\.id === 'p:config'[\s\S]*!canManageUsers/);
+  assert.match(paletteSource, /item\.id === 'p:lcm'[\s\S]*!canManageUsers/);
+  assert.match(paletteSource, /id: 'p:kanban'/);
+  assert.match(paletteSource, /id: 'p:lcm'/);
+  assert.match(paletteSource, /const loadSeqRef = useRef\(0\)/);
+  assert.match(paletteSource, /const profileForLoad = activeProfile/);
+  assert.match(paletteSource, /if \(loadSeqRef\.current !== seq\) return/);
+  assert.match(paletteSource, /profileForLoad \? deckApi\.runs\(profileForLoad\) : Promise\.resolve\(\{ runs: \[\] \}\)/);
 
   assert.match(dashboardSource, /useDeckSession\(\)/);
   assert.match(dashboardSource, /canUseTerminal[\s\S]*\/terminal/);
@@ -826,16 +1152,28 @@ test('phase 6 active profile reconciliation clears unauthorized stale selections
   const dashboardSource = readFileSync(resolve('src/app/page.tsx'), 'utf8');
   const profilesSource = readFileSync(resolve('src/app/profiles/page.tsx'), 'utf8');
   const chatSource = readFileSync(resolve('src/app/chat/page.tsx'), 'utf8');
+  const profileChipSource = readFileSync(resolve('src/components/ProfileChip.tsx'), 'utf8');
+  const chatHookSource = readFileSync(resolve('src/app/chat/_hooks/useChatStream.ts'), 'utf8');
 
   assert.match(contextSource, /function reconcileActiveProfile/);
   assert.match(contextSource, /profiles\.length === 0[\s\S]*removeStoredProfile\(\)/);
   assert.match(contextSource, /profiles\.some\(\(p\) => p\.id === prev\)/);
   assert.match(contextSource, /profiles\.find\(\(p\) => p\.active\)\?\.id[\s\S]*profiles\[0\]\?\.id/);
   assert.match(contextSource, /const \[profilesLoaded, setProfilesLoaded\] = useState\(false\)/);
+  assert.match(contextSource, /pendingStoredProfileRef = useRef<string \| null>\(null\)/);
+  assert.match(contextSource, /pendingStoredProfileRef\.current = stored/);
+  assert.doesNotMatch(contextSource, /if \(stored\) setActiveProfileState\(stored\)/);
+  assert.match(contextSource, /const pending = pendingStoredProfileRef\.current;[\s\S]*return reconcileActiveProfile\(pending \|\| prev, nextProfiles\)/);
+  assert.match(contextSource, /catch \{[\s\S]*setProfiles\(\[\]\);[\s\S]*setActiveProfileState\(NO_PROFILE\)/);
   assert.match(contextSource, /setProfilesLoaded\(true\)/);
   assert.match(contextSource, /const setActiveProfile = useCallback\([\s\S]*profilesLoaded && profiles\.length === 0[\s\S]*removeStoredProfile\(\)[\s\S]*return NO_PROFILE/);
   assert.match(contextSource, /const onStorage = \(e: StorageEvent\) => \{[\s\S]*if \(!e\.newValue\) \{[\s\S]*setActiveProfileState\(NO_PROFILE\)/);
   assert.match(contextSource, /const onStorage = \(e: StorageEvent\) => \{[\s\S]*profilesLoaded && profiles\.length === 0[\s\S]*removeStoredProfile\(\)[\s\S]*return NO_PROFILE/);
+  assert.match(contextSource, /if \(!profilesLoaded\) \{[\s\S]*pendingStoredProfileRef\.current = e\.newValue;[\s\S]*return NO_PROFILE/);
+  assert.match(profileChipSource, /activeMeta\?\.name \|\| \(loading \? t\.loading : t\.label\)/);
+  assert.doesNotMatch(profileChipSource, /activeMeta\?\.name \|\| activeProfile/);
+  assert.match(chatHookSource, /if \(!profile\) \{[\s\S]*setError\(t\.profileUnavailable\);[\s\S]*return;[\s\S]*\}/);
+  assert.match(chatHookSource, /profileId: profile/);
   assert.doesNotMatch(contextSource, /\|\| FALLBACK_PROFILE/);
 
   assert.match(emptyStateSource, /No assigned Agents/i);
@@ -896,6 +1234,13 @@ test('chat resume authorization is bound to immutable stream metadata and API fa
 
   assert.doesNotMatch(streamSource, /spawn\(['\"]hermes['\"]/);
   assert.doesNotMatch(streamSource, /fallback-cli|hermes-cli-fallback|backend: 'hermes-cli'/);
+  assert.match(streamSource, /const rawProfile = stream\.profileId \|\|/);
+  assert.match(streamSource, /const apiBase = getHermesApiBase\(profile\)/);
+  assert.match(streamSource, /const reqHeaders = \{ \.\.\.apiHeaders\(profile\) \}/);
+  assert.match(streamSource, /metadata = \{[\s\S]*profileId: profile,[\s\S]*source: 'hermesdeck'/);
+  assert.match(streamSource, /profile_routing_unavailable/);
+  assert.match(streamSource, /no configured API server base\/port/);
+  assert.match(streamSource, /markStreamDone\(stream\);[\s\S]*return;[\s\S]*\}\n\n    const reqHeaders = \{ \.\.\.apiHeaders\(profile\) \}/);
   assert.match(streamSource, /hermes_api_unavailable/);
 });
 
@@ -942,6 +1287,34 @@ test('LCM and raw cache-image routes are admin-only', () => {
   assert.match(shellSource, /n\.key === 'lcm'[\s\S]*!canManageUsers/);
 });
 
+test('service worker shell excludes protected routes and navigation cache fallbacks', () => {
+  const swSource = readFileSync(serviceWorkerPath, 'utf8');
+  const appShellMatch = swSource.match(/const\s+APP_SHELL\s*=\s*\[([\s\S]*?)\];/);
+  assert.ok(appShellMatch);
+  const appShell = appShellMatch[1];
+  for (const route of ['/', '/chat', '/chat?source=pwa', '/profiles', '/runs', '/cron', '/tools', '/terminal', '/config', '/kanban', '/lcm', '/settings']) {
+    const quoted = route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.doesNotMatch(appShell, new RegExp(`['\"]${quoted}['\"]`), route);
+  }
+  const navigateMatch = swSource.match(/if\s*\(req\.mode\s*===\s*['"]navigate['"]\)\s*\{([\s\S]*?)\n\s*\}\n\s*\n\s*\/\/ Static assets/);
+  assert.ok(navigateMatch);
+  assert.doesNotMatch(navigateMatch[1], /putWithTrim|RUNTIME_CACHE|caches\.match\(req\)|chatHit|\/chat\?source=pwa/);
+  assert.match(navigateMatch[1], /caches\.match\(['"]\/offline['"]\)/);
+  assert.match(swSource, /!res\.redirected[\s\S]*putWithTrim\(RUNTIME_CACHE/);
+});
+
+test('cron profile routing errors preserve typed error code at route boundary', () => {
+  const cronSource = readFileSync(hermesCronModulePath, 'utf8');
+  const routeSource = readFileSync(cronRoutePath, 'utf8');
+  assert.match(cronSource, /export class CronProfileRoutingError extends Error/);
+  assert.match(cronSource, /readonly code = 'profile_routing_unavailable'/);
+  assert.match(cronSource, /throw new CronProfileRoutingError\(requestedProfile\)/);
+  assert.match(routeSource, /err instanceof CronProfileRoutingError/);
+  assert.match(routeSource, /error: err\.code/);
+  assert.match(routeSource, /status: err\.status/);
+  assert.match(routeSource, /cron_fetch_failed/);
+});
+
 test('API-only runtime helpers no longer use direct runtime storage or Hermes CLI probes', () => {
   const helperPaths = [
     'src/lib/server/hermes/sessions.ts',
@@ -953,12 +1326,17 @@ test('API-only runtime helpers no longer use direct runtime storage or Hermes CL
     'src/lib/server/hermes/models.ts',
     'src/lib/server/hermes/profiles.ts',
     'src/lib/server/hermes/health.ts',
+    'src/lib/server/hermes/kanban.ts',
+    'src/lib/server/hermes/lcm.ts',
   ];
   const combined = helperPaths.map((p) => readFileSync(resolve(p), 'utf8')).join('\n');
-  assert.doesNotMatch(combined, /state\.db|sqlite3|pathlib\.Path\.home\(\)|execFileAsync\(['\"]hermes['\"]|spawn\(['\"]hermes['\"]|config\.yaml|profiles\/<id>/);
+  assert.doesNotMatch(combined, /state\.db|sqlite3|pathlib\.Path\.home\(\)|execFileAsync\(['\"]hermes['\"]|spawn\(['\"]hermes['\"]|config\.yaml|profiles\/<id>|lcm\.db|kanban\.db|hermes kanban|runPython|node:fs|homedir\(\)|HERMES_DASHBOARD_BASE/);
   assert.match(readFileSync(resolve('src/lib/server/hermes/models.ts'), 'utf8'), /\/v1\/models/);
   assert.match(readFileSync(resolve('src/lib/server/hermes/profiles.ts'), 'utf8'), /\/v1\/profiles/);
   assert.match(readFileSync(resolve('src/lib/server/hermes/sessions.ts'), 'utf8'), /\/api\/sessions\?/);
-  assert.match(readFileSync(resolve('src/lib/server/hermes/messages.ts'), 'utf8'), /\/api\/sessions\/\$\{encodeURIComponent\(sessionId\)\}\/messages/);
+  assert.match(readFileSync(resolve('src/lib/server/hermes/messages.ts'), 'utf8'), /\/api\/sessions\/\$\{encodeURIComponent\(trimmedSessionId\)\}\/messages/);
   assert.match(readFileSync(resolve('src/lib/server/hermes/stats.ts'), 'utf8'), /getSessionsForStats/);
+  assert.match(readFileSync(resolve('src/lib/server/hermes/kanban.ts'), 'utf8'), /Hermes Agent API[\s\S]*\/api\/kanban/);
+  assert.match(readFileSync(resolve('src/lib/server/hermes/lcm.ts'), 'utf8'), /\/api\/lcm[\s\S]*\/api\/lcm\/dashboard/);
+  assert.doesNotMatch(readFileSync(resolve('src/lib/server/hermes/health.ts'), 'utf8'), /9120|\/api\/sessions|Dashboard sidecar|HERMES_DASHBOARD_BASE/);
 });

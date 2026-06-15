@@ -1,5 +1,5 @@
 import type { DeckSession } from '@/lib/types';
-import { hermesApiGet, PROFILE_ID_RE } from './core';
+import { hermesApiGet, PROFILE_ID_RE } from './core.ts';
 
 const PAGE_LIMIT = 200;
 const SESSION_LIST_MAX = 1000;
@@ -28,6 +28,8 @@ interface HermesSessionRow {
 
 interface HermesSessionsResponse {
   object?: unknown;
+  profile?: unknown;
+  profile_id?: unknown;
   data?: unknown;
   sessions?: unknown;
   limit?: unknown;
@@ -67,6 +69,25 @@ function isoTimestamp(value: unknown): string | undefined {
   return undefined;
 }
 
+export const PROFILE_ROUTING_UNAVAILABLE = 'profile_routing_unavailable';
+export const SESSION_PROFILE_MISMATCH = 'session_profile_mismatch';
+
+export class SessionProfileRoutingError extends Error {
+  readonly code: typeof PROFILE_ROUTING_UNAVAILABLE | typeof SESSION_PROFILE_MISMATCH;
+  readonly status: 403 | 502;
+
+  constructor(
+    code: typeof PROFILE_ROUTING_UNAVAILABLE | typeof SESSION_PROFILE_MISMATCH,
+    message: string,
+    status: 403 | 502,
+  ) {
+    super(message);
+    this.name = 'SessionProfileRoutingError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
 function titleFor(row: HermesSessionRow, id: string): string {
   const explicit = stringValue(row.title);
   if (explicit) return explicit;
@@ -75,10 +96,38 @@ function titleFor(row: HermesSessionRow, id: string): string {
   return id;
 }
 
+function explicitProfileFor(row: HermesSessionRow): string | undefined {
+  return stringValue(row.profile_id) || stringValue(row.profile);
+}
+
+function isDefaultProfile(profile?: string): boolean {
+  return !profile || profile === 'default';
+}
+
+function profileIdForTrustedRow(row: HermesSessionRow, requestedProfile?: string): string {
+  const explicitProfile = explicitProfileFor(row);
+  if (!explicitProfile) {
+    if (isDefaultProfile(requestedProfile)) return 'default';
+    throw new SessionProfileRoutingError(
+      PROFILE_ROUTING_UNAVAILABLE,
+      'Hermes Agent did not include session profile metadata for a profile-scoped session list.',
+      502,
+    );
+  }
+  if (requestedProfile && explicitProfile !== requestedProfile) {
+    throw new SessionProfileRoutingError(
+      SESSION_PROFILE_MISMATCH,
+      'Hermes Agent returned a session outside the requested profile scope.',
+      403,
+    );
+  }
+  return explicitProfile;
+}
+
 function normalizeSession(row: HermesSessionRow, requestedProfile?: string): DeckSession | null {
   const id = stringValue(row.id) || stringValue(row.session_id);
   if (!id) return null;
-  const profileId = stringValue(row.profile_id) || stringValue(row.profile) || requestedProfile || 'default';
+  const profileId = profileIdForTrustedRow(row, requestedProfile);
   const createdAt = isoTimestamp(row.started_at ?? row.created_at);
   const updatedAt = isoTimestamp(row.last_active ?? row.updated_at ?? row.ended_at ?? row.started_at ?? row.created_at);
   const messageCount = numberValue(row.message_count);
@@ -108,7 +157,16 @@ function validateProfile(profile?: string): string | undefined {
 async function fetchSessionPage(profile: string | undefined, limit: number, offset: number): Promise<{ sessions: DeckSession[]; hasMore: boolean }> {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (profile) params.set('profile', profile);
-  const payload = await hermesApiGet<HermesSessionsResponse | HermesSessionRow[]>(`/api/sessions?${params.toString()}`, 8000);
+  const payload = await hermesApiGet<HermesSessionsResponse | HermesSessionRow[]>(`/api/sessions?${params.toString()}`, 8000, profile || 'default');
+  const responseProfile = !Array.isArray(payload) ? (stringValue(payload.profile_id) || stringValue(payload.profile)) : undefined;
+  const trustedProfile = responseProfile || profile;
+  if (profile && responseProfile && responseProfile !== profile) {
+    throw new SessionProfileRoutingError(
+      SESSION_PROFILE_MISMATCH,
+      'Hermes Agent returned a session page outside the requested profile scope.',
+      403,
+    );
+  }
   const rows = Array.isArray(payload)
     ? payload
     : Array.isArray(payload.data)
@@ -118,7 +176,7 @@ async function fetchSessionPage(profile: string | undefined, limit: number, offs
         : [];
   const sessions = rows
     .filter(isRecord)
-    .map((row) => normalizeSession(row as HermesSessionRow, profile))
+    .map((row) => normalizeSession(row as HermesSessionRow, trustedProfile))
     .filter((session): session is DeckSession => session !== null);
   const hasMore = !Array.isArray(payload) && payload.has_more === true;
   return { sessions, hasMore };
@@ -143,8 +201,24 @@ export async function getSessionsForStats(profile?: string): Promise<DeckSession
   return fetchSessions(profile, STATS_LIST_MAX);
 }
 
+export async function assertSessionBelongsToProfile(sessionId: string, profile = 'default'): Promise<DeckSession> {
+  const trimmedSessionId = sessionId.trim();
+  if (!trimmedSessionId) throw new Error('assertSessionBelongsToProfile: session id is required');
+  const scopedProfile = validateProfile(profile) || 'default';
+  const sessions = await fetchSessions(scopedProfile, STATS_LIST_MAX);
+  const session = sessions.find((item) => item.id === trimmedSessionId);
+  if (!session) {
+    throw new SessionProfileRoutingError(
+      SESSION_PROFILE_MISMATCH,
+      'Session does not belong to the requested profile or could not be proven by Hermes Agent metadata.',
+      403,
+    );
+  }
+  return session;
+}
+
 export async function tagSessionSource(_sessionId: string, _source: string, _profile = 'default'): Promise<void> {
-  // Best-effort local tagging used to touch Hermes runtime storage directly.
+  // Best-effort tagging used to mutate Hermes runtime storage directly.
   // It is now intentionally disabled; chat uses the Hermes Agent API as source of truth.
   return;
 }

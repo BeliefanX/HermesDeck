@@ -49,18 +49,19 @@ async function consumeStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let observedSeq = since;
-  // Tracks the last time we saw a NON-heartbeat event (or any byte before the
-  // first event). Heartbeat-only traffic should not satisfy the stall watchdog
-  // — otherwise an upstream that's quietly dropping events while the proxy
-  // keep-alive still flows would never trip the timeout.
+  // Tracks the last time we saw stream traffic. HermesDeck's server-side chat
+  // bridge emits SSE comment heartbeats every 15s while Hermes Agent is inside
+  // long tool calls/subagent work. Those heartbeats are the intended liveness
+  // signal for the 5m watchdog; treating them as "no events" caused healthy
+  // long Kevin/HermesDeck tasks to detach the tab while the upstream kept
+  // running and created separate API sessions in the sidebar.
   let lastEventAt = Date.now();
   const handleBlock = (block: string) => {
     let event = 'message';
     const dataLines: string[] = [];
     // Skip pure-comment blocks ("`: keep-alive ...`") — they're heartbeat
-    // pings emitted by the server to keep proxies happy. We do NOT want to
-    // parse them as events, and they don't count as forward progress for the
-    // stall watchdog (handled below).
+    // pings emitted by the server to keep proxies happy. They are not delivered
+    // to app callbacks, but they do prove the Deck SSE bridge is alive.
     let isComment = true;
     for (const line of block.split(/\r?\n/)) {
       if (!line) continue;
@@ -69,7 +70,11 @@ async function consumeStream(
       if (line.startsWith('event:')) event = line.slice(6).trim();
       if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
     }
-    if (isComment || !dataLines.length) return;
+    if (isComment) {
+      lastEventAt = Date.now();
+      return;
+    }
+    if (!dataLines.length) return;
     // Real event observed — reset the stall watchdog clock.
     lastEventAt = Date.now();
     const raw = dataLines.join('\n');

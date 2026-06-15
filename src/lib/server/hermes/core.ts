@@ -68,10 +68,10 @@ export function makeKeyedCache<K extends string, T>(
   };
 }
 
-function readHermesEnv(): Record<string, string> {
+function readHermesEnvFile(path: string): Record<string, string> {
   const env: Record<string, string> = {};
   try {
-    const text = readFileSync(join(homedir(), '.hermes', '.env'), 'utf8');
+    const text = readFileSync(path, 'utf8');
     for (const raw of text.split(/\r?\n/)) {
       const line = raw.trim();
       if (!line || line.startsWith('#') || !line.includes('=')) continue;
@@ -85,24 +85,74 @@ function readHermesEnv(): Record<string, string> {
   return env;
 }
 
+function defaultHermesRoot(): string {
+  const envHome = process.env.HERMES_HOME?.trim();
+  if (!envHome) return join(homedir(), '.hermes');
+  const normalized = envHome.replace(/\\+/g, '/');
+  const marker = '/profiles/';
+  const idx = normalized.lastIndexOf(marker);
+  if (idx >= 0 && normalized.slice(idx + marker.length) && !normalized.slice(idx + marker.length).includes('/')) {
+    return envHome.slice(0, idx);
+  }
+  return envHome;
+}
+
+function profileHermesHome(profileId: string): string {
+  const root = defaultHermesRoot();
+  return profileId === 'default' ? root : join(root, 'profiles', profileId);
+}
+
+function readHermesEnv(profileId = 'default'): Record<string, string> {
+  return readHermesEnvFile(join(profileHermesHome(profileId), '.env'));
+}
+
 export const hermesEnv = readHermesEnv();
-const defaultApiPort = hermesEnv.API_SERVER_PORT || hermesEnv.HERMES_API_SERVER_PORT || '8642';
+const defaultApiPort = hermesEnv.API_SERVER_PORT || hermesEnv.HERMES_API_SERVER_PORT || '6117';
 
 export const HERMES_API_BASE = process.env.HERMES_API_BASE || hermesEnv.HERMES_API_BASE || `http://127.0.0.1:${defaultApiPort}`;
-export const HERMES_DASHBOARD_BASE = process.env.HERMES_DASHBOARD_BASE || hermesEnv.HERMES_DASHBOARD_BASE || 'http://127.0.0.1:9120';
 
-export function apiHeaders(): Record<string, string> {
+function localConnectHostFromEnv(env: Record<string, string>): string {
+  const host = (env.API_SERVER_HOST || env.HERMES_API_SERVER_HOST || '').trim();
+  // API_SERVER_HOST is a bind address. For wildcard binds, connect via loopback.
+  if (!host || host === '0.0.0.0' || host === '::' || host === '[::]') return '127.0.0.1';
+  return host;
+}
+
+function apiBaseFromEnv(env: Record<string, string>, profileId: string): string | null {
+  if (profileId !== 'default' && /^(?:0|false|no)$/i.test((env.API_SERVER_ENABLED || '').trim())) return null;
+  const explicit = env.HERMES_API_BASE || env.HERMES_API_SERVER_BASE;
+  if (explicit) return explicit;
+  const port = env.API_SERVER_PORT || env.HERMES_API_SERVER_PORT;
+  if (port) return `http://${localConnectHostFromEnv(env)}:${port}`;
+  return profileId === 'default' ? `http://${localConnectHostFromEnv(hermesEnv)}:${defaultApiPort}` : null;
+}
+
+export function getHermesApiBase(profileId = 'default'): string | null {
+  if (!PROFILE_ID_RE.test(profileId)) return null;
+  if (profileId === 'default') return HERMES_API_BASE;
+  const env = readHermesEnv(profileId);
+  return apiBaseFromEnv(env, profileId);
+}
+
+export function apiHeaders(profileId = 'default'): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  const key = process.env.HERMES_API_KEY || process.env.API_SERVER_KEY || hermesEnv.HERMES_API_KEY || hermesEnv.API_SERVER_KEY;
+  const env = profileId === 'default' ? hermesEnv : readHermesEnv(profileId);
+  const key = profileId === 'default'
+    ? (process.env.HERMES_API_KEY || process.env.API_SERVER_KEY || env.HERMES_API_KEY || env.API_SERVER_KEY)
+    : (env.HERMES_API_KEY || env.API_SERVER_KEY);
   if (key) h.Authorization = `Bearer ${key}`;
   return h;
 }
 
-export async function hermesApiGet<T>(path: string, timeoutMs = 5000): Promise<T> {
-  const base = HERMES_API_BASE.replace(/\/+$/, '');
+export async function hermesApiGet<T>(path: string, timeoutMs = 5000, profileId = 'default'): Promise<T> {
+  const apiBase = getHermesApiBase(profileId);
+  if (!apiBase) {
+    throw new Error(`Hermes Agent API GET ${path} failed: profile '${profileId}' has no configured API server base`);
+  }
+  const base = apiBase.replace(/\/+$/, '');
   const response = await fetch(`${base}${path.startsWith('/') ? path : `/${path}`}`, {
     cache: 'no-store',
-    headers: apiHeaders(),
+    headers: apiHeaders(profileId),
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {

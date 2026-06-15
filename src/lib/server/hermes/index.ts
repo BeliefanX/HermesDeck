@@ -1,9 +1,18 @@
 import { randomUUID } from 'node:crypto';
 
-export { HERMES_API_BASE, HERMES_DASHBOARD_BASE } from './core';
+export { HERMES_API_BASE } from './core';
 export { hermesVersion, getHealth } from './health';
 export { getProfiles, getStrictProfiles } from './profiles';
-export { getSessions, tagSessionSource, deleteSession } from './sessions';
+export {
+  getSessions,
+  getSessionsForStats,
+  assertSessionBelongsToProfile,
+  tagSessionSource,
+  deleteSession,
+  SessionProfileRoutingError,
+  PROFILE_ROUTING_UNAVAILABLE,
+  SESSION_PROFILE_MISMATCH,
+} from './sessions';
 export { getMessages, type GetMessagesOptions } from './messages';
 export { getTools } from './tools';
 export { readSkill, saveSkill, indexSkillFiles } from './skills';
@@ -18,9 +27,10 @@ export {
   type LcmConfigSnapshot,
 } from './lcm';
 export { getRuns, getRunDetail } from './runs';
+export { CronProfileRoutingError, getCronJobs } from './cron';
 export { getTokenStats } from './tokens';
 export { listTerminalActions, runTerminalAction } from './terminal';
-export { createChatStream, resumeChatStream, type ChatStreamBody } from './chat-stream';
+export { createChatStream, resumeChatStream, type ChatStreamBody, type ChatStreamProjectionHooks } from './chat-stream';
 export { ActiveStreamAuthorizationError, getActiveStream } from './stream-hub';
 export {
   getBoards,

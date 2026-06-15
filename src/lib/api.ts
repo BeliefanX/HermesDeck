@@ -1,4 +1,4 @@
-import type { DeckAuthSession, DeckHealth, DeckProfile, DeckSession, DeckMessage, ToolSummary, TerminalAction, TerminalRunRequest, TerminalRunResult, DeckModelsResponse, DeckModelPreferenceResponse, TokenStats, DeckStats, DeckRun, DeckRunDetail, LiveTerminalSession, LiveTerminalListResponse, LiveTerminalWindow, LiveTerminalCreateRequest, LiveTerminalTmuxRequest, SkillContent, KanbanBoard, KanbanBoardSnapshot, KanbanTaskDetail, KanbanDiagnostic, KanbanStats, KanbanAssignee, KanbanTaskLog, KanbanTaskContext, KanbanMarkdownListResult, KanbanMarkdownFile, LcmDashboard } from './types';
+import type { DeckAuthSession, DeckHealth, DeckProfile, DeckSession, DeckMessage, ToolSummary, TerminalAction, TerminalRunRequest, TerminalRunResult, DeckModelsResponse, DeckModelPreferenceResponse, TokenStats, DeckStats, DeckRun, DeckRunDetail, DeckCronJob, LiveTerminalSession, LiveTerminalListResponse, LiveTerminalWindow, LiveTerminalCreateRequest, LiveTerminalTmuxRequest, SkillContent, KanbanBoard, KanbanBoardSnapshot, KanbanTaskDetail, KanbanDiagnostic, KanbanStats, KanbanAssignee, KanbanTaskLog, KanbanTaskContext, KanbanMarkdownListResult, KanbanMarkdownFile, LcmDashboard } from './types';
 import type { ConfigFileKey, DeckConfigBundle, SaveConfigResult } from './config-files';
 
 /**
@@ -27,6 +27,44 @@ export class ApiError extends Error {
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000;
+
+function isHtmlResponse(contentType: string | null, text: string): boolean {
+  const type = (contentType || '').toLowerCase();
+  if (type.includes('text/html') || type.includes('application/xhtml+xml')) return true;
+  return /^\s*(?:<!doctype\s+html|<html[\s>])/i.test(text);
+}
+
+function titleFromHtml(text: string): string | undefined {
+  const match = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (!match) return undefined;
+  return match[1]
+    .replace(/\s+/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .trim()
+    .slice(0, 120) || undefined;
+}
+
+function messageForErrorResponse(res: Response, parsedBody: unknown, text: string): string {
+  if (parsedBody && typeof parsedBody === 'object' && parsedBody !== null) {
+    const body = parsedBody as { error?: unknown; detail?: unknown };
+    if (typeof body.error === 'string' && body.error.trim()) {
+      const detail = typeof body.detail === 'string' && body.detail.trim() ? `: ${body.detail.trim()}` : '';
+      return `${body.error.trim()}${detail}`;
+    }
+  }
+  if (isHtmlResponse(res.headers.get('content-type'), text)) {
+    const title = titleFromHtml(text);
+    return title
+      ? `HTTP ${res.status}: upstream returned an HTML error page (${title})`
+      : `HTTP ${res.status}: upstream returned an HTML error page`;
+  }
+  return text ? text.slice(0, 500) : `Request failed: ${res.status}`;
+}
 
 function normalizeTimeoutMs(timeoutMs: number | undefined): number {
   return Number.isFinite(timeoutMs) && (timeoutMs as number) > 0 ? (timeoutMs as number) : DEFAULT_TIMEOUT_MS;
@@ -80,9 +118,7 @@ async function request<T>(path: string, init?: RequestInit & { timeoutMs?: numbe
     if (text) {
       try { parsedBody = JSON.parse(text); } catch { parsedBody = text; }
     }
-    const msg = (parsedBody && typeof parsedBody === 'object' && parsedBody !== null && 'error' in parsedBody && typeof (parsedBody as { error: unknown }).error === 'string')
-      ? (parsedBody as { error: string }).error
-      : (text || `Request failed: ${res.status}`);
+    const msg = messageForErrorResponse(res, parsedBody, text);
     throw new ApiError(res.status, parsedBody, msg);
   }
   return res.json();
@@ -131,10 +167,18 @@ export const deckApi = {
       body: JSON.stringify({ profileId, ...body }),
     }),
   // Token aggregation can be slow when state.db is large; bump the timeout.
-  tokens: (days = 14, signal?: AbortSignal) => request<TokenStats>(`/api/deck/tokens?days=${days}`, { signal, timeoutMs: 30_000 }),
+  tokens: (days = 14, signal?: AbortSignal, profileId?: string) => {
+    const params = new URLSearchParams({ days: String(days) });
+    if (profileId) params.set('profile', profileId);
+    return request<TokenStats>(`/api/deck/tokens?${params.toString()}`, { signal, timeoutMs: 30_000 });
+  },
   runs: (profileId?: string, signal?: AbortSignal) => {
     const qs = profileId ? `?profile=${encodeURIComponent(profileId)}` : '';
     return request<{ runs: DeckRun[] }>(`/api/deck/runs${qs}`, { signal, timeoutMs: 30_000 });
+  },
+  cronJobs: (profileId?: string, signal?: AbortSignal) => {
+    const qs = profileId ? `?profile=${encodeURIComponent(profileId)}` : '';
+    return request<{ jobs: DeckCronJob[] }>(`/api/deck/cron${qs}`, { signal, timeoutMs: 30_000 });
   },
   runDetail: (id: string, signal?: AbortSignal) => request<DeckRunDetail>(`/api/deck/runs/${encodeURIComponent(id)}`, { signal }),
   terminalActions: (signal?: AbortSignal) => request<{ actions: TerminalAction[] }>('/api/deck/terminal/actions', { signal }),
