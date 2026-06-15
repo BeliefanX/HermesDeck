@@ -126,7 +126,7 @@ export default function ConfigPage() {
       </div>
 
       {err && (
-        <Card style={{ borderColor: 'rgba(239,68,68,.4)' }}>
+        <Card style={{ borderColor: 'var(--status-red-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--red)' }}>
             <AlertCircle size={15} />
             <span style={{ flex: 1 }}>{t.loadFailed}{err}</span>
@@ -402,9 +402,9 @@ function ConfigFileCard({
             display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 16px',
             borderBottom: '1px solid var(--hairline)', fontSize: 12,
             background:
-              banner.tone === 'error' ? 'rgba(239,68,68,.10)'
-                : banner.tone === 'warn' ? 'rgba(234,179,8,.10)'
-                  : 'rgba(103,232,249,.08)',
+              banner.tone === 'error' ? 'var(--status-red-bg)'
+                : banner.tone === 'warn' ? 'var(--status-yellow-bg)'
+                  : 'var(--status-cyan-bg)',
             color:
               banner.tone === 'error' ? 'var(--red)'
                 : banner.tone === 'warn' ? 'var(--yellow)'
@@ -472,7 +472,7 @@ function CharMeter({ count, limit, overLabel }: { count: number; limit: number; 
         <div
           style={{
             height: '100%', width: `${Math.min(100, Math.max(2, pct))}%`,
-            background: color, borderRadius: 3, transition: 'width 240ms cubic-bezier(.2,.7,.2,1)',
+            background: color, borderRadius: 3,
           }}
         />
       </div>

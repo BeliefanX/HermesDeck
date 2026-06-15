@@ -659,7 +659,7 @@ export default function KanbanPage() {
       />
 
       {actionErr && (
-        <Card style={{ borderColor: 'rgba(239,68,68,.4)' }}>
+        <Card style={{ borderColor: 'var(--status-red-border)' }}>
           <div style={{ fontSize: 12, color: 'var(--red)', display: 'flex', gap: 8, alignItems: 'center' }}>
             <AlertTriangle size={13} />
             <span>{t.actionFailed}{actionErr}</span>
@@ -862,9 +862,10 @@ function BoardBar({
               fontSize: 12.5,
               minWidth: 180,
               appearance: 'none',
-              backgroundImage: 'url(\'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%2399a"><path d="M6 9l6 6 6-6"/></svg>\')',
+              backgroundImage: 'linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%)',
               backgroundRepeat: 'no-repeat',
-              backgroundPosition: 'right 8px center',
+              backgroundPosition: 'calc(100% - 13px) 50%, calc(100% - 8px) 50%',
+              backgroundSize: '5px 5px, 5px 5px',
             }}
           >
             {boards.length === 0 && <option value="default">default</option>}
@@ -921,9 +922,10 @@ function BoardBar({
                 background: 'var(--bg-soft)', color: 'var(--strong-text)',
                 fontFamily: 'var(--font-mono)', fontSize: 11,
                 appearance: 'none',
-                backgroundImage: 'url(\'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="%2399a"><path d="M6 9l6 6 6-6"/></svg>\')',
+                backgroundImage: 'linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%)',
                 backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'right 6px center',
+                backgroundPosition: 'calc(100% - 12px) 50%, calc(100% - 7px) 50%',
+                backgroundSize: '5px 5px, 5px 5px',
               }}
             >
               <option value="all">{labels.assigneeFilter}: {labels.allAssignees}</option>
@@ -954,14 +956,14 @@ function BoardBar({
 
           {/* Live indicator */}
           <Tag variant={liveMode === 'live' ? 'green' : 'default'} icon={liveMode === 'live'
-            ? <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block', boxShadow: '0 0 0 3px rgba(34,197,94,.18)' }} />
+            ? <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block', boxShadow: '0 0 0 3px var(--status-green-bg)' }} />
             : <Clock size={9} />
           }>
             {liveMode === 'live' ? labels.live : labels.polling}
           </Tag>
         </div>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', minWidth: 0 }}>
           {(emptyColumnCount > 0 || showEmpty) && (
             <Btn
               variant="ghost"
@@ -1074,7 +1076,7 @@ function TaskCard({ task, active, busy, onPick }: { task: KanbanTask; active: bo
         flexDirection: 'column',
         gap: 6,
         opacity: busy ? 0.65 : 1,
-        transition: 'all 200ms cubic-bezier(.2,.7,.2,1)',
+        transition: 'background 200ms cubic-bezier(.2,.7,.2,1), border-color 200ms cubic-bezier(.2,.7,.2,1), color 200ms cubic-bezier(.2,.7,.2,1), opacity 200ms cubic-bezier(.2,.7,.2,1)',
       }}
     >
       <div style={{
@@ -1186,7 +1188,7 @@ function DetailResizeHandle({
           background: active
             ? 'var(--accent)'
             : (hovered ? 'var(--accent-border)' : 'var(--hairline)'),
-          transition: 'background 120ms, width 120ms',
+          transition: 'background 120ms, opacity 120ms',
           borderRadius: 2,
           opacity: active ? 1 : (hovered ? 0.9 : 0.4),
         }}
@@ -1726,7 +1728,7 @@ function CreateDialog({
       aria-label={t.newTask}
       style={{
         position: 'fixed', inset: 0, zIndex: 70,
-        background: 'rgba(8, 9, 12, .55)',
+        background: 'color-mix(in oklch, var(--strong-text) 18%, transparent)',
         backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
       }}
@@ -2198,7 +2200,7 @@ function ModalShell({ title, icon, onClose, extra, wide, children }: {
       aria-label={title}
       style={{
         position: 'fixed', inset: 0, zIndex: 70,
-        background: 'rgba(8, 9, 12, .55)',
+        background: 'color-mix(in oklch, var(--strong-text) 18%, transparent)',
         backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
       }}

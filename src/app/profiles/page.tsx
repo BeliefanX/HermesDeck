@@ -307,7 +307,7 @@ export default function ProfilesPage() {
       )}
 
       {modelsErr && (
-        <Card style={{ borderColor: 'rgba(239,68,68,.4)' }}>
+        <Card style={{ borderColor: 'var(--status-red-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--red)' }}>
             <AlertCircle size={15} /> {t.loadFailed} {modelsErr}
           </div>

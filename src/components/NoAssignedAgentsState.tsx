@@ -24,7 +24,7 @@ export function NoAssignedAgentsState({ compact = false }: NoAssignedAgentsState
   });
   return (
     <Card style={{ padding: compact ? 18 : 28, textAlign: 'center' }}>
-      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: 14, background: 'rgba(56,189,248,.10)', color: 'var(--accent)', marginBottom: 10 }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: 14, background: 'var(--accent-soft)', color: 'var(--accent)', marginBottom: 10 }}>
         <Bot size={22} />
       </div>
       <Kicker style={{ justifyContent: 'center', marginBottom: 6 }}>{t.kicker}</Kicker>

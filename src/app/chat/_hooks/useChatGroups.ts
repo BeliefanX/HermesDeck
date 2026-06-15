@@ -20,11 +20,12 @@ export function useChatGroups({
   const sourceCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const s of sessions) {
+      if (!showSubagents && s.parentSessionId) continue;
       const k = (s.source || 'hermes').toLowerCase();
       counts.set(k, (counts.get(k) || 0) + 1);
     }
     return counts;
-  }, [sessions]);
+  }, [sessions, showSubagents]);
 
   const sourceFilterActive = enabledSources !== null;
 

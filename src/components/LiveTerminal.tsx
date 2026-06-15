@@ -404,7 +404,7 @@ export function LiveTerminal() {
       )}
 
       {/* Terminal canvas */}
-      <div style={{ position: 'relative', flex: 1, minHeight: 320, background: '#0a0a0a' }}>
+      <div style={{ position: 'relative', flex: 1, minHeight: 320, background: 'var(--terminal-bg)' }}>
         {!activeId && (
           <div style={emptyOverlay}>
             <TermIcon size={22} style={{ color: 'var(--muted)' }} />
@@ -459,28 +459,33 @@ function rows(id: string, sessions: LiveTerminalSession[]) {
 
 function terminalTheme() {
   return {
-    background: '#0a0a0a',
-    foreground: '#e6e6e6',
-    cursor: '#9ec6ff',
-    cursorAccent: '#0a0a0a',
-    selectionBackground: 'rgba(158,198,255,0.25)',
-    black: '#1a1a1a',
-    red: '#ef4444',
-    green: '#22c55e',
-    yellow: '#eab308',
-    blue: '#60a5fa',
-    magenta: '#c084fc',
-    cyan: '#22d3ee',
-    white: '#e6e6e6',
-    brightBlack: '#666',
-    brightRed: '#ff6b6b',
-    brightGreen: '#4ade80',
-    brightYellow: '#fde047',
-    brightBlue: '#93c5fd',
-    brightMagenta: '#d8b4fe',
-    brightCyan: '#67e8f9',
-    brightWhite: '#fafafa',
+    background: cssToken('--terminal-bg', 'var(--terminal-bg)'),
+    foreground: cssToken('--terminal-text', 'var(--terminal-text)'),
+    cursor: cssToken('--terminal-cursor', 'var(--terminal-cursor)'),
+    cursorAccent: cssToken('--terminal-bg', 'var(--terminal-bg)'),
+    selectionBackground: cssToken('--terminal-selection', 'var(--terminal-selection)'),
+    black: cssToken('--terminal-black', 'var(--terminal-black)'),
+    red: cssToken('--terminal-red', 'var(--terminal-red)'),
+    green: cssToken('--terminal-green', 'var(--terminal-green)'),
+    yellow: cssToken('--terminal-yellow', 'var(--terminal-yellow)'),
+    blue: cssToken('--terminal-blue', 'var(--terminal-blue)'),
+    magenta: cssToken('--terminal-magenta', 'var(--terminal-magenta)'),
+    cyan: cssToken('--terminal-cyan', 'var(--terminal-cyan)'),
+    white: cssToken('--terminal-white', 'var(--terminal-white)'),
+    brightBlack: cssToken('--terminal-bright-black', 'var(--terminal-bright-black)'),
+    brightRed: cssToken('--terminal-bright-red', 'var(--terminal-bright-red)'),
+    brightGreen: cssToken('--terminal-bright-green', 'var(--terminal-bright-green)'),
+    brightYellow: cssToken('--terminal-bright-yellow', 'var(--terminal-bright-yellow)'),
+    brightBlue: cssToken('--terminal-bright-blue', 'var(--terminal-bright-blue)'),
+    brightMagenta: cssToken('--terminal-bright-magenta', 'var(--terminal-bright-magenta)'),
+    brightCyan: cssToken('--terminal-bright-cyan', 'var(--terminal-bright-cyan)'),
+    brightWhite: cssToken('--terminal-bright-white', 'var(--terminal-bright-white)'),
   };
+}
+
+function cssToken(name: string, fallback: string) {
+  if (typeof window === 'undefined') return fallback;
+  return window.getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
 const stripStyle: React.CSSProperties = {
@@ -507,7 +512,7 @@ function tabStyle(active: boolean): React.CSSProperties {
     background: active ? 'var(--accent-soft)' : 'var(--panel-2)',
     color: active ? 'var(--accent)' : 'var(--value-text)',
     cursor: 'pointer',
-    transition: 'all 180ms cubic-bezier(.2,.7,.2,1)',
+    transition: 'background 180ms cubic-bezier(.2,.7,.2,1), border-color 180ms cubic-bezier(.2,.7,.2,1), color 180ms cubic-bezier(.2,.7,.2,1)',
   };
 }
 

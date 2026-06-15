@@ -77,7 +77,7 @@ export function ChatComposer({
                 gap: 6,
                 padding: '4px 8px',
                 borderRadius: 8,
-                background: goalActive ? 'rgba(56,189,248,.08)' : 'var(--bg-soft)',
+                background: goalActive ? 'var(--accent-soft)' : 'var(--bg-soft)',
                 border: `1px solid ${goalActive ? 'var(--accent-border)' : 'var(--hairline)'}`,
                 fontSize: 12,
                 color: 'var(--text)',
@@ -135,6 +135,7 @@ export function ChatComposer({
             }}>
               <Target size={12} style={{ color: 'var(--accent)', flexShrink: 0 }} />
               <input
+                className="composer-goal-input"
                 autoFocus
                 type="text"
                 value={goalDraft}
@@ -161,7 +162,7 @@ export function ChatComposer({
                   background: 'var(--panel)',
                   color: 'var(--text)',
                   fontFamily: 'var(--font-sans)',
-                  fontSize: 12,
+                  fontSize: 'var(--composer-goal-input-font-size, 12px)',
                   outline: 'none',
                 }}
               />
@@ -310,7 +311,7 @@ export function ChatComposer({
               outline: 'none',
               color: 'var(--text)',
               fontFamily: 'var(--font-sans)',
-              fontSize: 14,
+              fontSize: 'var(--composer-textarea-font-size, 14px)',
               lineHeight: 1.55,
               minHeight: 22,
             }}
@@ -398,70 +399,81 @@ export function ChatComposer({
             aria-label={t.messageComposer}
           />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            aria-label={t.addAttachment}
-            title={t.addAttachmentTitle}
-            disabled={busy}
-            style={iconBtnStyle}
-          >
-            <Paperclip size={13} />
-          </button>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-            <ComposerPicker
-              label={t.modelLabel}
-              title={t.modelTitle}
-              value={selectedModel}
-              disabled={modelOptions.length === 0}
-              placeholder={t.profileDefault}
-              options={modelOptions.map((m) => ({ value: m.id, label: m.id, isDefault: m.isDefault }))}
-              onChange={(v) => setSelectedModel(v)}
-              defaultTagLabel={t.defaultTag}
-            />
-            <ComposerPicker
-              label={t.reasoningLabel}
-              title={t.reasoningTitle}
-              value={reasoningEffort}
-              options={reasoningLevels.map((level) => ({
-                value: level,
-                label: level,
-                isDefault: level === defaultReasoning,
-              }))}
-              onChange={(v) => {
-                reasoningTouchedRef.current = true;
-                setReasoningEffort(v as ReasoningEffort);
-              }}
-              defaultTagLabel={t.defaultTag}
-            />
+        <div className="composer-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, width: '100%', flexWrap: 'wrap' }}>
+          <div className="composer-tool-group" style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: '0 1 auto', flexWrap: 'nowrap' }}>
+            <button
+              className="composer-attach-btn"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label={t.addAttachment}
+              title={t.addAttachmentTitle}
+              disabled={busy}
+              style={iconBtnStyle}
+            >
+              <Paperclip size={13} />
+            </button>
+            <div className="composer-picker-group" style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexWrap: 'nowrap' }}>
+              <ComposerPicker
+                label={t.modelLabel}
+                title={t.modelTitle}
+                value={selectedModel}
+                disabled={modelOptions.length === 0}
+                placeholder={t.profileDefault}
+                options={modelOptions.map((m) => ({ value: m.id, label: m.id, isDefault: m.isDefault }))}
+                onChange={(v) => setSelectedModel(v)}
+                defaultTagLabel={t.defaultTag}
+                className="composer-model-picker"
+                containerStyle={{ flex: '0 1 auto', maxWidth: 220 }}
+              />
+              <ComposerPicker
+                label={t.reasoningLabel}
+                title={t.reasoningTitle}
+                value={reasoningEffort}
+                options={reasoningLevels.map((level) => ({
+                  value: level,
+                  label: level,
+                  isDefault: level === defaultReasoning,
+                }))}
+                onChange={(v) => {
+                  reasoningTouchedRef.current = true;
+                  setReasoningEffort(v as ReasoningEffort);
+                }}
+                defaultTagLabel={t.defaultTag}
+                className="composer-reasoning-picker"
+                containerStyle={{ flex: '0 1 auto', maxWidth: 130 }}
+              />
+            </div>
           </div>
-          <Btn
-            variant="ghost"
-            size="sm"
-            icon={<ListPlus size={12} />}
-            onClick={() => {
-              if (slashRange) setSlashRange(null);
-              enqueue();
-            }}
-            disabled={!input.trim()}
-            // Always enabled when there's input — queueing during a busy turn
-            // is the whole point. Disabling on busy would defeat the feature.
-          >
-            {t.queueLabel}
-          </Btn>
-          <Btn
-            variant="primary"
-            size="sm"
-            icon={<Send size={12} />}
-            onClick={() => {
-              if (slashRange) setSlashRange(null);
-              send();
-            }}
-            disabled={busy || !input.trim()}
-          >
-            {t.send}
-          </Btn>
+          <div className="composer-action-group" style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', flex: '0 1 auto', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <Btn
+              variant="ghost"
+              size="sm"
+              icon={<ListPlus size={12} />}
+              style={{ height: 'var(--composer-control-h, 28px)', minHeight: 'var(--composer-control-h, 28px)' }}
+              onClick={() => {
+                if (slashRange) setSlashRange(null);
+                enqueue();
+              }}
+              disabled={!input.trim()}
+              // Always enabled when there's input — queueing during a busy turn
+              // is the whole point. Disabling on busy would defeat the feature.
+            >
+              {t.queueLabel}
+            </Btn>
+            <Btn
+              variant="primary"
+              size="sm"
+              icon={<Send size={12} />}
+              style={{ height: 'var(--composer-control-h, 28px)', minHeight: 'var(--composer-control-h, 28px)' }}
+              onClick={() => {
+                if (slashRange) setSlashRange(null);
+                send();
+              }}
+              disabled={busy || !input.trim()}
+            >
+              {t.send}
+            </Btn>
+          </div>
         </div>
       </div>
       {pasteHint && (

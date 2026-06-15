@@ -196,7 +196,7 @@ function SummaryView({ run }: { run: DeckRunDetail }) {
   return (
     <>
       {run.errorSummary && (
-        <Card style={{ borderColor: 'rgba(239,68,68,.4)' }}>
+        <Card style={{ borderColor: 'var(--status-red-border)' }}>
           <Kicker>{t.kickerError}</Kicker>
           <div style={{ marginTop: 6, fontSize: 13, color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>
             {run.errorSummary}

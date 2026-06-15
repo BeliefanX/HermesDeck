@@ -1,5 +1,5 @@
 'use client';
-import { ChevronLeft, Plus, Sparkles, Square, Wrench } from 'lucide-react';
+import { ChevronLeft, Plus, Square, Wrench } from 'lucide-react';
 import { Btn, Tag } from '@/components/Brand';
 import type { ChatT } from '../_lib/i18n';
 import { iconBtnStyle } from './InlineParts';
@@ -61,21 +61,7 @@ export function ChatThreadHeader({
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
         {busy ? (
           <Btn size="sm" icon={<Square size={11} />} onClick={() => abortRef.current?.abort()}>{t.stop}</Btn>
-        ) : (
-          <>
-            {/* Desktop: full status pill. Mobile: a tiny green pulse so
-               the right-side cluster doesn't crowd. Both convey "ready". */}
-            <span className="chat-desktop-only">
-              <Tag variant="green" icon={<Sparkles size={10} />}>{t.readyToSend}</Tag>
-            </span>
-            <span
-              className="chat-mobile-only ready-dot"
-              role="status"
-              aria-label={t.readyToSend}
-              title={t.readyToSend}
-            />
-          </>
-        )}
+        ) : null}
         <button
           type="button"
           onClick={() => setShowToolDetails((v) => !v)}
@@ -84,8 +70,8 @@ export function ChatThreadHeader({
           aria-pressed={showToolDetails}
           style={{
             ...iconBtnStyle,
-            background: showToolDetails ? 'var(--accent)' : 'var(--panel-2)',
-            color: showToolDetails ? '#08090c' : 'var(--text)',
+            background: showToolDetails ? 'var(--strong-text)' : 'var(--panel-2)',
+            color: showToolDetails ? 'var(--bg)' : 'var(--text)',
             borderColor: showToolDetails ? 'var(--accent-border)' : 'var(--line)',
           }}
         >
@@ -100,15 +86,15 @@ export function ChatThreadHeader({
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 28,
-            height: 28,
+            width: 'var(--hit-icon)',
+            height: 'var(--hit-icon)',
             borderRadius: 8,
-            background: 'var(--accent)',
-            color: '#08090c',
-            border: '1px solid var(--accent-border)',
+            background: 'var(--strong-text)',
+            color: 'var(--bg)',
+            border: '1px solid var(--strong-text)',
             cursor: 'pointer',
             flexShrink: 0,
-            transition: 'all 200ms cubic-bezier(.2,.7,.2,1)',
+            transition: 'background var(--t-2) var(--ease), border-color var(--t-2) var(--ease), color var(--t-2) var(--ease), transform var(--t-1) var(--ease)',
           }}
         >
           <Plus size={14} />

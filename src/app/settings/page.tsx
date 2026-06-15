@@ -49,14 +49,14 @@ export default function SettingsPage() {
       refreshing: '刷新中…',
       refresh: '刷新',
       apiServer: 'Hermes API 服务',
-      dashboard: 'Hermes 控制台',
+      dashboard: 'Hermes API-only',
       healthy: '正常',
       fallback: '回退',
-      seen: '已发现',
-      sidecar: '旁挂',
+      seen: 'API',
+      sidecar: '不可用',
       envVars: '环境变量 · 已脱敏',
       apiServerLabel: 'API 服务：',
-      dashboardLabel: '控制台：',
+      dashboardLabel: 'API-only：',
       authLabel: '认证：',
       localCache: '本地缓存',
       browserState: '浏览器存储状态',
@@ -83,14 +83,14 @@ export default function SettingsPage() {
       refreshing: 'Refreshing…',
       refresh: 'Refresh',
       apiServer: 'Hermes API Server',
-      dashboard: 'Hermes Dashboard',
+      dashboard: 'Hermes API-only',
       healthy: 'Healthy',
       fallback: 'Fallback',
-      seen: 'Seen',
-      sidecar: 'Sidecar',
+      seen: 'API',
+      sidecar: 'Unavailable',
       envVars: 'ENV VARS · SECRETS REDACTED',
       apiServerLabel: 'API server:',
-      dashboardLabel: 'Dashboard:',
+      dashboardLabel: 'API-only:',
       authLabel: 'Auth:',
       localCache: 'LOCAL CACHE',
       browserState: 'Browser-stored state',
@@ -339,15 +339,15 @@ export default function SettingsPage() {
         </div>
         {accountError ? (
           <div style={{
-            marginTop: 12, fontSize: 12.5, color: '#ef4444',
-            background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.25)',
+            marginTop: 12, fontSize: 12.5, color: 'var(--red)',
+            background: 'var(--status-red-bg)', border: '1px solid var(--status-red-border)',
             borderRadius: 8, padding: '8px 10px',
           }}>{accountError}</div>
         ) : null}
         {accountSuccess ? (
           <div style={{
             marginTop: 12, fontSize: 12.5, color: 'var(--green)',
-            background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.25)',
+            background: 'var(--status-green-bg)', border: '1px solid var(--status-green-border)',
             borderRadius: 8, padding: '8px 10px',
           }}>{accountSuccess}</div>
         ) : null}
@@ -411,16 +411,14 @@ export default function SettingsPage() {
         <div
           style={{
             marginTop: 12,
-            padding: 12,
-            background: 'var(--surface-bg)',
-            border: '1px solid var(--line)',
-            borderRadius: 8,
+            paddingTop: 12,
+            borderTop: '1px solid var(--hairline)',
           }}
         >
           <Kicker style={{ marginBottom: 8 }}>{t.envVars}</Kicker>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--text)' }}>
             <div>{t.apiServerLabel} <Kbd>HERMES_API_BASE</Kbd></div>
-            <div>{t.dashboardLabel} <Kbd>HERMES_DASHBOARD_BASE</Kbd></div>
+            <div>{t.dashboardLabel} <Kbd>HERMES_API_BASE</Kbd></div>
             <div>{t.authLabel} <Kbd>HERMES_API_KEY</Kbd> · <Kbd>API_SERVER_KEY</Kbd></div>
           </div>
         </div>

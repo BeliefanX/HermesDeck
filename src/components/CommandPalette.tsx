@@ -2,7 +2,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Bot, FileCog, Home, MessageSquare, Radio, Search, Settings, Terminal, Wrench, ChevronRight,
+  BookOpen, Bot, CalendarClock, FileCog, Home, KanbanSquare, MessageSquare, Radio, Search, Settings, Terminal, Wrench, ChevronRight,
 } from 'lucide-react';
 import type { DeckProfile, DeckRun, DeckSession, ToolSummary } from '@/lib/types';
 import { deckApi } from '@/lib/api';
@@ -41,8 +41,11 @@ export function CommandPalette() {
       pProfiles: '配置',       pProfilesHint: '模型、工具、认证',
       pConfig: 'Agent 配置',   pConfigHint: '配置文件 · SOUL · 记忆',
       pRuns: '运行',           pRunsHint: '运行历史',
+      pCron: '定时任务',       pCronHint: 'Scheduled Tasks',
       pTools: '工具',          pToolsHint: '能力注册表',
       pTerminal: '终端',       pTerminalHint: '安全运维控制台',
+      pKanban: '看板',         pKanbanHint: '多 Agent 任务',
+      pLcm: 'LCM',             pLcmHint: '上下文管理',
       pSettings: '设置',       pSettingsHint: '主题、偏好',
       // actions
       aNewChat: '新建对话',         aNewChatHint: '开启全新会话',
@@ -70,8 +73,11 @@ export function CommandPalette() {
       pProfiles: 'Profiles',   pProfilesHint: 'Models, tools, auth',
       pConfig: 'Agent Config', pConfigHint: 'Config files · SOUL · memory',
       pRuns: 'Runs',           pRunsHint: 'Run history',
+      pCron: 'Scheduled Tasks', pCronHint: 'Cron jobs',
       pTools: 'Tools',         pToolsHint: 'Capability registry',
       pTerminal: 'Terminal',   pTerminalHint: 'Safe ops console',
+      pKanban: 'Kanban',       pKanbanHint: 'Multi-agent tasks',
+      pLcm: 'LCM',             pLcmHint: 'Context management',
       pSettings: 'Settings',   pSettingsHint: 'Theme, prefs',
       aNewChat: 'New chat',         aNewChatHint: 'Start a fresh session',
       aFailedRuns: 'Filter failed runs', aFailedRunsHint: 'Open Runs · status=failed',
@@ -88,7 +94,10 @@ export function CommandPalette() {
     { id: 'p:profiles',kind: 'page', title: t.pProfiles, hint: t.pProfilesHint, href: '/profiles', search: 'profile model auth provider',    icon: <Bot size={14} /> },
     { id: 'p:config',  kind: 'page', title: t.pConfig,   hint: t.pConfigHint,   href: '/config',   search: 'config soul user memory yaml files', icon: <FileCog size={14} /> },
     { id: 'p:runs',    kind: 'page', title: t.pRuns,     hint: t.pRunsHint,     href: '/runs',     search: 'runs execution history failed',  icon: <Radio size={14} /> },
+    { id: 'p:cron',    kind: 'page', title: t.pCron,     hint: t.pCronHint,     href: '/cron',     search: 'cron scheduled tasks jobs schedule', icon: <CalendarClock size={14} /> },
+    { id: 'p:kanban',  kind: 'page', title: t.pKanban,   hint: t.pKanbanHint,   href: '/kanban',   search: 'kanban board tasks agents',     icon: <KanbanSquare size={14} /> },
     { id: 'p:tools',   kind: 'page', title: t.pTools,    hint: t.pToolsHint,    href: '/tools',    search: 'tools skills mcp capabilities',  icon: <Wrench size={14} /> },
+    { id: 'p:lcm',     kind: 'page', title: t.pLcm,      hint: t.pLcmHint,      href: '/lcm',      search: 'lcm context memory management', icon: <BookOpen size={14} /> },
     { id: 'p:terminal',kind: 'page', title: t.pTerminal, hint: t.pTerminalHint, href: '/terminal', search: 'terminal shell ops command',     icon: <Terminal size={14} /> },
     { id: 'p:settings',kind: 'page', title: t.pSettings, hint: t.pSettingsHint, href: '/settings', search: 'settings preferences theme',     icon: <Settings size={14} /> },
   ], [t]);
@@ -111,6 +120,7 @@ export function CommandPalette() {
   // doesn't show a stale snapshot for the whole page lifetime.
   const lastLoadRef = useRef(0);
   const lastProfileRef = useRef('');
+  const loadSeqRef = useRef(0);
 
   // Open on ⌘K / Ctrl+K, or via the topbar button which dispatches a custom
   // `hermesdeck:open-palette` event.
@@ -143,17 +153,27 @@ export function CommandPalette() {
   useEffect(() => {
     if (!open) return;
     if (loaded && lastProfileRef.current === activeProfile && Date.now() - lastLoadRef.current < 30_000) return;
+    const profileForLoad = activeProfile;
+    const seq = ++loadSeqRef.current;
+    if (lastProfileRef.current !== profileForLoad) {
+      setSessions([]);
+      setRuns([]);
+    }
     Promise.allSettled([
-      deckApi.profiles(), activeProfile ? deckApi.sessions(activeProfile) : Promise.resolve({ sessions: [] }), deckApi.tools(), deckApi.runs(),
+      deckApi.profiles(), profileForLoad ? deckApi.sessions(profileForLoad) : Promise.resolve({ sessions: [] }), deckApi.tools(), profileForLoad ? deckApi.runs(profileForLoad) : Promise.resolve({ runs: [] }),
     ]).then(([p, s, tl, r]) => {
+      if (loadSeqRef.current !== seq) return;
       if (p.status === 'fulfilled') setProfiles(p.value.profiles);
       if (s.status === 'fulfilled') setSessions(s.value.sessions);
       if (tl.status === 'fulfilled') setTools(tl.value.tools);
       if (r.status === 'fulfilled') setRuns(r.value.runs);
       setLoaded(true);
       lastLoadRef.current = Date.now();
-      lastProfileRef.current = activeProfile;
+      lastProfileRef.current = profileForLoad;
     });
+    return () => {
+      if (loadSeqRef.current === seq) loadSeqRef.current += 1;
+    };
   }, [open, loaded, activeProfile]);
 
   useEffect(() => {
@@ -164,6 +184,7 @@ export function CommandPalette() {
     const items: CommandItem[] = PAGE_ITEMS.filter((item) => {
       if (item.id === 'p:terminal' && !canUseTerminal) return false;
       if (item.id === 'p:config' && !canManageUsers) return false;
+      if (item.id === 'p:lcm' && !canManageUsers) return false;
       return true;
     });
     items.push({
@@ -277,7 +298,7 @@ export function CommandPalette() {
       onClick={() => setOpen(false)}
       style={{
         position: 'fixed', inset: 0, zIndex: 100,
-        background: 'rgba(0,0,0,.55)', backdropFilter: 'blur(4px)',
+        background: 'color-mix(in oklch, var(--strong-text) 18%, transparent)', backdropFilter: 'blur(4px)',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
         padding: '8vh 16px',
       }}
@@ -289,7 +310,7 @@ export function CommandPalette() {
           width: '100%', maxWidth: 560,
           background: 'var(--panel)',
           border: '1px solid var(--line)',
-          borderRadius: 12,
+          borderRadius: 'var(--r-4)',
           boxShadow: 'var(--shadow-pop)',
           overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
@@ -381,4 +402,3 @@ export function CommandPalette() {
     </div>
   );
 }
-

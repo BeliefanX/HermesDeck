@@ -1,9 +1,9 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import {
-  BookOpen, Bot, FileCog, Globe, Home, KanbanSquare, Menu, MessageSquare, Moon, PanelLeftClose, PanelLeftOpen,
+  BookOpen, Bot, CalendarClock, FileCog, Globe, Home, KanbanSquare, Menu, MessageSquare, Moon, PanelLeftClose, PanelLeftOpen,
   Radio, Search, Settings, Sun, Terminal, Wrench, X,
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
@@ -17,7 +17,7 @@ import { useDeckSession } from '@/lib/use-deck-session';
 const SIDEBAR_KEY = 'hermesdeck-sidebar-collapsed';
 
 type IconType = ComponentType<{ size?: number | string; className?: string }>;
-type NavKey = 'home' | 'chat' | 'profiles' | 'config' | 'runs' | 'kanban' | 'tools' | 'lcm' | 'terminal' | 'settings';
+type NavKey = 'home' | 'chat' | 'profiles' | 'config' | 'runs' | 'cron' | 'kanban' | 'tools' | 'lcm' | 'terminal' | 'settings';
 type NavItem = { href: string; key: NavKey; icon: IconType };
 
 const NAV: NavItem[] = [
@@ -26,6 +26,7 @@ const NAV: NavItem[] = [
   { href: '/profiles', key: 'profiles', icon: Bot },
   { href: '/config',   key: 'config',   icon: FileCog },
   { href: '/runs',     key: 'runs',     icon: Radio },
+  { href: '/cron',     key: 'cron',     icon: CalendarClock },
   { href: '/kanban',   key: 'kanban',   icon: KanbanSquare },
   { href: '/tools',    key: 'tools',    icon: Wrench },
   { href: '/lcm',      key: 'lcm',      icon: BookOpen },
@@ -39,6 +40,27 @@ const MOBILE_PRIMARY: ReadonlySet<string> = new Set(['/', '/chat', '/profiles', 
 // implying a selection has any effect on the page.
 const PROFILE_CHIP_HIDDEN: ReadonlySet<string> = new Set(['/tools', '/settings', '/terminal']);
 
+const ApiStatusContext = createContext<HealthStatus | 'checking'>('checking');
+
+export function useApiStatus() {
+  return useContext(ApiStatusContext);
+}
+
+export function apiStatusColors(apiStatus: HealthStatus | 'checking') {
+  return {
+    dot:
+      apiStatus === 'connected' ? 'var(--green)' :
+      apiStatus === 'degraded' ? 'var(--yellow)' :
+      apiStatus === 'unreachable' ? 'var(--red)' :
+      'var(--muted-2)',
+    ring:
+      apiStatus === 'connected' ? 'var(--status-green-bg)' :
+      apiStatus === 'degraded' ? 'var(--status-yellow-bg)' :
+      apiStatus === 'unreachable' ? 'var(--status-red-bg)' :
+      'var(--glass-strong)',
+  };
+}
+
 function isRouteActive(path: string, href: string) {
   if (href === '/') return path === '/';
   return path === href || path.startsWith(`${href}/`);
@@ -48,7 +70,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname() || '/';
   // Auth routes render full-bleed without sidebar/topbar chrome.
   const bare = path === '/login' || path === '/register' || path === '/pending';
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [mounted, setMounted] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -83,6 +105,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       navProfiles: { label: '配置',     kicker: '配置 · 模型' },
       navConfig:   { label: 'Agent 配置', kicker: 'SOUL · 记忆 · YAML' },
       navRuns:     { label: '运行',     kicker: '运行时间线' },
+      navCron:     { label: '定时任务', kicker: 'Scheduled Tasks' },
       navKanban:   { label: '看板',     kicker: '多 Agent 任务' },
       navTools:    { label: '工具',     kicker: '工具集 · MCP' },
       navLcm:      { label: 'LCM',      kicker: '上下文管理' },
@@ -117,6 +140,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       navProfiles: { label: 'Profiles', kicker: 'PROFILES · MODELS' },
       navConfig:   { label: 'Agent Config', kicker: 'SOUL · MEMORY · YAML' },
       navRuns:     { label: 'Runs',     kicker: 'RUN TIMELINE' },
+      navCron:     { label: 'Scheduled Tasks', kicker: 'CRON JOBS' },
       navKanban:   { label: 'Kanban',   kicker: 'MULTI-AGENT BOARD' },
       navTools:    { label: 'Tools',    kicker: 'TOOLSETS · MCP' },
       navLcm:      { label: 'LCM',      kicker: 'LOSSLESS CONTEXT' },
@@ -162,7 +186,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    const current = (document.documentElement.dataset.theme as 'dark' | 'light') || 'dark';
+    const current = (document.documentElement.dataset.theme as 'dark' | 'light') || 'light';
     setTheme(current);
     try {
       if (localStorage.getItem(SIDEBAR_KEY) === '1') setCollapsed(true);
@@ -243,25 +267,86 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const routeKey = path === '/chat' ? 'chat' : (path.split('/')[1] || 'home');
   const showProfileChip = !Array.from(PROFILE_CHIP_HIDDEN).some((href) => isRouteActive(path, href));
 
-  const apiDot =
-    apiStatus === 'connected' ? 'var(--green)' :
-    apiStatus === 'degraded' ? 'var(--yellow)' :
-    apiStatus === 'unreachable' ? 'var(--red)' :
-    'var(--muted-2)';
-  const apiRing =
-    apiStatus === 'connected' ? 'rgba(34,197,94,.18)' :
-    apiStatus === 'degraded' ? 'rgba(234,179,8,.18)' :
-    apiStatus === 'unreachable' ? 'rgba(239,68,68,.18)' :
-    'rgba(150,150,160,.16)';
+  const { dot: apiDot, ring: apiRing } = apiStatusColors(apiStatus);
   const apiStatusLabel =
     apiStatus === 'connected' ? t.apiOnline :
     apiStatus === 'degraded' ? t.apiDegraded :
     apiStatus === 'unreachable' ? t.apiOffline :
     t.apiChecking;
 
+  const apiStatusNode = (
+    <div className="api-status-pill" role="status" aria-label={`${t.apiLabel} ${apiStatusLabel}`} title={`${t.apiLabel} ${apiStatusLabel}`}>
+      <span
+        className="api-status-dot"
+        style={{ background: apiDot, boxShadow: `0 0 0 3px ${apiRing}` }}
+        aria-hidden
+      />
+      <span className="api-status-label">{t.apiLabel}</span>
+      <span className="api-status-value">{apiStatusLabel}</span>
+    </div>
+  );
+
+  const chromeToggleControls = (
+    <div className="chrome-toggle-controls" aria-label="Display and language">
+      <button
+        className="btn icon ghost chrome-toggle-btn"
+        onClick={toggleLang}
+        aria-label={t.langSwitchAria}
+        title={t.langSwitchTitle}
+        suppressHydrationWarning
+      >
+        <Globe size={14} />
+        <span>{lang === 'zh' ? 'EN' : '中'}</span>
+      </button>
+      <button
+        className="btn icon ghost chrome-toggle-btn"
+        onClick={toggleTheme}
+        aria-label={theme === 'dark' ? t.lightMode : t.darkMode}
+        title={theme === 'dark' ? t.lightMode : t.darkMode}
+        suppressHydrationWarning
+      >
+        {mounted ? (theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />) : <Moon size={15} />}
+      </button>
+    </div>
+  );
+
+  const sidebarFooterControls = (
+    <div className="chrome-toggle-controls sidebar-control-strip" role="group" aria-label="Sidebar display controls">
+      <button
+        className="btn icon ghost chrome-toggle-btn sidebar-control-btn"
+        onClick={toggleLang}
+        aria-label={t.langSwitchAria}
+        title={t.langSwitchTitle}
+        suppressHydrationWarning
+      >
+        <Globe size={14} />
+        <span>{lang === 'zh' ? 'EN' : '中'}</span>
+      </button>
+      <button
+        className="btn icon ghost chrome-toggle-btn sidebar-control-btn"
+        onClick={toggleTheme}
+        aria-label={theme === 'dark' ? t.lightMode : t.darkMode}
+        title={theme === 'dark' ? t.lightMode : t.darkMode}
+        suppressHydrationWarning
+      >
+        {mounted ? (theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />) : <Moon size={15} />}
+      </button>
+      <button
+        className="btn icon ghost chrome-toggle-btn sidebar-control-btn"
+        onClick={toggleCollapsed}
+        aria-label={collapsed ? t.expandSidebar : t.collapseSidebar}
+        title={collapsed ? t.expandSidebar : t.collapseSidebar}
+        suppressHydrationWarning
+      >
+        {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+      </button>
+    </div>
+  );
+
   if (bare) return <>{children}</>;
 
   return (
+    <ApiStatusContext.Provider value={apiStatus}>
     <div className={`app ${collapsed ? 'sidebar-collapsed' : ''}`} data-route={routeKey}>
       {/* Desktop sidebar */}
       <aside className="sidebar" aria-label={t.primaryNav}>
@@ -297,12 +382,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   borderRadius: 8,
                   fontSize: 13,
                   fontWeight: isActive ? 550 : 400,
-                  color: isActive ? 'var(--strong-text)' : 'var(--nav-text)',
-                  background: isActive ? 'rgba(56,189,248,.12)' : 'transparent',
-                  borderLeft: `2px solid ${isActive ? 'rgba(56,189,248,.55)' : 'transparent'}`,
                   paddingLeft: collapsed ? 0 : 10,
                   textDecoration: 'none',
-                  transition: 'background 200ms cubic-bezier(.2,.7,.2,1), color 200ms',
+                  transition: 'background 200ms cubic-bezier(.2,.7,.2,1), color 200ms, box-shadow 200ms',
                 }}
               >
                 <Icon size={14} className={isActive ? 'icon-active' : ''} />
@@ -313,30 +395,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="sidebar-bottom">
-          {!collapsed && (
-            <div className="sidebar-footer">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{
-                  display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
-                  background: apiDot, boxShadow: `0 0 0 3px ${apiRing}`,
-                }} />
-                <span className="value" style={{ fontFamily: 'var(--font-sans)', fontSize: 11 }}>{t.apiLabel}</span>
-                <span className="tiny" style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>{apiStatusLabel}</span>
-              </div>
-              <div className="tiny" style={{ marginTop: 6 }}>
-                {t.footerHint}
-              </div>
-            </div>
-          )}
-          <button
-            className="sidebar-toggle"
-            onClick={toggleCollapsed}
-            aria-label={collapsed ? t.expandSidebar : t.collapseSidebar}
-            title={collapsed ? t.expandSidebar : t.collapseSidebar}
-            suppressHydrationWarning
-          >
-            {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
-          </button>
+          <div className="sidebar-footer">
+            {sidebarFooterControls}
+            {!collapsed && <div className="tiny">{t.footerHint}</div>}
+          </div>
         </div>
       </aside>
 
@@ -371,9 +433,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 flex: 1,
                 minWidth: 0,
                 maxWidth: 360,
-                background: 'var(--bg-soft)',
+                background: 'var(--panel)',
                 border: '1px solid var(--line)',
-                borderRadius: 8,
+                borderRadius: 999,
                 color: 'var(--text)',
                 fontFamily: 'inherit',
                 cursor: 'pointer',
@@ -392,25 +454,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               }}>{t.searchPlaceholder}</span>
               <span className="kbd" style={{ marginLeft: 'auto', flexShrink: 0 }}>⌘K</span>
             </button>
-            <button
-              className="btn icon ghost"
-              onClick={toggleLang}
-              aria-label={t.langSwitchAria}
-              title={t.langSwitchTitle}
-              suppressHydrationWarning
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 11 }}
-            >
-              <Globe size={14} />
-              <span>{lang === 'zh' ? 'EN' : '中'}</span>
-            </button>
-            <button
-              className="btn icon ghost"
-              onClick={toggleTheme}
-              aria-label={theme === 'dark' ? t.lightMode : t.darkMode}
-              suppressHydrationWarning
-            >
-              {mounted ? (theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />) : <Moon size={15} />}
-            </button>
+            {apiStatusNode}
           </div>
         </div>
 
@@ -434,25 +478,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <Search size={15} />
             </button>
-            <button
-              className="btn icon"
-              onClick={toggleLang}
-              aria-label={t.langSwitchAria}
-              title={t.langSwitchTitle}
-              suppressHydrationWarning
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 11 }}
-            >
-              <Globe size={14} />
-              <span>{lang === 'zh' ? 'EN' : '中'}</span>
-            </button>
-            <button
-              className="btn icon"
-              onClick={toggleTheme}
-              aria-label={theme === 'dark' ? t.lightMode : t.darkMode}
-              suppressHydrationWarning
-            >
-              {mounted ? (theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />) : <Moon size={15} />}
-            </button>
+            {apiStatusNode}
           </div>
         </header>
 
@@ -532,7 +558,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </div>
+        <div className="sheet-footer">
+          {chromeToggleControls}
+        </div>
       </div>
     </div>
+    </ApiStatusContext.Provider>
   );
 }

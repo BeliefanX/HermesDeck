@@ -10,12 +10,12 @@ import {
 } from '../_lib/context-window';
 
 const BLOCK_COLOR: Record<ContextBlockKey, string> = {
-  system: '#a78bfa',
+  system: 'var(--context-system)',
   user: 'var(--accent)',
-  assistant: '#34d399',
-  tool: '#fbbf24',
-  subagent: '#f472b6',
-  attachments: '#fb923c',
+  assistant: 'var(--green)',
+  tool: 'var(--context-tool)',
+  subagent: 'var(--context-subagent)',
+  attachments: 'var(--context-attachment)',
 };
 
 function pctLabel(n: number, total: number): string {
@@ -140,7 +140,7 @@ export function ContextWindowPanel({
             border: '1px solid',
             whiteSpace: 'nowrap',
             ...(bd.measured
-              ? { color: '#34d399', borderColor: 'rgba(52,211,153,.32)', background: 'rgba(52,211,153,.10)' }
+              ? { color: 'var(--green)', borderColor: 'var(--status-green-border)', background: 'var(--status-green-bg)' }
               : { color: 'var(--muted)', borderColor: 'var(--hairline)', background: 'var(--panel-2)' }),
           }}
         >

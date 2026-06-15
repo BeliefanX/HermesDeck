@@ -11,7 +11,7 @@ import {
   GitBranch,
 } from 'lucide-react';
 import {
-  Page, Card, Kicker, Tag, MetricCard, BarRow, Sparkline, Btn, SectionHead, Kbd, Chip, type Tone,
+  Page, Card, Kicker, Tag, MetricCard, BarRow, Sparkline, Btn, SectionHead, Kbd, Chip,
 } from '@/components/Brand';
 import { Globe } from 'lucide-react';
 import { useT } from '@/lib/i18n';
@@ -48,10 +48,9 @@ export default function HomePage() {
       heroDescMid: ' 与 API Server —— 前端零硬编码。',
       openChat: '打开对话',
       openTerminal: '打开终端',
-      statusConnected: '已连接',
-      statusDegraded: '降级运行',
-      statusDisconnected: '已断开',
-      statusChecking: '检测中',
+      loadingValue: '加载中',
+      loadingDetail: '正在读取 Hermes 状态',
+      apiBaseMissing: 'API Server 地址未返回',
       profileTag: '配置 · ',
       scopeAllChip: '全部 Profile',
       scopeAll: '全部',
@@ -100,6 +99,14 @@ export default function HomePage() {
       titleRecentSessions: '近期会话',
       openChatLink: '打开对话',
       noSessions: '尚无会话。在对话页发送消息即可创建第一个会话。',
+      kickerWorkbenchState: '工作台状态',
+      emptyWorkbenchTitle: '当前没有可汇总的会话',
+      emptyWorkbenchDesc: 'Profile 与 API 状态会先显示在这里；发送第一条消息后，活跃度、来源分布和令牌用量会自动填充。',
+      emptyProfileReady: 'Profile 已就绪',
+      emptyApiReady: 'API Server 正在响应',
+      emptySessionReady: 'Chat 尚未产生会话',
+      emptyOpenChat: '创建第一条对话',
+      emptyReviewProfiles: '检查 Profile',
       kickerSourceDist: '来源分布',
       titleSessionsBySource: '按来源分布',
       channels: (n: number) => `${n} 个渠道`,
@@ -187,10 +194,9 @@ export default function HomePage() {
       heroDescMid: ' and API Server — zero hard-coding in the frontend.',
       openChat: 'Open chat',
       openTerminal: 'Open terminal',
-      statusConnected: 'Connected',
-      statusDegraded: 'Degraded',
-      statusDisconnected: 'Disconnected',
-      statusChecking: 'Checking',
+      loadingValue: 'Loading',
+      loadingDetail: 'Reading Hermes state',
+      apiBaseMissing: 'API Server URL not returned',
       profileTag: 'profile · ',
       scopeAllChip: 'All profiles',
       scopeAll: 'ALL',
@@ -239,6 +245,14 @@ export default function HomePage() {
       titleRecentSessions: 'Recent sessions',
       openChatLink: 'Open chat',
       noSessions: 'No sessions yet. Send a message in chat to create your first one.',
+      kickerWorkbenchState: 'WORKBENCH STATE',
+      emptyWorkbenchTitle: 'No sessions to summarize yet',
+      emptyWorkbenchDesc: 'Profile and API health show up first; after your first message, activity, source mix, and token usage will fill in here.',
+      emptyProfileReady: 'Profile is ready',
+      emptyApiReady: 'API Server is responding',
+      emptySessionReady: 'Chat has not created a session yet',
+      emptyOpenChat: 'Create first chat',
+      emptyReviewProfiles: 'Review profiles',
       kickerSourceDist: 'SOURCE DISTRIBUTION',
       titleSessionsBySource: 'Sessions by source',
       channels: (n: number) => `${n} channels`,
@@ -373,7 +387,7 @@ export default function HomePage() {
           // The scope toggle drives only the aggregate `stats` request below.
           deckApi.sessions(activeProfile, ac.signal),
           deckApi.tools(ac.signal),
-          canViewTokenAnalytics ? deckApi.tokens(14, ac.signal) : Promise.resolve(null),
+          canViewTokenAnalytics ? deckApi.tokens(14, ac.signal, profileForScope) : Promise.resolve(null),
           deckApi.stats(profileForScope, ac.signal),
         ]);
         if (!alive || mySeq !== seq) return;
@@ -408,10 +422,6 @@ export default function HomePage() {
     };
   }, [hydrated, scope, activeProfile, noAssignedAgents, canViewTokenAnalytics]);
 
-  const statusTone: Tone = health?.status === 'connected' ? 'green' : health?.status === 'degraded' ? 'yellow' : 'red';
-  const statusLabel = health?.status === 'connected' ? t.statusConnected
-    : health?.status === 'degraded' ? t.statusDegraded
-    : health ? t.statusDisconnected : t.statusChecking;
   // Resolve the active-profile metadata for display (badges, "active · X" subs).
   // Falls back to the server-marked active profile when the global active id
   // doesn't match (e.g. profile was renamed/removed).
@@ -461,10 +471,10 @@ export default function HomePage() {
     let max = 0;
     let idx = -1;
     activity.buckets.forEach((v, i) => { if (v > max) { max = v; idx = i; } });
-    if (idx < 0) return t.dash;
+    if (idx < 0) return t.detailNoData;
     const d = new Date(now - (DASHBOARD_ACTIVITY_HOURS - 1 - idx) * 3600 * 1000);
     return `${d.getHours().toString().padStart(2, '0')}:00`;
-  }, [activity, now, t.dash]);
+  }, [activity, now, t.detailNoData]);
 
   const avgMsgsPerSession = sessions.length === 0 ? 0
     : Math.round((totalMessages / sessions.length) * 10) / 10;
@@ -476,6 +486,9 @@ export default function HomePage() {
     const fromStats = stats?.perProfile.find((p) => p.profileId === activeProfile)?.sessions;
     return fromStats ?? sessions.length;
   }, [stats, activeProfile, sessions.length]);
+  const scopedTotalSessions = stats?.totalSessions ?? sessions.length;
+  const scopedTotalMessages = stats?.totalMessages ?? totalMessages;
+  const dashboardIsEmpty = !loading && !loadError && scopedTotalSessions === 0 && sessions.length === 0 && totalMessages === 0;
 
   if (noAssignedAgents) {
     return (
@@ -499,7 +512,6 @@ export default function HomePage() {
               {t.heroDescPre}<Kbd>state.db</Kbd>{t.heroDescMid}
             </p>
           </div>
-          <Tag variant={statusTone} icon={<Activity size={11} />}>{statusLabel}</Tag>
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
           <Link href="/chat" style={{ textDecoration: 'none' }}>
@@ -523,7 +535,7 @@ export default function HomePage() {
 
       {loadError && (
         <Card>
-          <div style={{ color: '#f87171', fontSize: 13, lineHeight: 1.5 }}>
+          <div style={{ color: 'var(--red)', fontSize: 13, lineHeight: 1.5 }}>
             Dashboard data load failed: {loadError}
           </div>
         </Card>
@@ -533,30 +545,69 @@ export default function HomePage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14 }}>
         <MetricCard
           kicker={t.kickerHermesApi}
-          value={loading ? t.dash : health?.apiServer.healthy ? t.valHealthy : t.valFallback}
-          sub={health?.apiServer.baseUrl || t.dash}
+          value={loading ? t.loadingValue : health?.apiServer.healthy ? t.valHealthy : t.valFallback}
+          sub={loading ? t.loadingDetail : health?.apiServer.baseUrl || t.apiBaseMissing}
         />
         <MetricCard
           kicker={t.kickerProfiles}
-          value={loading ? t.dash : profiles.length}
+          value={loading ? t.loadingValue : profiles.length}
           sub={activeProfileMeta?.name ? `${t.subActivePrefix}${activeProfileMeta.name}` : t.subDefault}
         />
         <MetricCard
           kicker={`${t.kickerSessions} · ${scopeLabel}`}
-          value={loading ? t.dash : (stats?.totalSessions ?? sessions.length).toLocaleString()}
+          value={loading ? t.loadingValue : scopedTotalSessions.toLocaleString()}
           sub={stats ? t.sub24h(stats.activeSessions24h) : t.subRecentTotal(sessions.length, lastDayCount)}
         />
         <MetricCard
           kicker={`${t.kickerMessages} · ${scopeLabel}`}
-          value={loading ? t.dash : (stats?.totalMessages ?? totalMessages).toLocaleString()}
+          value={loading ? t.loadingValue : scopedTotalMessages.toLocaleString()}
           sub={stats ? t.sub24hMsgs(stats.activeMessages24h) : t.subFromRecent(sessions.length)}
         />
         <MetricCard
           kicker={t.kickerToolsSkills}
-          value={loading ? t.dash : tools.length}
+          value={loading ? t.loadingValue : tools.length}
           sub={toolBreakdown.map((b) => `${b.kind} ${b.count}`).join(' · ') || t.subDynamic}
         />
       </div>
+
+      {dashboardIsEmpty && (
+        <Card>
+          <SectionHead
+            kicker={t.kickerWorkbenchState}
+            title={t.emptyWorkbenchTitle}
+            right={<Tag icon={<Activity size={11} />}>{scopeLabel}</Tag>}
+          />
+          <p style={{ margin: 0, maxWidth: 720, color: 'var(--muted)', fontSize: 13, lineHeight: 1.6 }}>
+            {t.emptyWorkbenchDesc}
+          </p>
+          <div style={{ marginTop: 16, borderTop: '1px solid var(--hairline)' }}>
+            <DashboardStateRow
+              kicker={t.kickerProfiles}
+              title={t.emptyProfileReady}
+              detail={activeProfileMeta?.name || activeProfile}
+              first
+            />
+            <DashboardStateRow
+              kicker={t.kickerHermesApi}
+              title={health?.apiServer.healthy ? t.emptyApiReady : t.valFallback}
+              detail={health?.apiServer.baseUrl || t.apiBaseMissing}
+            />
+            <DashboardStateRow
+              kicker={t.kickerSessions}
+              title={t.emptySessionReady}
+              detail={t.detailNoData}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
+            <Link href="/chat" style={{ textDecoration: 'none' }}>
+              <Btn variant="primary" icon={<MessageSquare size={14} />}>{t.emptyOpenChat}</Btn>
+            </Link>
+            <Link href="/profiles" style={{ textDecoration: 'none' }}>
+              <Btn icon={<Bot size={14} />}>{t.emptyReviewProfiles}</Btn>
+            </Link>
+          </div>
+        </Card>
+      )}
 
       {/* 24h activity */}
       <Card>
@@ -588,9 +639,8 @@ export default function HomePage() {
                 style={{
                   flex: 1,
                   height: `${v > 0 ? Math.max(pctVal, 12) : 3}%`,
-                  background: isPeak ? 'var(--accent)' : v > 0 ? 'rgba(56,189,248,.55)' : 'var(--surface-bg)',
+                  background: isPeak ? 'var(--accent)' : v > 0 ? 'var(--accent-strong)' : 'var(--surface-bg)',
                   borderRadius: 2,
-                  transition: 'height 200ms cubic-bezier(.2,.7,.2,1)',
                 }}
               />
             );
@@ -603,18 +653,18 @@ export default function HomePage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--hairline)' }}>
           <SparkStat
             label={t.label24hSessions}
-            value={loading ? t.dash : lastDayCount}
+            value={loading ? t.loadingValue : lastDayCount}
             detail={sessions.length ? t.detailPctOfTotal(pct(lastDayCount, sessions.length)) : t.detailNoData}
           />
           <SparkStat
             label={t.labelPeakHour}
             value={peakHour}
-            detail={activity.peak ? t.detailSessionsCount(activity.peak) : t.dash}
+            detail={activity.peak ? t.detailSessionsCount(activity.peak) : t.detailNoData}
           />
           <SparkStat
             label={t.labelTotalMessages}
-            value={loading ? t.dash : totalMessages.toLocaleString()}
-            detail={sessions.length ? t.detailAcrossSessions(sessions.length) : t.dash}
+            value={loading ? t.loadingValue : totalMessages.toLocaleString()}
+            detail={sessions.length ? t.detailAcrossSessions(sessions.length) : t.detailNoData}
           />
         </div>
       </Card>
@@ -625,13 +675,13 @@ export default function HomePage() {
           <TokenUsageCard tokens={tokens} loading={loading} />
 
           {/* Token charts: daily stacked + weekday/hour heatmap */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 14 }}>
             <TokenDailyChart tokens={tokens} loading={loading} />
             <TokenHourlyHeatmap tokens={tokens} loading={loading} />
           </div>
 
           {/* Top models + Top sources by tokens */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 14 }}>
             <TopModelsByTokens tokens={tokens} loading={loading} />
             <TopSourcesByTokens tokens={tokens} loading={loading} />
           </div>
@@ -639,7 +689,7 @@ export default function HomePage() {
       )}
 
       {/* Profiles + Recent sessions */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 14 }}>
         <Card>
           <SectionHead
             kicker={t.kickerExecContexts}
@@ -739,7 +789,7 @@ export default function HomePage() {
                         {shortTitle(s.title, 40)}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-                        {s.model || t.dash}{time && <> · <Clock size={10} style={{ verticalAlign: -1 }} /> {time}</>}
+                        {s.model || t.unknown}{time && <> · <Clock size={10} style={{ verticalAlign: -1 }} /> {time}</>}
                       </div>
                     </div>
                   </div>
@@ -757,7 +807,7 @@ export default function HomePage() {
       </div>
 
       {/* Source distribution + Profile workload */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 14 }}>
         <Card>
           <SectionHead
             kicker={`${t.kickerSourceDist} · ${scopeLabel}`}
@@ -850,7 +900,7 @@ export default function HomePage() {
       </div>
 
       {/* Capabilities + Quick actions */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 14 }}>
         <Card>
           <SectionHead
             kicker={t.kickerCapabilities}
@@ -919,19 +969,19 @@ export default function HomePage() {
           right={<Tag icon={<Server size={11} />}>{t.hermesBff}</Tag>}
         />
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <KvRow first label={t.kvHermesVersion} value={loading ? t.dash : (health?.version || t.unknown)} />
+          <KvRow first label={t.kvHermesVersion} value={loading ? t.loadingValue : (health?.version || t.unknown)} />
           <KvRow
             label={t.kvApiServer}
             value={
               <>
-                {health?.apiServer.baseUrl || t.dash}
+                {loading ? t.loadingValue : health?.apiServer.baseUrl || t.apiBaseMissing}
                 {health?.apiServer.detail && (
                   <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--muted)' }}>· {health.apiServer.detail.slice(0, 60)}</span>
                 )}
               </>
             }
           />
-          <KvRow label={t.kvDeckUptime} value={health?.uptimeSeconds != null ? formatUptime(health.uptimeSeconds) : t.dash} />
+          <KvRow label={t.kvDeckUptime} value={loading ? t.loadingValue : health?.uptimeSeconds != null ? formatUptime(health.uptimeSeconds) : t.unknown} />
           <KvRow label={t.kvStreaming} value={<>{t.streamingValue}</>} />
           <KvRow label={t.kvState} value={<>~/.hermes/state.db · ~/.hermes/profiles/&lt;id&gt;/state.db</>} />
         </div>
@@ -954,6 +1004,37 @@ function SparkStat({ label, value, detail }: { label: string; value: React.React
   );
 }
 
+function DashboardStateRow({
+  kicker,
+  title,
+  detail,
+  first = false,
+}: {
+  kicker: string;
+  title: React.ReactNode;
+  detail: React.ReactNode;
+  first?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(120px, 180px) 1fr',
+        gap: 14,
+        padding: '12px 0',
+        borderTop: first ? 'none' : '1px solid var(--hairline)',
+        alignItems: 'baseline',
+      }}
+    >
+      <Kicker>{kicker}</Kicker>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--strong-text)' }}>{title}</div>
+        <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--muted)', overflowWrap: 'anywhere' }}>{detail}</div>
+      </div>
+    </div>
+  );
+}
+
 function ActionTile({ href, icon, title, sub }: { href: string; icon: React.ReactNode; title: string; sub: string }) {
   return (
     <Link
@@ -967,7 +1048,7 @@ function ActionTile({ href, icon, title, sub }: { href: string; icon: React.Reac
         background: 'var(--surface-bg)',
         border: '1px solid var(--line)',
         textDecoration: 'none',
-        transition: 'all 200ms cubic-bezier(.2,.7,.2,1)',
+        transition: 'background 200ms cubic-bezier(.2,.7,.2,1), border-color 200ms cubic-bezier(.2,.7,.2,1), color 200ms cubic-bezier(.2,.7,.2,1)',
       }}
     >
       <span style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--panel-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', flexShrink: 0 }}>
@@ -1007,6 +1088,7 @@ function TokenUsageCard({ tokens, loading }: { tokens: TokenStats | null; loadin
       kickerTokenAllTime: '令牌用量 · 累计',
       tokens: '令牌',
       cost: '成本',
+      loadingValue: '加载中',
       sessionsLabel: (n: string) => `${n} 个会话`,
       apiCallsLabel: (n: string) => `${n} 次 API 调用`,
       splitInput: '输入',
@@ -1028,6 +1110,7 @@ function TokenUsageCard({ tokens, loading }: { tokens: TokenStats | null; loadin
       kickerTokenAllTime: 'TOKEN USAGE · ALL TIME',
       tokens: 'tokens',
       cost: 'cost',
+      loadingValue: 'Loading',
       sessionsLabel: (n: string) => `${n} sessions`,
       apiCallsLabel: (n: string) => `${n} api calls`,
       splitInput: 'Input',
@@ -1055,9 +1138,9 @@ function TokenUsageCard({ tokens, loading }: { tokens: TokenStats | null; loadin
 
   return (
     <Card hero>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 18, minWidth: 0 }}>
         {/* Left: total + splits */}
-        <div>
+        <div style={{ minWidth: 0 }}>
           <Kicker>{t.kickerTokenAllTime}</Kicker>
           <div
             style={{
@@ -1070,13 +1153,13 @@ function TokenUsageCard({ tokens, loading }: { tokens: TokenStats | null; loadin
               margin: '6px 0 12px',
             }}
           >
-            {loading || !tt ? t.dash : fmtTokens(tt.total)}
+            {loading ? t.loadingValue : fmtTokens(tt?.total ?? 0)}
             <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--muted)', marginLeft: 6 }}>{t.tokens}</span>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-            <Tag icon={<DollarSign size={11} />}>{t.cost} <b style={{ marginLeft: 4 }}>{loading || !tt ? t.dash : fmtCost(tt.cost)}</b></Tag>
-            <Tag icon={<Activity size={11} />}>{t.sessionsLabel(loading || !tt ? t.dash : tt.sessions.toLocaleString())}</Tag>
-            <Tag icon={<Zap size={11} />}>{t.apiCallsLabel(loading || !tt ? t.dash : tt.apiCalls.toLocaleString())}</Tag>
+            <Tag icon={<DollarSign size={11} />}>{t.cost} <b style={{ marginLeft: 4 }}>{loading ? t.loadingValue : fmtCost(tt?.cost ?? 0)}</b></Tag>
+            <Tag icon={<Activity size={11} />}>{loading ? t.loadingValue : t.sessionsLabel((tt?.sessions ?? 0).toLocaleString())}</Tag>
+            <Tag icon={<Zap size={11} />}>{loading ? t.loadingValue : t.apiCallsLabel((tt?.apiCalls ?? 0).toLocaleString())}</Tag>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1099,22 +1182,32 @@ function TokenUsageCard({ tokens, loading }: { tokens: TokenStats | null; loadin
         </div>
 
         {/* Right: 24h KPI + 14d sparkline */}
-        <div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-            <Card padding={12}>
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 12,
+              marginBottom: 14,
+              padding: '10px 0',
+              borderTop: '1px solid var(--hairline)',
+              borderBottom: '1px solid var(--hairline)',
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
               <Kicker>{t.kickerLast24h}</Kicker>
               <div style={{ fontSize: 20, fontWeight: 650, color: 'var(--strong-text)', fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>
-                {loading || !day ? t.dash : fmtTokens(day.total)}
+                {loading ? t.loadingValue : fmtTokens(day?.total ?? 0)}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{loading || !day ? t.dash : t.sessionsShort(day.sessions)}</div>
-            </Card>
-            <Card padding={12}>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{loading ? t.loadingValue : t.sessionsShort(day?.sessions ?? 0)}</div>
+            </div>
+            <div style={{ minWidth: 0, borderLeft: '1px solid var(--hairline)', paddingLeft: 12 }}>
               <Kicker>{t.kicker14dTotal}</Kicker>
               <div style={{ fontSize: 20, fontWeight: 650, color: 'var(--strong-text)', fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>
-                {loading || !tokens ? t.dash : fmtTokens(totalDailyTokens)}
+                {loading ? t.loadingValue : fmtTokens(totalDailyTokens)}
               </div>
               <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{t.rollingWindow}</div>
-            </Card>
+            </div>
           </div>
           <Kicker style={{ marginBottom: 6 }}>{t.kicker14dTrend}</Kicker>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 64 }} aria-label={t.ariaTokenUsage14d}>
@@ -1128,7 +1221,7 @@ function TokenUsageCard({ tokens, loading }: { tokens: TokenStats | null; loadin
                   style={{
                     flex: 1,
                     height: `${d.total > 0 ? Math.max(pctVal, 14) : 3}%`,
-                    background: isPeak ? 'var(--accent)' : d.total > 0 ? 'rgba(56,189,248,.65)' : 'var(--surface-bg)',
+                    background: isPeak ? 'var(--accent)' : d.total > 0 ? 'var(--accent-strong)' : 'var(--surface-bg)',
                     borderRadius: 2,
                   }}
                 />
@@ -1151,8 +1244,8 @@ function SplitBar({
 }) {
   const pctVal = total ? (value / total) * 100 : 0;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 90px', gap: 12, alignItems: 'center' }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--text)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(64px, 110px) minmax(0, 1fr) minmax(54px, 90px)', gap: 12, alignItems: 'center', minWidth: 0 }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--text)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {icon}{label}
       </span>
       <div style={{ height: 8, background: 'var(--surface-bg)', borderRadius: 4, overflow: 'hidden' }}>
@@ -1177,6 +1270,7 @@ function TokenDailyChart({ tokens, loading }: { tokens: TokenStats | null; loadi
       splitInput: '输入',
       splitOutput: '输出',
       windowCost: '窗口成本',
+      loadingValue: '加载中',
       dash: '—',
     },
     en: {
@@ -1187,6 +1281,7 @@ function TokenDailyChart({ tokens, loading }: { tokens: TokenStats | null; loadi
       splitInput: 'Input',
       splitOutput: 'Output',
       windowCost: 'window cost',
+      loadingValue: 'Loading',
       dash: '—',
     },
   });
@@ -1224,7 +1319,7 @@ function TokenDailyChart({ tokens, loading }: { tokens: TokenStats | null; loadi
                 background: total > 0 ? undefined : 'var(--surface-bg)',
               }}
             >
-              <div style={{ height: `${inputPct}%`, background: 'rgba(56,189,248,.65)' }} />
+              <div style={{ height: `${inputPct}%`, background: 'var(--accent-strong)' }} />
               <div style={{ height: `${100 - inputPct}%`, background: 'var(--green)' }} />
             </div>
           );
@@ -1232,13 +1327,13 @@ function TokenDailyChart({ tokens, loading }: { tokens: TokenStats | null; loadi
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--hairline)', fontSize: 11, color: 'var(--muted)' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(56,189,248,.65)' }} /> {t.splitInput}
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent-strong)' }} /> {t.splitInput}
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--green)' }} /> {t.splitOutput}
         </span>
         <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>
-          {t.windowCost} {loading ? t.dash : fmtCost(totalCost)}
+          {t.windowCost} {loading ? t.loadingValue : fmtCost(totalCost)}
         </span>
       </div>
     </Card>
@@ -1259,6 +1354,7 @@ function TokenHourlyHeatmap({ tokens, loading }: { tokens: TokenStats | null; lo
       peakLabel: '高峰',
       tokensSuffix: '令牌',
       noData: '暂无数据',
+      loadingValue: '加载中',
       dayNames: ['一', '二', '三', '四', '五', '六', '日'],
       dash: '—',
     },
@@ -1272,6 +1368,7 @@ function TokenHourlyHeatmap({ tokens, loading }: { tokens: TokenStats | null; lo
       peakLabel: 'peak',
       tokensSuffix: 'tokens',
       noData: 'no data',
+      loadingValue: 'Loading',
       dayNames: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
       dash: '—',
     },
@@ -1307,7 +1404,7 @@ function TokenHourlyHeatmap({ tokens, loading }: { tokens: TokenStats | null; lo
           })}
         </div>
         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
-          {loading ? t.dash : peakDay > 0 ? <>{t.peakLabel} <b>{t.dayNames[peakDayIdx]}</b> · {fmtTokens(peakDay)} {t.tokensSuffix}</> : t.noData}
+          {loading ? t.loadingValue : peakDay > 0 ? <>{t.peakLabel} <b>{t.dayNames[peakDayIdx]}</b> · {fmtTokens(peakDay)} {t.tokensSuffix}</> : t.noData}
         </div>
       </div>
 
@@ -1324,7 +1421,7 @@ function TokenHourlyHeatmap({ tokens, loading }: { tokens: TokenStats | null; lo
                 style={{
                   flex: 1,
                   height: `${v > 0 ? Math.max(pctVal, 12) : 3}%`,
-                  background: isPeak ? 'var(--accent)' : v > 0 ? 'rgba(56,189,248,.55)' : 'var(--surface-bg)',
+                  background: isPeak ? 'var(--accent)' : v > 0 ? 'var(--accent-strong)' : 'var(--surface-bg)',
                   borderRadius: 2,
                 }}
               />
@@ -1335,7 +1432,7 @@ function TokenHourlyHeatmap({ tokens, loading }: { tokens: TokenStats | null; lo
           <span>00</span><span>06</span><span>12</span><span>18</span><span>23</span>
         </div>
         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-          {loading ? t.dash : peakHour > 0 ? <>{t.peakLabel} <b>{peakHourIdx.toString().padStart(2, '0')}:00</b> · {fmtTokens(peakHour)} {t.tokensSuffix}</> : t.noData}
+          {loading ? t.loadingValue : peakHour > 0 ? <>{t.peakLabel} <b>{peakHourIdx.toString().padStart(2, '0')}:00</b> · {fmtTokens(peakHour)} {t.tokensSuffix}</> : t.noData}
         </div>
       </div>
     </Card>

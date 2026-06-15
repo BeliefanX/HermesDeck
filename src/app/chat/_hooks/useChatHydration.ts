@@ -12,8 +12,10 @@ import {
   SHOW_SUBAGENTS_KEY,
   SHOW_TOOL_DETAILS_KEY,
   SOURCE_FILTER_KEY,
+  parseSourceFilter,
   safeParseStored,
   sessionMatchesProfile,
+  sourceFilterKeyForProfile,
   storageKeyForProfile,
 } from '../_lib/storage';
 
@@ -56,9 +58,19 @@ export function useChatHydration(p: HydrationParams) {
   // sessions/messages/active are reloaded whenever the active Hermes profile
   // changes so one profile's browser cache never appears under another.
   const uiFlagsHydratedRef = useRef(false);
+  const sourceFilterHydratedRef = useRef<{ profile: string; json: string; pending: boolean }>({ profile: '', json: '', pending: false });
+  const persistReadyProfileRef = useRef('');
   useEffect(() => {
     if (!p.profileHydrated) return;
-    const stored = safeParseStored(p.profile);
+    // Profile-scoped chat persistence is paused while switching profiles. The
+    // state setters below commit asynchronously; pagehide/visibility flushes in
+    // the gap must not serialize the previous profile's sessions/messages under
+    // the new profile's storage key. Mark persistence ready on the next frame,
+    // after React has had a chance to commit the hydrated profile state.
+    const profile = p.profile;
+    persistReadyProfileRef.current = '';
+    p.setHydrated(false);
+    const stored = safeParseStored(profile);
     p.setSessions(stored?.sessions || []);
     p.setMessages(stored?.messages || {});
     p.setResponseIds(stored?.responseIds || {});
@@ -75,13 +87,6 @@ export function useChatHydration(p: HydrationParams) {
         }
       } catch {}
       try {
-        const stash = localStorage.getItem(SOURCE_FILTER_KEY);
-        if (stash) {
-          const parsed = JSON.parse(stash) as string[] | null;
-          if (parsed === null || Array.isArray(parsed)) p.setEnabledSources(parsed);
-        }
-      } catch {}
-      try {
         const stash = localStorage.getItem(SHOW_SUBAGENTS_KEY);
         if (stash === '1') p.setShowSubagents(true);
       } catch {}
@@ -91,7 +96,23 @@ export function useChatHydration(p: HydrationParams) {
       } catch {}
       p.setMetaStoreRaw(loadMetaStore());
     }
-    p.setHydrated(true);
+    const scopedFilter = parseSourceFilter(localStorage.getItem(sourceFilterKeyForProfile(profile)));
+    const legacyFilter = scopedFilter === undefined ? parseSourceFilter(localStorage.getItem(SOURCE_FILTER_KEY)) : undefined;
+    const nextFilter = scopedFilter !== undefined ? scopedFilter : legacyFilter !== undefined ? legacyFilter : null;
+    sourceFilterHydratedRef.current = { profile, json: JSON.stringify(nextFilter), pending: true };
+    p.setEnabledSources(nextFilter);
+
+    let cancelled = false;
+    const markReady = () => {
+      if (cancelled) return;
+      persistReadyProfileRef.current = profile;
+      p.setHydrated(true);
+    };
+    const frame = window.requestAnimationFrame(markReady);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.profileHydrated, p.profile]);
 
@@ -102,8 +123,13 @@ export function useChatHydration(p: HydrationParams) {
 
   useEffect(() => {
     if (!p.hydrated) return;
-    try { localStorage.setItem(SOURCE_FILTER_KEY, JSON.stringify(p.enabledSources)); } catch {}
-  }, [p.hydrated, p.enabledSources]);
+    const json = JSON.stringify(p.enabledSources);
+    const hydrated = sourceFilterHydratedRef.current;
+    if (hydrated.profile !== p.profile) return;
+    if (hydrated.pending && hydrated.json !== json) return;
+    sourceFilterHydratedRef.current = { profile: p.profile, json, pending: false };
+    try { localStorage.setItem(sourceFilterKeyForProfile(p.profile), json); } catch {}
+  }, [p.hydrated, p.profile, p.enabledSources]);
 
   useEffect(() => {
     if (!p.hydrated) return;
@@ -130,6 +156,7 @@ export function useChatHydration(p: HydrationParams) {
   const persistChatRef = useRef(() => {});
   useEffect(() => {
     persistChatRef.current = () => {
+      if (!p.hydrated || persistReadyProfileRef.current !== p.profile) return;
       const cachedSessions = p.sessions.filter((s) => (
         sessionMatchesProfile(s, p.profile, p.profile) && (p.messages[s.id]?.length || 0) > 0
       ));
@@ -188,10 +215,10 @@ export function useChatHydration(p: HydrationParams) {
         }
       }
     };
-  }, [p.sessions, p.messages, p.responseIds, p.active, p.profile]);
+  }, [p.hydrated, p.sessions, p.messages, p.responseIds, p.active, p.profile]);
 
   useEffect(() => {
-    if (!p.hydrated) return;
+    if (!p.hydrated || persistReadyProfileRef.current !== p.profile) return;
     const handle = window.setTimeout(() => persistChatRef.current(), 600);
     return () => window.clearTimeout(handle);
   }, [p.hydrated, p.sessions, p.messages, p.responseIds, p.active, p.profile]);

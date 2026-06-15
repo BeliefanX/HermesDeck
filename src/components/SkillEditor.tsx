@@ -168,7 +168,7 @@ export function SkillEditor({ relPath, name, category, onClose }: Props) {
         position: 'fixed',
         inset: 0,
         zIndex: 100,
-        background: 'rgba(0,0,0,.55)',
+        background: 'color-mix(in oklch, var(--strong-text) 18%, transparent)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -184,7 +184,7 @@ export function SkillEditor({ relPath, name, category, onClose }: Props) {
           background: 'var(--bg)',
           border: '1px solid var(--line)',
           borderRadius: 12,
-          boxShadow: '0 20px 60px rgba(0,0,0,.5)',
+          boxShadow: 'var(--shadow-modal)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -249,13 +249,13 @@ export function SkillEditor({ relPath, name, category, onClose }: Props) {
         {(error || (skill?.readOnly && mode === 'edit')) && (
           <div style={{
             padding: '8px 16px',
-            background: error ? 'rgba(239,68,68,.10)' : 'rgba(234,179,8,.10)',
+            background: error ? 'var(--status-red-bg)' : 'var(--status-yellow-bg)',
             borderBottom: '1px solid var(--hairline)',
             display: 'flex',
             alignItems: 'center',
             gap: 8,
             fontSize: 12,
-            color: error ? 'var(--red, #ef4444)' : 'var(--yellow, #eab308)',
+            color: error ? 'var(--red)' : 'var(--yellow)',
           }}>
             <AlertCircle size={13} />
             <span style={{ flex: 1 }}>{error || t.readOnlyHint}</span>

@@ -36,15 +36,15 @@ export const iconBtnStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  width: 28,
-  height: 28,
+  width: 'var(--hit-icon)',
+  height: 'var(--hit-icon)',
   borderRadius: 8,
   background: 'var(--panel-2)',
   border: '1px solid var(--line)',
   color: 'var(--muted)',
   cursor: 'pointer',
   flexShrink: 0,
-  transition: 'all 200ms cubic-bezier(.2,.7,.2,1)',
+  transition: 'background var(--t-2) var(--ease), border-color var(--t-2) var(--ease), color var(--t-2) var(--ease), transform var(--t-1) var(--ease)',
 };
 
 export function TabBtn({
@@ -71,7 +71,7 @@ export function TabBtn({
         fontSize: 11.5,
         fontWeight: 500,
         cursor: 'pointer',
-        transition: 'all 200ms cubic-bezier(.2,.7,.2,1)',
+        transition: 'background var(--t-2) var(--ease), border-color var(--t-2) var(--ease), color var(--t-2) var(--ease), transform var(--t-1) var(--ease)',
       }}
     >
       {icon}
@@ -81,7 +81,7 @@ export function TabBtn({
 }
 
 export function ComposerPicker({
-  label, title, value, options, onChange, disabled, placeholder, defaultTagLabel,
+  label, title, value, options, onChange, disabled, placeholder, defaultTagLabel, containerStyle, className,
 }: {
   label: string;
   title?: string;
@@ -91,6 +91,8 @@ export function ComposerPicker({
   disabled?: boolean;
   placeholder?: string;
   defaultTagLabel?: string;
+  containerStyle?: React.CSSProperties;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -109,11 +111,13 @@ export function ComposerPicker({
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
-  const display = value || placeholder || '—';
+  const selectedOption = options.find((opt) => opt.value === value);
+  const display = selectedOption?.label || value || placeholder || '—';
   const isReasoning = label === '模型' || label === 'Model' || label === '推理' || label === 'Reasoning';
   return (
-    <div ref={ref} style={{ position: 'relative', minWidth: 0, flex: 1 }}>
+    <div ref={ref} className={className} style={{ position: 'relative', minWidth: 0, flex: '0 1 auto', ...containerStyle }}>
       <button
+        className="composer-picker-button"
         type="button"
         onClick={() => !disabled && setOpen((o) => !o)}
         disabled={disabled}

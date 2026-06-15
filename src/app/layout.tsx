@@ -7,6 +7,7 @@ import { AppShell } from '@/components/AppShell';
 import { GlobalErrorSink } from '@/components/GlobalErrorSink';
 import { PWARegister } from '@/components/PWARegister';
 import { ProfileProvider } from '@/lib/profile-context';
+import { HERMES_THEME_COLORS } from '@/lib/theme-colors';
 
 export const metadata: Metadata = {
   title: { default: 'HermesDeck', template: '%s · HermesDeck' },
@@ -32,15 +33,14 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: 'cover',
   themeColor: [
-    { media: '(prefers-color-scheme: dark)', color: '#08090c' },
-    { media: '(prefers-color-scheme: light)', color: '#fafafa' },
+    { media: '(prefers-color-scheme: dark)', color: HERMES_THEME_COLORS.dark },
+    { media: '(prefers-color-scheme: light)', color: HERMES_THEME_COLORS.light },
   ],
 };
 
-const themeBootstrap = `(function(){try{var t=localStorage.getItem('hermesdeck-theme');var d=t||(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.dataset.theme=d;}catch(e){document.documentElement.dataset.theme='dark';}})();`;
+const themeBootstrap = `(function(){try{var t=localStorage.getItem('hermesdeck-theme');var d=(t==='dark'||t==='light')?t:'light';document.documentElement.dataset.theme=d;}catch(e){document.documentElement.dataset.theme='light';}})();`;
 const langBootstrap = `(function(){try{var l=localStorage.getItem('hermesdeck-lang');if(l!=='zh'&&l!=='zh-CN'&&l!=='en'){var n=(navigator.language||'').toLowerCase();l=n.indexOf('zh')===0?'zh':'en';}document.documentElement.lang=(l==='zh'||l==='zh-CN')?'zh-CN':'en';}catch(e){document.documentElement.lang='en';}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

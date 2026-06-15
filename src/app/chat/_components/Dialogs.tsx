@@ -111,7 +111,7 @@ export function ChatDialogs({
           position: 'fixed',
           inset: 0,
           zIndex: 80,
-          background: 'rgba(0,0,0,.55)',
+          background: 'color-mix(in oklch, var(--strong-text) 18%, transparent)',
           backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',

@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { deckApi } from './api';
 import type { DeckProfile } from './types';
 
@@ -80,6 +80,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profilesLoaded, setProfilesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [hydrated, setHydrated] = useState(false);
+  const pendingStoredProfileRef = useRef<string | null>(null);
 
   // Same-tab consumers re-render through this provider's context value;
   // cross-tab sync rides the native `storage` event below. No custom event
@@ -87,6 +88,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const setActiveProfile = useCallback((id: string) => {
     if (!id) return;
     setActiveProfileState((prev) => {
+      if (!profilesLoaded) {
+        pendingStoredProfileRef.current = id;
+        writeStoredProfile(id);
+        return NO_PROFILE;
+      }
       if (profilesLoaded && profiles.length === 0) {
         removeStoredProfile();
         return NO_PROFILE;
@@ -108,10 +114,14 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         // The server already filters /api/deck/profiles by RBAC. Reconcile the
         // browser's prior/localStorage selection against that authorized list
         // so a stale unassigned profile can never drive client requests.
-        return reconcileActiveProfile(prev, nextProfiles);
+        const pending = pendingStoredProfileRef.current;
+        pendingStoredProfileRef.current = null;
+        return reconcileActiveProfile(pending || prev, nextProfiles);
       });
     } catch {
-      // Network / Hermes down — keep whatever we had.
+      // Fail closed: until the server-filtered list is known, expose no Agent.
+      setProfiles([]);
+      setActiveProfileState(NO_PROFILE);
     } finally {
       setLoading(false);
     }
@@ -127,7 +137,9 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       stored = migrateLegacyChatProfile();
       if (stored) writeStoredProfile(stored);
     }
-    if (stored) setActiveProfileState(stored);
+    // Keep localStorage only as pending input. Never expose it before the
+    // server-filtered /api/deck/profiles list has authorized it.
+    pendingStoredProfileRef.current = stored;
     void refresh().finally(() => { if (alive) setHydrated(true); });
     return () => { alive = false; };
   }, [refresh]);
@@ -138,10 +150,15 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== STORAGE_KEY) return;
       if (!e.newValue) {
+        pendingStoredProfileRef.current = null;
         setActiveProfileState(NO_PROFILE);
         return;
       }
       setActiveProfileState((prev) => {
+        if (!profilesLoaded) {
+          pendingStoredProfileRef.current = e.newValue;
+          return NO_PROFILE;
+        }
         if (profilesLoaded && profiles.length === 0) {
           removeStoredProfile();
           return NO_PROFILE;

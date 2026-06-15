@@ -308,8 +308,8 @@ export function ChatLayoutView(p: ChatLayoutViewProps) {
                   gap: 10,
                   alignItems: 'flex-start',
                   padding: 12,
-                  background: 'rgba(239,68,68,.06)',
-                  border: '1px solid rgba(239,68,68,.36)',
+                  background: 'var(--status-red-bg)',
+                  border: '1px solid var(--status-red-border)',
                   borderRadius: 10,
                   marginBottom: 14,
                 }}
@@ -322,7 +322,7 @@ export function ChatLayoutView(p: ChatLayoutViewProps) {
                 <button
                   onClick={() => p.setError('')}
                   aria-label={p.t.dismissError}
-                  style={{ ...iconBtnStyle, height: 24, width: 24, padding: 0, flexShrink: 0 }}
+                  style={{ ...iconBtnStyle, padding: 0, flexShrink: 0 }}
                 >
                   <X size={12} />
                 </button>
@@ -333,26 +333,6 @@ export function ChatLayoutView(p: ChatLayoutViewProps) {
                 className="scroll-to-bottom"
                 onClick={() => { p.stickToBottomRef.current = true; p.scrollToBottom(true); }}
                 aria-label={p.t.scrollToLatest}
-                style={{
-                  position: 'absolute',
-                  bottom: 110,
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  height: 28,
-                  padding: '0 12px',
-                  borderRadius: 999,
-                  background: 'var(--panel-2)',
-                  border: '1px solid var(--line)',
-                  color: 'var(--muted)',
-                  fontSize: 11.5,
-                  fontFamily: 'var(--font-sans)',
-                  cursor: 'pointer',
-                  boxShadow: 'var(--shadow-pop)',
-                  zIndex: 4,
-                }}
               >
                 <ArrowDown size={12} /> {p.t.jumpToLatest}
               </button>

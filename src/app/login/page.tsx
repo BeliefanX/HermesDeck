@@ -112,7 +112,7 @@ function LoginForm() {
 
   return (
     <div className="login-shell">
-      <LanguageToggle style={{ position: 'fixed', top: 16, right: 16, zIndex: 10 }} />
+      <LanguageToggle className="btn icon ghost login-language-toggle" style={{ position: 'fixed', top: 16, right: 16, zIndex: 10 }} />
       <div className="login-card">
         <div className="login-brand">
           <BrandMark alt="HermesDeck" width={48} height={48} />

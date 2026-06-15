@@ -61,7 +61,7 @@ export function ProfileChip() {
   }, [open, isMobile]);
 
   const activeMeta = profiles.find((p) => p.id === activeProfile);
-  const displayName = activeMeta?.name || activeProfile;
+  const displayName = activeMeta?.name || (loading ? t.loading : t.label);
 
   return (
     <>

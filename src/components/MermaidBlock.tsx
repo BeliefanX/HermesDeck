@@ -23,7 +23,7 @@ function loadMermaid(): Promise<MermaidApi> {
         startOnLoad: false,
         theme,
         securityLevel: 'strict',
-        fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, sans-serif',
+        fontFamily: 'Geist, ui-sans-serif, system-ui, -apple-system, sans-serif',
       });
       lastInitTheme = theme;
       return mermaid;
@@ -42,7 +42,7 @@ async function withCurrentTheme(): Promise<MermaidApi> {
       startOnLoad: false,
       theme,
       securityLevel: 'strict',
-      fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, sans-serif',
+      fontFamily: 'Geist, ui-sans-serif, system-ui, -apple-system, sans-serif',
     });
     lastInitTheme = theme;
   }

@@ -120,6 +120,7 @@ export function useChatT() {
       show: '显示',
       // Errors
       requestFailed: '请求失败',
+      profileUnavailable: 'Agent Profile 尚未加载或未授权，请等待配置同步后再发送。',
       dismissError: '关闭错误',
       // Scroll
       scrollToLatest: '滚动到最新',
@@ -304,6 +305,7 @@ export function useChatT() {
       hiddenSuffix: ' tool calls / subagent internals hidden',
       show: 'Show',
       requestFailed: 'Request failed',
+      profileUnavailable: 'Agent profile is not loaded or authorized yet. Wait for profile sync before sending.',
       dismissError: 'Dismiss error',
       scrollToLatest: 'Scroll to latest',
       jumpToLatest: 'Jump to latest',

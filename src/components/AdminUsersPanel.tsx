@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, RefreshCw, Shield, UserCog, UserX } from 'lucide-react';
-import { Btn, Card, SectionHead, Tag } from '@/components/Brand';
+import { Btn, SectionHead, Tag } from '@/components/Brand';
 import { localizeError, useLang, useT } from '@/lib/i18n';
 
 type DeckRole = 'super_admin' | 'admin' | 'user';
@@ -211,7 +211,14 @@ export function AdminUsersPanel() {
     status === 'pending' ? t.statusPending : status === 'active' ? t.statusActive : status === 'disabled' ? t.statusDisabled : t.statusRejected;
 
   return (
-    <Card>
+    <section
+      style={{
+        border: '1px solid var(--line)',
+        borderRadius: 'var(--r-2)',
+        padding: 18,
+        background: 'var(--panel)',
+      }}
+    >
       <SectionHead
         kicker={t.kicker}
         title={t.title}
@@ -221,7 +228,7 @@ export function AdminUsersPanel() {
         {t.desc}
       </p>
       {pending.length ? (
-        <div style={{ marginBottom: 12, padding: 10, border: '1px solid rgba(234,179,8,.28)', background: 'rgba(234,179,8,.08)', borderRadius: 10 }}>
+        <div style={{ marginBottom: 12, padding: '10px 0', borderTop: '1px solid var(--status-yellow-border)', borderBottom: '1px solid var(--status-yellow-border)' }}>
           <b style={{ color: 'var(--strong-text)', fontSize: 13 }}>{t.pendingQueue(pending.length)}</b>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
             {pending.map((user) => (
@@ -231,17 +238,17 @@ export function AdminUsersPanel() {
         </div>
       ) : null}
       {error ? (
-        <div style={{ marginBottom: 10, fontSize: 12.5, color: 'var(--red)', background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 8, padding: '8px 10px' }}>{error}</div>
+        <div style={{ marginBottom: 10, fontSize: 12.5, color: 'var(--red)', background: 'var(--status-red-bg)', border: '1px solid var(--status-red-border)', borderRadius: 8, padding: '8px 10px' }}>{error}</div>
       ) : null}
       {success ? (
-        <div style={{ marginBottom: 10, fontSize: 12.5, color: 'var(--green)', background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.25)', borderRadius: 8, padding: '8px 10px' }}>{success}</div>
+        <div style={{ marginBottom: 10, fontSize: 12.5, color: 'var(--green)', background: 'var(--status-green-bg)', border: '1px solid var(--status-green-border)', borderRadius: 8, padding: '8px 10px' }}>{success}</div>
       ) : null}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {users.map((user) => {
+      <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--hairline)' }}>
+        {users.map((user, index) => {
           const disabled = user.immutable || savingUserId === user.id;
           const canChangeRole = isSuperAdminActor && !user.immutable;
           return (
-            <div key={user.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 12, background: 'var(--surface-bg)' }}>
+            <div key={user.id} style={{ padding: '14px 0', borderTop: index === 0 ? 'none' : '1px solid var(--hairline)' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ minWidth: 200 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -308,6 +315,6 @@ export function AdminUsersPanel() {
           );
         })}
       </div>
-    </Card>
+    </section>
   );
 }

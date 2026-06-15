@@ -48,8 +48,11 @@ export function useChatModels(profile: string) {
     setReasoningLevels(REASONING_LEVELS);
     optionsRef.current = [];
     if (!profile) return;
-    deckApi.models(profile, ac.signal)
-      .then((r) => {
+    Promise.all([
+      deckApi.models(profile, ac.signal),
+      deckApi.modelPreference(profile, ac.signal).catch(() => null),
+    ])
+      .then(([r, pref]) => {
         if (!alive) return;
         const seen = new Map<string, ModelOption>();
         for (const p of r.providers) {
@@ -64,7 +67,11 @@ export function useChatModels(profile: string) {
         const flat = Array.from(seen.values());
         optionsRef.current = flat;
         setModelOptions(flat);
-        const def = (r.default?.model ? flat.find((m) => m.id === r.default?.model) : undefined)
+        const saved = pref?.preference?.modelId
+          ? flat.find((m) => m.id === pref.preference?.modelId)
+          : undefined;
+        const def = saved
+          || (r.default?.model ? flat.find((m) => m.id === r.default?.model) : undefined)
           || flat.find((m) => m.isDefault)
           || flat[0];
         if (def) setSelectedModelState(def.id);
@@ -82,7 +89,18 @@ export function useChatModels(profile: string) {
         // the dropdown in lockstep with the selected profile.
         setReasoningEffort(resolved);
       })
-      .catch(() => { /* selector falls back to profile default */ });
+      .catch(() => {
+        if (!alive) return;
+        // Hermes Agent can legitimately hide provider/model metadata from Deck.
+        // Keep the composer explicit and compact without inventing a model
+        // override that would be sent upstream.
+        setModelOptions([]);
+        optionsRef.current = [];
+        setSelectedModelState('');
+        setReasoningLevels(REASONING_LEVELS);
+        setDefaultReasoning('auto');
+        setReasoningEffort('auto');
+      });
     return () => { alive = false; ac.abort(); };
   }, [profile]);
 

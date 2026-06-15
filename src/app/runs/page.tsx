@@ -169,7 +169,7 @@ function RunsPageInner() {
       </div>
 
       {err && (
-        <Card style={{ borderColor: 'rgba(239,68,68,.4)' }}>
+        <Card style={{ borderColor: 'var(--status-red-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--red)' }}>
             <AlertCircle size={15} /> {t.loadFailed} {err}
           </div>
@@ -296,7 +296,7 @@ function RunRow({ run, first }: { run: DeckRun; first?: boolean }) {
           </span>
         </div>
         {run.errorSummary && (
-          <div style={{ marginTop: 6, padding: '6px 8px', background: 'rgba(239,68,68,.06)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 6, fontSize: 11.5, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ marginTop: 6, padding: '6px 8px', background: 'var(--status-red-bg)', border: '1px solid var(--status-red-border)', borderRadius: 6, fontSize: 11.5, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 6 }}>
             <AlertCircle size={11} /> {run.errorSummary}
           </div>
         )}

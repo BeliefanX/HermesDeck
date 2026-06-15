@@ -57,6 +57,7 @@ export function Card({
   hero = false,
   padding = 18,
   style,
+  className,
   onClick,
   ariaLabel,
 }: {
@@ -64,22 +65,24 @@ export function Card({
   hero?: boolean;
   padding?: number;
   style?: CSSProperties;
+  className?: string;
   onClick?: () => void;
   ariaLabel?: string;
 }) {
-  const heroBg = hero
-    ? 'radial-gradient(120% 80% at 100% 0%, rgba(56,189,248,.10) 0%, transparent 55%), var(--panel)'
-    : 'var(--panel)';
+  const heroBg = hero ? 'var(--card-bg)' : 'var(--panel)';
+  const cardClassName = ['brand-card', hero ? 'brand-card-hero' : '', onClick ? 'is-clickable' : '', className || '']
+    .filter(Boolean)
+    .join(' ');
   // Promote the wrapper to a semantic <button> when an onClick is supplied so
   // keyboard users can actually activate the card. Falls back to a plain div
   // when there's no interaction — preserves the original styling unchanged.
   const sharedStyle: CSSProperties = {
     padding,
     border: '1px solid var(--line)',
-    borderRadius: hero ? 14 : 10,
+    borderRadius: hero ? 'var(--r-4)' : 'var(--r-2)',
     background: heroBg,
     cursor: onClick ? 'pointer' : 'default',
-    transition: `all 200ms ${EASE}`,
+    transition: `border-color 200ms ${EASE}, background 200ms ${EASE}, transform 160ms ${EASE}`,
     position: 'relative',
     overflow: 'hidden',
     ...style,
@@ -88,6 +91,8 @@ export function Card({
     return (
       <button
         type="button"
+        className={cardClassName}
+        data-state="interactive"
         onClick={onClick}
         aria-label={ariaLabel}
         style={{
@@ -104,7 +109,7 @@ export function Card({
     );
   }
   return (
-    <div style={sharedStyle}>
+    <div className={cardClassName} data-state="default" style={sharedStyle}>
       {children}
     </div>
   );
@@ -116,8 +121,9 @@ export function Kicker({ children, style }: { children: ReactNode; style?: CSSPr
       style={{
         fontSize: 9.5,
         textTransform: 'uppercase',
-        letterSpacing: '.14em',
+        letterSpacing: '.10em',
         color: 'var(--muted-2)',
+        fontFamily: 'var(--font-mono)',
         fontWeight: 500,
         ...style,
       }}
@@ -130,10 +136,10 @@ export function Kicker({ children, style }: { children: ReactNode; style?: CSSPr
 const TAG_VARIANTS: Record<Tone, CSSProperties> = {
   default: { background: 'var(--panel-2)', color: 'var(--value-text)', borderColor: 'var(--line)' },
   accent: { background: 'var(--accent-soft)', color: 'var(--accent)', borderColor: 'var(--accent-border)' },
-  green: { background: 'rgba(34,197,94,.12)', color: 'var(--green)', borderColor: 'rgba(34,197,94,.30)' },
-  yellow: { background: 'rgba(234,179,8,.12)', color: 'var(--yellow)', borderColor: 'rgba(234,179,8,.30)' },
-  red: { background: 'rgba(239,68,68,.12)', color: 'var(--red)', borderColor: 'rgba(239,68,68,.30)' },
-  cyan: { background: 'rgba(103,232,249,.10)', color: 'var(--cyan)', borderColor: 'rgba(103,232,249,.28)' },
+  green: { background: 'var(--status-green-bg)', color: 'var(--green)', borderColor: 'var(--status-green-border)' },
+  yellow: { background: 'var(--status-yellow-bg)', color: 'var(--yellow)', borderColor: 'var(--status-yellow-border)' },
+  red: { background: 'var(--status-red-bg)', color: 'var(--red)', borderColor: 'var(--status-red-border)' },
+  cyan: { background: 'var(--status-cyan-bg)', color: 'var(--cyan)', borderColor: 'var(--status-cyan-border)' },
 };
 
 export function Tag({
@@ -227,7 +233,6 @@ export function BarRow({
             width: `${pct}%`,
             background: 'var(--accent)',
             borderRadius: 3,
-            transition: `width 300ms ${EASE}`,
           }}
         />
       </div>
@@ -256,7 +261,7 @@ export function Sparkline({ values, height = 48 }: { values: number[]; height?: 
           style={{
             flex: 1,
             height: `${Math.max(6, (v / max) * 100)}%`,
-            background: i === values.length - 1 ? 'var(--accent)' : 'rgba(56,189,248,.65)',
+            background: i === values.length - 1 ? 'var(--accent)' : 'var(--accent-strong)',
             borderRadius: 2,
           }}
         />
@@ -268,37 +273,32 @@ export function Sparkline({ values, height = 48 }: { values: number[]; height?: 
 export function Chip({
   children,
   active = false,
+  state = 'default',
+  disabled = false,
+  className,
   onClick,
   icon,
   style,
 }: {
   children: ReactNode;
   active?: boolean;
+  state?: 'default' | 'loading' | 'success' | 'error';
+  disabled?: boolean;
+  className?: string;
   onClick?: () => void;
   icon?: ReactNode;
   style?: CSSProperties;
 }) {
+  const chipClassName = ['chip', active ? 'active' : '', className || ''].filter(Boolean).join(' ');
   return (
     <button
       type="button"
+      className={chipClassName}
+      data-state={state === 'default' ? undefined : state}
       onClick={onClick}
+      disabled={disabled}
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 5,
-        height: 28,
-        padding: '0 10px',
-        borderRadius: 999,
-        fontFamily: 'var(--font-sans)',
-        fontSize: 12,
-        fontWeight: 500,
-        border: '1px solid',
-        cursor: 'pointer',
-        transition: `all 200ms ${EASE}`,
-        background: active ? 'var(--accent-soft)' : 'transparent',
-        color: active ? 'var(--accent)' : 'var(--muted)',
-        borderColor: active ? 'var(--accent-border)' : 'var(--line)',
-        whiteSpace: 'nowrap',
+        minHeight: 28,
         flexShrink: 0,
         ...style,
       }}
@@ -344,55 +344,54 @@ export function SectionHead({
 }
 
 export type BtnVariant = 'default' | 'primary' | 'ghost' | 'danger';
-
-const BTN_VARIANTS: Record<BtnVariant, CSSProperties> = {
-  default: { background: 'var(--panel-2)', color: 'var(--text)' },
-  primary: { background: 'var(--accent)', color: '#08090c', borderColor: 'var(--accent-border)', fontWeight: 600 },
-  ghost: { background: 'transparent', color: 'var(--muted)', borderColor: 'transparent' },
-  danger: { background: 'rgba(239,68,68,.10)', color: 'var(--red)', borderColor: 'rgba(239,68,68,.40)' },
-};
+export type PrimitiveState = 'default' | 'loading' | 'success' | 'error';
 
 export function Btn({
   children,
   variant = 'default',
   size = 'md',
+  state = 'default',
+  loading = false,
   icon,
   onClick,
   disabled,
   type = 'button',
+  className,
   style,
 }: {
   children?: ReactNode;
   variant?: BtnVariant;
   size?: 'sm' | 'md';
+  state?: PrimitiveState;
+  loading?: boolean;
   icon?: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   type?: 'button' | 'submit';
+  className?: string;
   style?: CSSProperties;
 }) {
+  const stateName = loading ? 'loading' : state;
+  const btnClassName = [
+    'btn',
+    variant !== 'default' ? variant : '',
+    size === 'sm' ? 'sm' : '',
+    icon && !children ? 'icon' : '',
+    className || '',
+  ]
+    .filter(Boolean)
+    .join(' ');
   return (
     <button
       type={type}
+      className={btnClassName}
+      data-state={stateName === 'default' ? undefined : stateName}
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        height: size === 'sm' ? 28 : 36,
-        padding: size === 'sm' ? '0 10px' : '0 14px',
-        borderRadius: 8,
-        fontFamily: 'var(--font-sans)',
-        fontSize: 13,
-        fontWeight: 500,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        transition: `all 200ms ${EASE}`,
-        border: '1px solid var(--line)',
-        opacity: disabled ? 0.5 : 1,
         whiteSpace: 'nowrap',
         flexShrink: 0,
-        ...BTN_VARIANTS[variant],
         ...style,
       }}
     >
@@ -408,6 +407,8 @@ export function ListRow({
   sub,
   right,
   first = false,
+  state = 'default',
+  className,
   onClick,
   ariaLabel,
 }: {
@@ -416,11 +417,16 @@ export function ListRow({
   sub?: ReactNode;
   right?: ReactNode;
   first?: boolean;
+  state?: PrimitiveState;
+  className?: string;
   onClick?: () => void;
   ariaLabel?: string;
 }) {
+  const rowClassName = ['brand-list-row', onClick ? 'is-clickable' : '', className || ''].filter(Boolean).join(' ');
   return (
     <div
+      className={rowClassName}
+      data-state={state}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -478,4 +484,3 @@ export function ListRow({
     </div>
   );
 }
-

@@ -215,7 +215,7 @@ export default function LcmPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <div style={{
             width: 44, height: 44, borderRadius: 12,
-            background: 'linear-gradient(135deg, rgba(56,189,248,.20), rgba(168,85,247,.20))',
+            background: 'var(--accent-soft)',
             border: '1px solid var(--accent-border)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>

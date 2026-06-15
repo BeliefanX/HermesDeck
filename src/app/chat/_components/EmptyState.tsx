@@ -64,7 +64,7 @@ export function EmptyState({
               fontFamily: 'var(--font-sans)',
               fontSize: 12,
               cursor: 'pointer',
-              transition: 'all 200ms cubic-bezier(.2,.7,.2,1)',
+              transition: 'background 200ms cubic-bezier(.2,.7,.2,1), border-color 200ms cubic-bezier(.2,.7,.2,1), color 200ms cubic-bezier(.2,.7,.2,1)',
             }}
           >
             {s}

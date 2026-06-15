@@ -692,6 +692,10 @@ export function useChatStream(params: UseChatStreamParams) {
   ) => {
     const text = (textArg ?? input).trim();
     if (!text || busy) return;
+    if (!profile) {
+      setError(t.profileUnavailable);
+      return;
+    }
     const liveAtts = opts?.attachmentsOverride
       ?? attachments.filter((a) => a.status === 'ready').map(attachmentToPayload);
     setError('');

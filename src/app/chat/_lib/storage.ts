@@ -24,6 +24,19 @@ export function storageKeyForProfile(profile = 'default'): string {
   return `${STORAGE_KEY}.${encodeURIComponent(normalizeProfile(profile))}`;
 }
 
+export function sourceFilterKeyForProfile(profile = 'default'): string {
+  return `${SOURCE_FILTER_KEY}.${encodeURIComponent(normalizeProfile(profile))}`;
+}
+
+export function parseSourceFilter(raw: string | null): string[] | null | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as string[] | null;
+    if (parsed === null || Array.isArray(parsed)) return parsed;
+  } catch {}
+  return undefined;
+}
+
 function parseStored(raw: string | null): PersistedChatState | null {
   if (!raw) return null;
   try {
