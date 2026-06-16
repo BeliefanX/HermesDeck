@@ -6,6 +6,7 @@ const visibleMessages = readFileSync(new URL('../src/app/chat/_hooks/useVisibleM
 const messageRow = readFileSync(new URL('../src/app/chat/_components/MessageRow.tsx', import.meta.url), 'utf8');
 const chatPage = readFileSync(new URL('../src/app/chat/page.tsx', import.meta.url), 'utf8');
 const projection = readFileSync(new URL('../src/lib/server/deck-chat-projection.ts', import.meta.url), 'utf8');
+const deckSessionList = readFileSync(new URL('../src/lib/server/deck-session-list.ts', import.meta.url), 'utf8');
 const sessionsRoute = readFileSync(new URL('../src/app/api/deck/sessions/route.ts', import.meta.url), 'utf8');
 const messagesRoute = readFileSync(new URL('../src/app/api/deck/sessions/[id]/messages/route.ts', import.meta.url), 'utf8');
 
@@ -46,7 +47,8 @@ test('Deck chat projection reads are profile and owner scoped', () => {
   assert.match(projection, /hasProjectedSession\(sessionId: string, profileId: string, viewer\?: ProjectionViewer\)/);
   assert.match(projection, /projectedResponseIdMatches\(sessionId: string, profileId: string, responseId: string, viewer\?: ProjectionViewer\)/);
   assert.doesNotMatch(projection, /return !session\.ownerUserId \|\| session\.ownerUserId === viewer\.userId/);
-  assert.match(sessionsRoute, /listProjectedSessions\(profile, \{ userId: auth\.user\.id, role: auth\.user\.role \}\)/);
+  assert.match(deckSessionList, /listProjectedSessions\(profile, viewer\)/);
+  assert.match(sessionsRoute, /listDeckSessionsForProfile\(profile, \{ userId: auth\.user\.id, role: auth\.user\.role \}\)/);
   assert.match(messagesRoute, /viewer: \{ userId: auth\.user\.id, role: auth\.user\.role \}/);
 });
 

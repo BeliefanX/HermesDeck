@@ -29,6 +29,7 @@ const hermesCoreModulePath = resolve('src/lib/server/hermes/core.ts');
 const hermesSessionsModulePath = resolve('src/lib/server/hermes/sessions.ts');
 const hermesMessagesModulePath = resolve('src/lib/server/hermes/messages.ts');
 const deckChatProjectionModulePath = resolve('src/lib/server/deck-chat-projection.ts');
+const deckSessionListModulePath = resolve('src/lib/server/deck-session-list.ts');
 const cronRoutePath = resolve('src/app/api/deck/cron/route.ts');
 const hermesCronModulePath = resolve('src/lib/server/hermes/cron.ts');
 let importNonce = 0;
@@ -607,6 +608,10 @@ async function loadHermesMessagesModule() {
   return import(`${pathToFileURL(hermesMessagesModulePath).href}?case=${Date.now()}-${importNonce++}`);
 }
 
+async function loadDeckSessionListModule() {
+  return import(`${pathToFileURL(deckSessionListModulePath).href}?case=${Date.now()}-${importNonce++}`);
+}
+
 test('profile-scoped Hermes sessions fail closed when upstream omits profile metadata', async () => {
   await withMockedHermesFetch(async () => ({ data: [{ id: 'legacy-default', title: 'Default legacy row' }] }), async () => {
     const sessions = await loadHermesSessionsModule();
@@ -682,6 +687,47 @@ test('default Hermes sessions still accept legacy upstream rows without profile 
     assert.equal(rows[0].id, 'legacy-default');
     assert.equal(rows[0].profileId, 'default');
   });
+});
+
+test('Deck session list falls back to owner-scoped projected sessions when upstream profile metadata is unavailable', async () => {
+  const home = makeHome();
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  try {
+    process.env.HERMESDECK_AUTH_DIR = join(home, '.hermesdeck');
+    process.env.HERMESDECK_DATA_DIR = join(home, '.hermesdeck');
+    await withMockedHermesFetch(async () => ({
+      data: [{ id: 'unverified-api-row', title: 'Must not be trusted without profile metadata' }],
+    }), async () => {
+      const sessionList = await loadDeckSessionListModule();
+      const projection = await import(pathToFileURL(deckChatProjectionModulePath).href);
+      projection.startProjectedTurn({
+        sessionId: 'sensgift-kevin-projected',
+        profileId: 'sensgift',
+        ownerUserId: 'kevinchen',
+        ownerRole: 'user',
+        message: 'Kevin projected turn',
+      });
+      projection.startProjectedTurn({
+        sessionId: 'sensgift-other-owner',
+        profileId: 'sensgift',
+        ownerUserId: 'other-user',
+        ownerRole: 'user',
+        message: 'Other user projected turn',
+      });
+
+      const result = await sessionList.listDeckSessionsForProfile('sensgift', { userId: 'kevinchen', role: 'user' });
+      assert.equal(result.warning?.code, 'profile_routing_unavailable');
+      assert.deepEqual(result.sessions.map((session) => session.id), ['sensgift-kevin-projected']);
+      assert.equal(result.sessions.some((session) => session.id === 'unverified-api-row'), false);
+      assert.equal(result.sessions.some((session) => session.id === 'sensgift-other-owner'), false);
+    });
+  } finally {
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+  }
 });
 
 test('Deck chat projection is profile scoped and rejects cross-profile message reads', async () => {
@@ -977,14 +1023,20 @@ test('session and stats routes preserve profile-routing errors instead of generi
   const sessionsRouteSource = readFileSync(resolve('src/app/api/deck/sessions/route.ts'), 'utf8');
   const messagesRouteSource = readFileSync(resolve('src/app/api/deck/sessions/[id]/messages/route.ts'), 'utf8');
   const statsRouteSource = readFileSync(statsRoutePath, 'utf8');
-  for (const source of [sessionsRouteSource, messagesRouteSource, statsRouteSource]) {
+  const deckSessionListSource = readFileSync(deckSessionListModulePath, 'utf8');
+  for (const source of [messagesRouteSource, statsRouteSource]) {
     assert.match(source, /SessionProfileRoutingError/);
     assert.match(source, /err instanceof SessionProfileRoutingError/);
     assert.match(source, /error: err\.code/);
     assert.match(source, /status: err\.status/);
   }
-  assert.match(sessionsRouteSource, /const api = await getSessions\(profile\)/);
-  assert.match(sessionsRouteSource, /const sessions = mergeSessions\(projected, api\)/);
+  assert.match(sessionsRouteSource, /listDeckSessionsForProfile\(profile/);
+  assert.match(sessionsRouteSource, /X-HermesDeck-Warning/);
+  assert.match(deckSessionListSource, /listProjectedSessions\(profile, viewer\)/);
+  assert.match(deckSessionListSource, /const api = await getSessions\(profile\)/);
+  assert.match(deckSessionListSource, /err\.code === PROFILE_ROUTING_UNAVAILABLE/);
+  assert.match(deckSessionListSource, /sessions: projected/);
+  assert.match(deckSessionListSource, /mergeSessions\(projected, api\)/);
   assert.match(messagesRouteSource, /const messages = await getMessages\(decodedId, profile/);
   assert.doesNotMatch(messagesRouteSource, /noProjectedSessionError|profile !== 'default'/);
   assert.doesNotMatch(sessionsRouteSource, /profile === 'default'\s*\?/);
