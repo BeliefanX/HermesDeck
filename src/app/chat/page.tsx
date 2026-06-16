@@ -361,10 +361,18 @@ function ChatPageInner() {
 
   const {
     slashRange, setSlashRange, slashIdx, setSlashIdx, slashCommands,
-    handleInputChange, applySlashCommand,
+    handleInputChange, applySlashCommand, dispatchSlashSubmit,
   } = useSlashCommand({
     input, setInput, taRef, abortRef, newChat, clearCurrentMessages, regenerate,
+    modelOptions, setSelectedModel,
+    reasoningLevels, defaultReasoning, reasoningTouchedRef, setReasoningEffort,
+    setError,
   });
+
+  const sendFromComposer = useCallback(() => {
+    if (dispatchSlashSubmit()) return;
+    return goalAndQueue.sendWithGoal();
+  }, [dispatchSlashSubmit, goalAndQueue]);
 
   // ─── Sidebar grouping ─────────────────────────────────────────────────
   const { sourceCounts, sourceFilterActive, enabledSourceSet, sessionGroups, subagentCount } = useChatGroups({
@@ -516,7 +524,7 @@ function ChatPageInner() {
       setReasoningEffort={setReasoningEffort}
       newChat={newChatMobile}
       onBack={goToList}
-      send={goalAndQueue.sendWithGoal}
+      send={sendFromComposer}
       regenerateStable={regenerateStable}
       goalAndQueue={goalAndQueue}
       removeAttachment={removeAttachment}

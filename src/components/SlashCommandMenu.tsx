@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef } from 'react';
-import { Sparkles, Zap } from 'lucide-react';
-import type { SlashCommand } from '@/lib/prompts';
+import { AlertTriangle, Bot, Command, SlidersHorizontal, Sparkles, Zap } from 'lucide-react';
+import type { SlashCommand } from '@/lib/slash-commands';
 import { useT } from '@/lib/i18n';
 
 interface Props {
@@ -13,30 +13,31 @@ interface Props {
   onClose: () => void;
 }
 
+function iconFor(kind: SlashCommand['kind']) {
+  if (kind === 'local') return Zap;
+  if (kind === 'control') return SlidersHorizontal;
+  if (kind === 'unsupported') return AlertTriangle;
+  if (kind === 'snippet') return Sparkles;
+  return Command;
+}
+
 export function SlashCommandMenu({ commands, query, selectedIndex, onHover, onPick, onClose }: Props) {
   const t = useT({
     zh: {
-      ariaList: '斜杠命令',
-      ariaClose: '关闭命令面板',
-      empty: '没有匹配的命令',
-      header: '斜杠命令 · ↑↓ 选择 · Enter 确认 · Esc 取消',
-      count: (n: number) => `共 ${n} 条命令`,
-      actionPill: '动作',
-      close: '关闭',
+      ariaList: '斜杠命令', ariaClose: '关闭命令面板', empty: '没有匹配的命令',
+      header: 'Telegram-like slash commands · ↑↓ 选择 · Enter 插入/执行 · Esc 取消',
+      count: (n: number) => `共 ${n} 条`, close: '关闭',
+      local: '本地', control: '控制', unsupported: 'Telegram', snippet: 'Prompt snippet', alias: '别名',
     },
     en: {
-      ariaList: 'Slash commands',
-      ariaClose: 'Close command palette',
-      empty: 'No matching command',
-      header: 'Slash commands · ↑↓ select · Enter confirm · Esc cancel',
-      count: (n: number) => `${n} commands`,
-      actionPill: 'action',
-      close: 'Close',
+      ariaList: 'Slash commands', ariaClose: 'Close command palette', empty: 'No matching command',
+      header: 'Telegram-like slash commands · ↑↓ select · Enter insert/run · Esc cancel',
+      count: (n: number) => `${n} items`, close: 'Close',
+      local: 'local', control: 'control', unsupported: 'Telegram', snippet: 'Prompt snippet', alias: 'aliases',
     },
   });
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Scroll the highlighted item into view when navigating with arrow keys.
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -45,6 +46,7 @@ export function SlashCommandMenu({ commands, query, selectedIndex, onHover, onPi
   }, [selectedIndex]);
 
   const visible = useMemo(() => commands, [commands]);
+  const pill = (cmd: SlashCommand) => cmd.kind === 'local' ? t.local : cmd.kind === 'control' ? t.control : cmd.kind === 'unsupported' ? t.unsupported : t.snippet;
 
   if (!visible.length) {
     return (
@@ -65,18 +67,18 @@ export function SlashCommandMenu({ commands, query, selectedIndex, onHover, onPi
       </div>
       <div className="slash-list">
         {visible.map((cmd, i) => {
-          const Icon = cmd.kind === 'action' ? Zap : Sparkles;
+          const Icon = iconFor(cmd.kind);
           return (
             <button
-              key={cmd.key}
+              key={`${cmd.kind}-${cmd.key}`}
               type="button"
               role="option"
               aria-selected={i === selectedIndex}
               data-index={i}
-              className={`slash-item ${i === selectedIndex ? 'active' : ''}`}
+              className={`slash-item ${cmd.kind} ${i === selectedIndex ? 'active' : ''}`}
               onClick={(e) => { e.preventDefault(); onPick(cmd); }}
               onMouseEnter={() => onHover(i)}
-              onMouseDown={(e) => e.preventDefault() /* keep textarea focus */}
+              onMouseDown={(e) => e.preventDefault()}
             >
               <span className={`slash-icon ${cmd.kind}`}>
                 <Icon size={13} />
@@ -84,22 +86,21 @@ export function SlashCommandMenu({ commands, query, selectedIndex, onHover, onPi
               <div className="slash-meta">
                 <div className="slash-title">
                   <span className="slash-key">/{cmd.key}</span>
+                  {cmd.argHint && <span className="slash-arg">{cmd.argHint}</span>}
                   <span className="slash-label">{cmd.label}</span>
                 </div>
-                <div className="slash-desc">{cmd.description}</div>
+                <div className="slash-desc">
+                  <Bot size={11} aria-hidden="true" />
+                  <span>{cmd.description}</span>
+                  {cmd.aliases?.length ? <span className="slash-alias"> · {t.alias}: {cmd.aliases.map((a) => `/${a}`).join(', ')}</span> : null}
+                </div>
               </div>
-              {cmd.kind === 'action' && <span className="pill ok slash-pill">{t.actionPill}</span>}
+              <span className={`pill slash-pill slash-pill-${cmd.kind}`}>{pill(cmd)}</span>
             </button>
           );
         })}
       </div>
-      <button
-        type="button"
-        className="slash-close"
-        onClick={onClose}
-        onMouseDown={(e) => e.preventDefault()}
-        aria-label={t.ariaClose}
-      >
+      <button type="button" className="slash-close" onClick={onClose} onMouseDown={(e) => e.preventDefault()} aria-label={t.ariaClose}>
         {t.close}
       </button>
     </div>

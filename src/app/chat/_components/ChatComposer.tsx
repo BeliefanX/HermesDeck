@@ -9,7 +9,7 @@ import {
   ingestPastedText,
   SMART_PASTE_THRESHOLD,
 } from '@/lib/attachments';
-import { type SlashCommand, extractSlashQuery } from '@/lib/prompts';
+import { type SlashCommand, extractSlashQuery } from '@/lib/slash-commands';
 import type { ChatT } from '../_lib/i18n';
 import type { UseGoalAndQueueResult } from '../_hooks/useGoalAndQueue';
 import type { ReasoningEffort } from '../_hooks/useChatModels';

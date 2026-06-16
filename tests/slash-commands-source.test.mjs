@@ -1,46 +1,72 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import {
+  applyPromptTemplate,
+  extractSlashQuery,
+  filterCommands,
+  parseSlashSubmit,
+  resolveSlashSubmit,
+} from '../src/lib/slash-core.ts';
 
-const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+const catalog = [
+  { kind: 'local', key: 'new', label: 'New chat', description: 'local action', category: 'local', action: 'new' },
+  { kind: 'local', key: 'stop', label: 'Stop', description: 'local action', category: 'local', action: 'stop' },
+  { kind: 'control', key: 'model', label: 'Model', description: 'composer control', category: 'control', control: 'model', argHint: '<model-id>' },
+  { kind: 'control', key: 'reasoning', aliases: ['think'], label: 'Reasoning', description: 'composer control', category: 'control', control: 'reasoning', argHint: '<level>' },
+  { kind: 'unsupported', key: 'help', label: 'Help', description: 'Telegram command', category: 'telegram', unsupportedMode: 'telegram' },
+  { kind: 'unsupported', key: 'restart', label: 'Restart', description: 'Gateway command', category: 'telegram', unsupportedMode: 'telegram' },
+  { kind: 'snippet', key: 'deck', label: 'HermesDeck overview', description: 'Prompt snippet', category: 'Prompt snippet', template: 'Describe HermesDeck. {cursor}' },
+];
 
-test('chat slash menu exposes the complete command catalog and quick-start prompts', () => {
-  const prompts = read('src/lib/prompts.ts');
-  const commandKeys = [...prompts.matchAll(/key:\s*'([^']+)'/g)].map((m) => m[1]);
-
-  assert.deepEqual(commandKeys, [
-    'new', 'clear', 'regen', 'stop',
-    'summarize', 'translate-en', 'translate-zh', 'explain', 'fix', 'test',
-    'refactor', 'docstring', 'improve', 'brainstorm', 'plan',
-    'model', 'reasoning',
-    'deck', 'profile', 'readme',
-  ]);
-
-  // Composer pickers are not slash-dispatched actions yet; expose safe prompt
-  // commands so users can discover the model/reasoning controls without the
-  // menu claiming it changed state.
-  assert.match(prompts, /key: 'reasoning'/);
-  assert.match(prompts, /reasoningTpl: '请说明当前对话的推理强度（reasoning effort）选择方式/);
-  assert.match(prompts, /key: 'model'/);
-  assert.match(prompts, /modelTpl: '请说明当前对话的模型选择方式/);
-
-  // The last three mirror the empty-state quick actions so those prompts are
-  // discoverable after the welcome screen is gone too.
-  assert.match(prompts, /deckTpl: '请介绍一下 HermesDeck 现在能做些什么。\{cursor\}'/);
-  assert.match(prompts, /profileTpl: '请列出当前 Profile 的模型与工具集。\{cursor\}'/);
-  assert.match(prompts, /readmeTpl: '请为本次会话起草一段 README 描述。\{cursor\}'/);
+test('slash query triggers only at line-leading slash and filters Telegram-like commands', () => {
+  assert.deepEqual(extractSlashQuery('/', 1), { start: 0, end: 1, query: '' });
+  assert.deepEqual(extractSlashQuery('/rea', 4), { start: 0, end: 4, query: 'rea' });
+  assert.equal(extractSlashQuery('hello /rea', 10), null);
+  assert.deepEqual(filterCommands(catalog, 'rea').map((c) => c.key), ['reasoning']);
+  assert.deepEqual(filterCommands(catalog, 'think').map((c) => c.key), ['reasoning']);
 });
 
-test('slash menu popover is sized for discoverability, not a four-row clipped list', () => {
-  const menu = read('src/components/SlashCommandMenu.tsx');
-  assert.match(menu, /slash-count/);
-  assert.match(menu, /slash-list/);
+test('parser recognizes single-line commands and leaves ordinary slash text alone', () => {
+  assert.deepEqual(parseSlashSubmit('/reasoning high'), { raw: '/reasoning high', key: 'reasoning', args: 'high', commandText: '/reasoning high' });
+  assert.equal(parseSlashSubmit('please explain /reasoning high'), null);
+  assert.equal(parseSlashSubmit('/reasoning high\nand continue'), null);
+});
 
-  const css = read('src/app/globals.css');
-  assert.match(css, /\.slash-menu\{[\s\S]*max-height:min\(70vh, 640px\)/);
-  assert.match(css, /@media \(max-width:880px\)\{[\s\S]*\.slash-menu\{max-height:min\(82vh, 720px\)\}/);
-  assert.match(css, /@media \(max-width:880px\)\{[\s\S]*\.slash-desc\{display:none\}/);
-  assert.match(css, /\.slash-list\{display:grid/);
-  assert.match(css, /@media \(min-width:560px\)\{[\s\S]*\.slash-list\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
-  assert.doesNotMatch(css, /\.slash-menu\{[\s\S]{0,180}max-height:300px/);
+test('/reasoning and /model resolve as composer control, not prompt text', () => {
+  assert.deepEqual(resolveSlashSubmit('/reasoning high', catalog, { reasoningLevels: ['low', 'medium', 'high'], defaultReasoning: 'medium' }), {
+    handled: true,
+    type: 'reasoning',
+    value: 'high',
+  });
+  assert.deepEqual(resolveSlashSubmit('/reasoning reset', catalog, { defaultReasoning: 'medium' }), {
+    handled: true,
+    type: 'reasoning',
+    mode: 'reset',
+    value: 'medium',
+  });
+  assert.deepEqual(resolveSlashSubmit('/model gpt-5.5', catalog, { modelIds: ['gpt-5.5', 'claude-opus'] }), {
+    handled: true,
+    type: 'model',
+    value: 'gpt-5.5',
+  });
+  assert.equal(resolveSlashSubmit('/model unknown', catalog, { modelIds: ['gpt-5.5'] }).handled, true);
+  assert.equal(resolveSlashSubmit('/model unknown', catalog, { modelIds: ['gpt-5.5'] }).type, 'model');
+});
+
+test('recognized unsupported commands are intercepted instead of sent to LLM', () => {
+  const help = resolveSlashSubmit('/help', catalog);
+  assert.equal(help.handled, true);
+  assert.equal(help.type, 'unsupported');
+  assert.match(help.message, /HermesDeck does not support/);
+  const restart = resolveSlashSubmit('/restart now', catalog);
+  assert.equal(restart.handled, true);
+  assert.equal(restart.type, 'unsupported');
+});
+
+test('prompt snippets are explicit snippets and separate from model/reasoning controls', () => {
+  const snippet = resolveSlashSubmit('/deck', catalog);
+  assert.equal(snippet.handled, true);
+  assert.equal(snippet.type, 'snippet');
+  assert.match(snippet.text, /^Describe HermesDeck/);
+  assert.deepEqual(applyPromptTemplate('/deck', 0, 5, 'A {cursor} B'), { text: 'A  B', caret: 2 });
 });

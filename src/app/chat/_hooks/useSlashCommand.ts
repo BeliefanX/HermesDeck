@@ -5,8 +5,10 @@ import {
   applyPromptTemplate,
   extractSlashQuery,
   filterCommands,
-  useLocalizedCommands,
-} from '@/lib/prompts';
+  resolveSlashSubmit,
+  useLocalizedSlashCommands,
+} from '@/lib/slash-commands';
+import type { ReasoningEffort } from './useChatModels';
 
 interface SlashRange { start: number; end: number; query: string }
 
@@ -18,32 +20,41 @@ interface SlashParams {
   newChat: () => void;
   clearCurrentMessages: () => void;
   regenerate: () => void;
+  modelOptions: Array<{ id: string; provider: string; isDefault?: boolean }>;
+  setSelectedModel: (v: string) => void;
+  reasoningLevels: ReasoningEffort[];
+  defaultReasoning: ReasoningEffort;
+  reasoningTouchedRef: React.MutableRefObject<boolean>;
+  setReasoningEffort: (v: ReasoningEffort) => void;
+  setError: (message: string) => void;
 }
 
-/**
- * Slash command palette state + dispatch. Owns the slash range, highlighted
- * index, filtered command list, and the apply/run helpers the composer wires
- * into its textarea handlers.
- */
+function focusPicker(className: string) {
+  requestAnimationFrame(() => {
+    const button = document.querySelector<HTMLButtonElement>(`.${className} .composer-picker-button`);
+    button?.focus();
+    button?.click();
+  });
+}
+
 export function useSlashCommand({
   input, setInput, taRef, abortRef,
   newChat, clearCurrentMessages, regenerate,
+  modelOptions, setSelectedModel,
+  reasoningLevels, defaultReasoning, reasoningTouchedRef, setReasoningEffort,
+  setError,
 }: SlashParams) {
   const [slashRange, setSlashRange] = useState<SlashRange | null>(null);
   const [slashIdx, setSlashIdx] = useState(0);
-  const localizedCommands = useLocalizedCommands();
+  const localizedCommands = useLocalizedSlashCommands();
   const slashCommands = useMemo(
     () => slashRange ? filterCommands(localizedCommands, slashRange.query) : [],
     [slashRange, localizedCommands],
   );
-  // Reset highlight when the filtered list shrinks past it.
   useEffect(() => {
     if (slashIdx >= slashCommands.length) setSlashIdx(0);
   }, [slashCommands.length, slashIdx]);
 
-  // Route every action through always-current refs so a stale applySlashCommand
-  // closure can't fire last-render's `regenerate` (which captured a stale
-  // `messages` snapshot and would no-op).
   const newChatRef = useRef(newChat);
   const clearCurrentMessagesRef = useRef(clearCurrentMessages);
   const regenerateRef = useRef(regenerate);
@@ -62,47 +73,96 @@ export function useSlashCommand({
 
   const handleInputChange = useCallback((value: string, caret: number) => {
     setInput(value);
-    const range = extractSlashQuery(value, caret);
-    setSlashRange(range);
+    setSlashRange(extractSlashQuery(value, caret));
   }, [setInput]);
+
+  const replaceInputAndCaret = useCallback((text: string, caret: number) => {
+    setInput(text);
+    setSlashRange(null);
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      if (document.activeElement !== ta) ta.focus();
+      try { ta.setSelectionRange(caret, caret); } catch {}
+    });
+  }, [setInput, taRef]);
 
   const applySlashCommand = useCallback((cmd: SlashCommand) => {
     if (!slashRange) {
-      // Action commands fired without an open palette — also valid path.
-      if (cmd.kind === 'action') runSlashAction(cmd.action);
-      setSlashRange(null);
+      if (cmd.kind === 'local') runSlashAction(cmd.action);
       return;
     }
-    if (cmd.kind === 'action') {
-      // Strip the slash token and fire the action.
-      const before = input.slice(0, slashRange.start);
-      const after = input.slice(slashRange.end);
-      const next = (before + after).replace(/^\s+/, '');
+    if (cmd.kind === 'local') {
+      const next = (input.slice(0, slashRange.start) + input.slice(slashRange.end)).replace(/^\s+/, '');
       setInput(next);
       setSlashRange(null);
       runSlashAction(cmd.action);
       return;
     }
+    if (cmd.kind === 'control' || cmd.kind === 'unsupported') {
+      const inserted = `/${cmd.key}${cmd.kind === 'control' ? ' ' : ''}`;
+      const before = input.slice(0, slashRange.start);
+      const after = input.slice(slashRange.end);
+      replaceInputAndCaret(before + inserted + after, (before + inserted).length);
+      if (cmd.kind === 'control') focusPicker(cmd.key === 'model' ? 'composer-model-picker' : 'composer-reasoning-picker');
+      return;
+    }
     const { text: nextText, caret } = applyPromptTemplate(
       input, slashRange.start, slashRange.end, cmd.template, cmd.cursorMarker,
     );
-    setInput(nextText);
-    setSlashRange(null);
-    requestAnimationFrame(() => {
-      const ta = taRef.current;
-      if (!ta) return;
-      // Defensive: if focus was stolen during the template apply (mobile
-      // keyboard dismissal etc.), refocus before adjusting the selection so
-      // the caret actually lands where we expect.
-      if (document.activeElement !== ta) ta.focus();
-      try { ta.setSelectionRange(caret, caret); } catch {}
+    replaceInputAndCaret(nextText, caret);
+  }, [input, replaceInputAndCaret, runSlashAction, setInput, slashRange]);
+
+  const dispatchSlashSubmit = useCallback((): boolean => {
+    const result = resolveSlashSubmit(input, localizedCommands, {
+      modelIds: modelOptions.map((m) => m.id),
+      reasoningLevels,
+      defaultReasoning,
     });
-  }, [input, runSlashAction, setInput, slashRange, taRef]);
+    if (!result.handled) return false;
+    setSlashRange(null);
+    switch (result.type) {
+      case 'local':
+        setInput('');
+        runSlashAction(result.action);
+        return true;
+      case 'model':
+        if (result.value) {
+          setSelectedModel(result.value);
+          setError(`Model set to ${result.value}`);
+          setInput('');
+        } else {
+          setError(result.error || 'Usage: /model <model-id>');
+          setInput('/model ');
+          focusPicker('composer-model-picker');
+        }
+        return true;
+      case 'reasoning':
+        if (result.value !== undefined) {
+          reasoningTouchedRef.current = true;
+          setReasoningEffort(result.value);
+          setError(result.mode === 'reset' ? 'Reasoning reset to profile default' : `Reasoning set to ${result.value || 'profile default'}`);
+          setInput('');
+        } else {
+          setError(result.error || 'This reasoning view command is recognized but not supported in HermesDeck yet.');
+          setInput(result.mode === 'view-toggle' ? '' : '/reasoning ');
+          if (result.mode !== 'view-toggle') focusPicker('composer-reasoning-picker');
+        }
+        return true;
+      case 'unsupported':
+        setError(result.message);
+        setInput('');
+        return true;
+      case 'snippet':
+        replaceInputAndCaret(result.text, result.caret);
+        return true;
+    }
+  }, [defaultReasoning, input, localizedCommands, modelOptions, reasoningLevels, reasoningTouchedRef, replaceInputAndCaret, runSlashAction, setError, setInput, setReasoningEffort, setSelectedModel]);
 
   return {
     slashRange, setSlashRange,
     slashIdx, setSlashIdx,
     slashCommands,
-    handleInputChange, applySlashCommand,
+    handleInputChange, applySlashCommand, dispatchSlashSubmit,
   };
 }
