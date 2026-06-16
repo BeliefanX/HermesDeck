@@ -27,7 +27,11 @@ function extractModelItems(payload: unknown): ApiModelItem[] {
     seen.add(id);
     items.push({
       id,
-      provider: row && typeof row.provider === 'string' && row.provider.trim() ? row.provider.trim() : undefined,
+      provider: row && typeof row.provider === 'string' && row.provider.trim()
+        ? row.provider.trim()
+        : row && typeof row.owned_by === 'string' && row.owned_by.trim()
+          ? row.owned_by.trim()
+          : undefined,
       isDefault: row?.default === true || row?.is_default === true || row?.isDefault === true,
       baseUrl: row && typeof row.base_url === 'string' ? row.base_url : row && typeof row.baseUrl === 'string' ? row.baseUrl : undefined,
     });
@@ -35,8 +39,12 @@ function extractModelItems(payload: unknown): ApiModelItem[] {
   return items;
 }
 
-function isHermesAgentPlaceholder(provider: string | undefined, model: string | undefined): boolean {
-  return provider?.trim().toLowerCase() === 'hermes' && model?.trim().toLowerCase() === HERMES_AGENT_PLACEHOLDER_MODEL;
+function isHermesAgentPlaceholder(provider: string | undefined, model: string | undefined, profile = ''): boolean {
+  if (provider?.trim().toLowerCase() !== 'hermes') return false;
+  const normalizedModel = model?.trim().toLowerCase();
+  if (!normalizedModel) return false;
+  return normalizedModel === HERMES_AGENT_PLACEHOLDER_MODEL
+    || (!!profile && normalizedModel === profile.trim().toLowerCase());
 }
 
 async function fetchApiModels(profile = 'default'): Promise<ApiModelItem[]> {
@@ -62,10 +70,15 @@ async function fetchApiModels(profile = 'default'): Promise<ApiModelItem[]> {
 
 async function getModelsUncached(profile = 'default'): Promise<DeckModelsResponse> {
   const modelItems = (await fetchApiModels(profile))
-    .filter((item) => !isHermesAgentPlaceholder(item.provider || 'hermes', item.id));
+    .filter((item) => !isHermesAgentPlaceholder(item.provider || 'hermes', item.id, profile));
 
   if (!modelItems.length) {
-    throw new Error('/v1/models returned no selectable profile models.');
+    return {
+      providers: [],
+      orphanModels: [],
+      reasoningEffort: 'auto',
+      reasoningLevels: Array.from(new Set(BASE_REASONING_LEVELS)),
+    };
   }
 
   const byProvider = new Map<string, ModelInfo[]>();
