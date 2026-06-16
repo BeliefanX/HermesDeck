@@ -73,18 +73,18 @@ test('getModels uses /v1/profiles runtime model when /v1/models only exposes the
   assert.deepEqual(flattenModelIds(response), ['gpt-5.5']);
   assert.equal(response.default?.model, 'gpt-5.5');
   assert.equal(response.default?.provider, 'openai');
-  assert.equal(response.reasoningEffort, 'medium');
+  assert.equal(response.reasoningEffort, undefined);
   assert.equal(response.reasoningLevels.includes('medium'), true);
 });
 
-test('getModels maps missing/auto reasoning to medium and preserves explicit API reasoning', async () => {
+test('getModels leaves missing/auto reasoning unresolved and preserves explicit API reasoning', async () => {
   setMockHermesApi({
     models: { data: [{ id: 'Hermes Agent', provider: 'hermes' }] },
     profiles: { profiles: [{ id: 'default', model: 'gpt-5.5', provider: 'openai' }] },
   });
   let mod = await loadModels();
   let response = await mod.getModels('default');
-  assert.equal(response.reasoningEffort, 'medium');
+  assert.equal(response.reasoningEffort, undefined);
 
   setMockHermesApi({
     models: { data: [{ id: 'Hermes Agent', provider: 'hermes' }] },
@@ -92,7 +92,7 @@ test('getModels maps missing/auto reasoning to medium and preserves explicit API
   });
   mod = await loadModels();
   response = await mod.getModels('default');
-  assert.equal(response.reasoningEffort, 'medium');
+  assert.equal(response.reasoningEffort, undefined);
 
   setMockHermesApi({
     models: { data: [{ id: 'Hermes Agent', provider: 'hermes' }] },
@@ -102,6 +102,28 @@ test('getModels maps missing/auto reasoning to medium and preserves explicit API
   response = await mod.getModels('default');
   assert.equal(response.reasoningEffort, 'high');
   assert.equal(response.reasoningLevels.includes('high'), true);
+});
+
+test('getModels resolves defaults per selected profile without sharing hard-coded defaults', async () => {
+  setMockHermesApi({
+    models: { data: [{ id: 'Hermes Agent', provider: 'hermes' }] },
+    profiles: {
+      profiles: [
+        { id: 'default', model: 'gpt-5.5', provider: 'openai', reasoningEffort: 'high' },
+        { id: 'research', model: 'claude-sonnet-4-20250514', provider: 'anthropic', reasoningEffort: 'minimal' },
+      ],
+    },
+  });
+
+  const { getModels } = await loadModels();
+  const defaultResponse = await getModels('default');
+  const researchResponse = await getModels('research');
+
+  assert.equal(defaultResponse.default?.model, 'gpt-5.5');
+  assert.equal(defaultResponse.reasoningEffort, 'high');
+  assert.equal(researchResponse.default?.model, 'claude-sonnet-4-20250514');
+  assert.equal(researchResponse.default?.provider, 'anthropic');
+  assert.equal(researchResponse.reasoningEffort, 'minimal');
 });
 
 test('getModels does not re-add profile runtime placeholders from /v1/profiles', async () => {

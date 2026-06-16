@@ -12,6 +12,12 @@ interface HermesSessionRow {
   profile_id?: unknown;
   source?: unknown;
   model?: unknown;
+  reasoning_effort?: unknown;
+  reasoningEffort?: unknown;
+  current_reasoning_effort?: unknown;
+  currentReasoningEffort?: unknown;
+  resolved_reasoning_effort?: unknown;
+  resolvedReasoningEffort?: unknown;
   title?: unknown;
   preview?: unknown;
   started_at?: unknown;
@@ -138,6 +144,12 @@ function normalizeSession(row: HermesSessionRow, requestedProfile?: string): Dec
     title: titleFor(row, id),
     source: stringValue(row.source) || 'api',
     model: stringValue(row.model),
+    reasoningEffort: stringValue(row.resolved_reasoning_effort)
+      || stringValue(row.resolvedReasoningEffort)
+      || stringValue(row.current_reasoning_effort)
+      || stringValue(row.currentReasoningEffort)
+      || stringValue(row.reasoning_effort)
+      || stringValue(row.reasoningEffort),
     createdAt,
     updatedAt,
     messageCount: messageCount === undefined ? undefined : Math.max(0, Math.trunc(messageCount)),

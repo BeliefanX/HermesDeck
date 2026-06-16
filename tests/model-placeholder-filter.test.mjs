@@ -11,9 +11,9 @@ test('Hermes /v1/models profile-id placeholder is not exposed as a selectable co
   assert.match(source, /filter\(\(item\) => !isHermesAgentPlaceholder\(item\.provider \|\| 'hermes', item\.id, profile\)\)/);
 });
 
-test('empty selectable model catalog resolves reasoning from runtime contract, not generic auto', () => {
-  assert.match(source, /const DEFAULT_REASONING_EFFORT = 'medium'/);
-  assert.match(source, /if \(!raw \|\| raw === 'auto'\) return DEFAULT_REASONING_EFFORT/);
+test('empty selectable model catalog leaves missing/auto reasoning unresolved', () => {
+  assert.doesNotMatch(source, /const DEFAULT_REASONING_EFFORT = 'medium'/);
+  assert.match(source, /if \(!raw \|\| raw === 'auto'\) return undefined/);
   assert.match(source, /reasoningEffort,\s*\n\s*reasoningLevels,/);
 });
 

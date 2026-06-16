@@ -31,6 +31,18 @@ export function useChatModels(profile: string) {
     }).catch(() => { /* keep local UI responsive; stream route can still use current selection */ });
   }, [profile]);
 
+  const setObservedModel = useCallback((modelId: string, provider = 'observed') => {
+    const id = modelId.trim();
+    setSelectedModelState(id);
+    if (!id) return;
+    setModelOptions((cur) => {
+      if (cur.some((option) => option.id === id)) return cur;
+      const next = [...cur, { id, provider }];
+      optionsRef.current = next;
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     let alive = true;
     const ac = new AbortController();
@@ -80,10 +92,10 @@ export function useChatModels(profile: string) {
         const levels = Array.from(new Set([...(r.reasoningLevels || []), ...REASONING_LEVELS, cfg]
           .map((level) => level.trim().toLowerCase())
           .filter((level) => Boolean(level) && level !== 'auto')));
-        // Deck interprets missing/"auto" reasoning from the Hermes/OpenAI runtime
-        // contract as the current default baseline; explicit API values win.
-        const resolved: ReasoningEffort = cfg && cfg !== 'auto' ? cfg : 'medium';
-        const nextLevels = levels.includes(resolved) ? levels : [...levels, resolved];
+        // Missing/"auto" is not a resolved runtime value. Show an unknown
+        // baseline instead of inventing a hard-coded Hermes default.
+        const resolved: ReasoningEffort = cfg && cfg !== 'auto' ? cfg : '';
+        const nextLevels = resolved && !levels.includes(resolved) ? [...levels, resolved] : levels;
         setReasoningLevels(nextLevels);
         setDefaultReasoning(resolved);
         // Always snap reasoning to the new profile's effective config. We just
@@ -100,14 +112,14 @@ export function useChatModels(profile: string) {
         optionsRef.current = [];
         setSelectedModelState('');
         setReasoningLevels(REASONING_LEVELS);
-        setDefaultReasoning('medium');
-        setReasoningEffort('medium');
+        setDefaultReasoning('');
+        setReasoningEffort('');
       });
     return () => { alive = false; ac.abort(); };
   }, [profile]);
 
   return {
-    modelOptions, selectedModel, setSelectedModel,
+    modelOptions, selectedModel, setSelectedModel, setObservedModel,
     reasoningEffort, setReasoningEffort,
     defaultReasoning, reasoningLevels, reasoningTouchedRef,
   };

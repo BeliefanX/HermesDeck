@@ -39,7 +39,7 @@ export interface ChatStreamBody {
 export interface ChatStreamProjectionHooks {
   onStart?: (input: { sessionId: string; body: ChatStreamBody; metadata: ActiveStreamMetadata }) => void;
   onCanonicalSessionId?: (input: { oldSessionId: string; sessionId: string; profileId: string }) => void;
-  onDone?: (input: { sessionId: string; profileId: string; content?: string; responseId?: string; attachments?: unknown }) => void;
+  onDone?: (input: { sessionId: string; profileId: string; content?: string; responseId?: string; attachments?: unknown; model?: string; reasoningEffort?: string }) => void;
   onError?: (input: { sessionId: string; profileId: string; error: string; detail?: string }) => void;
 }
 
@@ -61,6 +61,56 @@ const HEARTBEAT_INTERVAL_MS = 15_000;
 // arbitrary write callbacks so it can plug into a hub-subscriber lambda.
 function encodeSseFrame(event: string, jsonData: string): Uint8Array {
   return new TextEncoder().encode(`event: ${event}\ndata: ${jsonData}\n\n`);
+}
+
+function safeRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function normalizeObservedReasoning(value: unknown): string | undefined {
+  const raw = firstString(value)?.toLowerCase();
+  return raw && raw !== 'auto' ? raw : undefined;
+}
+
+/** Extract the effective runtime model/reasoning when Hermes exposes it in
+ * stream events. The final response object is the source of truth; request-body
+ * values are only a pre-flight override and must not be treated as observed. */
+export function extractRuntimeSettingsFromEvent(obj: unknown): { model?: string; reasoningEffort?: string } {
+  const root = safeRecord(obj);
+  if (!root) return {};
+  const response = safeRecord(root.response);
+  const item = safeRecord(root.item);
+  const reasoning = safeRecord(root.reasoning) || safeRecord(response?.reasoning) || safeRecord(item?.reasoning);
+  const model = firstString(
+    response?.model,
+    response?.current_model,
+    response?.currentModel,
+    root.model,
+    root.current_model,
+    root.currentModel,
+    item?.model,
+  );
+  const reasoningEffort = normalizeObservedReasoning(
+    reasoning?.effort
+      ?? root.reasoning_effort
+      ?? root.reasoningEffort
+      ?? root.current_reasoning_effort
+      ?? root.currentReasoningEffort
+      ?? response?.reasoning_effort
+      ?? response?.reasoningEffort
+      ?? response?.current_reasoning_effort
+      ?? response?.currentReasoningEffort
+      ?? item?.reasoning_effort
+      ?? item?.reasoningEffort,
+  );
+  return { ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}) };
 }
 
 function safeEnqueue(controller: ReadableStreamDefaultController<Uint8Array>, frame: Uint8Array): boolean {
@@ -295,6 +345,8 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
     const decoder = new TextDecoder();
     let full = '';
     let responseId = '';
+    let observedModel = '';
+    let observedReasoningEffort = '';
     let buf = '';
     const emittedAtts: EmittedAttachment[] = [];
     const seenAttKeys = new Set<string>();
@@ -331,6 +383,9 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
         const type = String(obj.type || obj.event || '');
         const candidateResponseId = obj?.response?.id || obj?.item?.id || (type.startsWith('response.') ? obj.id : undefined);
         if (candidateResponseId && !responseId) responseId = String(candidateResponseId);
+        const observed = extractRuntimeSettingsFromEvent(obj);
+        if (observed.model) observedModel = observed.model;
+        if (observed.reasoningEffort) observedReasoningEffort = observed.reasoningEffort;
 
         // Always forward the raw event so the client can render tool calls,
         // skill events, subagent delegations, etc. into the chat thread.
@@ -389,6 +444,8 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
       responseId: responseId || undefined,
       sessionId: sessionId || undefined,
       attachments: slimAtts,
+      model: observedModel || undefined,
+      reasoningEffort: observedReasoningEffort || undefined,
     };
     runProjectionHook(() => hooks?.onDone?.({
       sessionId: sessionId || stream.sessionId,
@@ -396,6 +453,8 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
       content: donePayload.content,
       responseId: responseId || undefined,
       attachments: slimAtts,
+      model: observedModel || undefined,
+      reasoningEffort: observedReasoningEffort || undefined,
     }));
     emitToHub(stream, 'done', donePayload);
     markStreamDone(stream);

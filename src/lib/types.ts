@@ -82,6 +82,8 @@ export interface DeckSession {
   title: string;
   source: string;
   model?: string;
+  /** Effective reasoning effort if exposed by Hermes or observed by Deck. */
+  reasoningEffort?: string;
   createdAt?: string;
   updatedAt?: string;
   messageCount?: number;

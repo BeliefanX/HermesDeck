@@ -67,6 +67,7 @@ export type StartProjectedTurnInput = {
   message: string;
   attachments?: unknown;
   model?: string;
+  reasoningEffort?: string;
   previousResponseId?: string;
 };
 
@@ -76,6 +77,8 @@ export type FinalizeProjectedTurnInput = {
   content?: string;
   responseId?: string;
   attachments?: unknown;
+  model?: string;
+  reasoningEffort?: string;
 };
 
 export type RecordProjectedErrorInput = {
@@ -355,6 +358,7 @@ function sessionSummary(session: ProjectedSession): DeckSession {
     title: session.title,
     source: session.source || 'hermesdeck',
     model: session.model,
+    reasoningEffort: session.reasoningEffort,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     messageCount: session.messages?.length ?? session.messageCount ?? 0,
@@ -390,6 +394,7 @@ export function startProjectedTurn(input: StartProjectedTurnInput): void {
         title: previewTitle(text, canonicalId),
         source: 'hermesdeck',
         model: input.model,
+        reasoningEffort: input.reasoningEffort,
         createdAt: now,
         updatedAt: now,
         messageCount: 0,
@@ -411,6 +416,7 @@ export function startProjectedTurn(input: StartProjectedTurnInput): void {
     session.ownerUserId ||= input.ownerUserId;
     session.ownerRole ||= input.ownerRole;
     session.model = input.model || session.model;
+    session.reasoningEffort = input.reasoningEffort || session.reasoningEffort;
     session.previousResponseId = input.previousResponseId || session.previousResponseId;
     session.status = 'running';
     session.updatedAt = now;
@@ -503,6 +509,8 @@ export function finalizeProjectedTurn(input: FinalizeProjectedTurnInput): void {
       });
     }
     session.responseId = input.responseId || session.responseId;
+    session.model = input.model || session.model;
+    session.reasoningEffort = input.reasoningEffort || session.reasoningEffort;
     session.status = 'completed';
     session.updatedAt = now;
     session.messageCount = session.messages.length;

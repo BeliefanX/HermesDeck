@@ -715,6 +715,17 @@ export function useChatStream(params: UseChatStreamParams) {
           sid = confirmedSid;
         }
         if (responseId) setResponseIds((r) => ({ ...r, [sid]: responseId }));
+        const observedModel = typeof obj.model === 'string' && obj.model.trim() ? obj.model.trim() : '';
+        const observedReasoning = typeof obj.reasoningEffort === 'string' && obj.reasoningEffort.trim()
+          ? obj.reasoningEffort.trim().toLowerCase()
+          : '';
+        if (observedModel || observedReasoning) {
+          setSessions((list) => list.map((x) => x.id === sid ? {
+            ...x,
+            ...(observedModel ? { model: observedModel } : {}),
+            ...(observedReasoning ? { reasoningEffort: observedReasoning } : {}),
+          } : x));
+        }
         if (finalAtts && finalAtts.length) {
           const inf = inflightRef.current;
           const targetId = (inf && inf.streamId === init.streamId)
@@ -779,7 +790,7 @@ export function useChatStream(params: UseChatStreamParams) {
       sid = genSessionId();
       const title = text.split('\n')[0].slice(0, 64) || t.newChat;
       const created: LocalSession = {
-        id: sid, profileId: profile, title, source: 'hermesdeck', model: profile,
+        id: sid, profileId: profile, title, source: 'hermesdeck', model: selectedModel || undefined, reasoningEffort: reasoningEffort || undefined,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), messageCount: 0,
       };
       setSessions((s) => [created, ...s.filter((x) => x.id !== sid)]);
@@ -804,7 +815,13 @@ export function useChatStream(params: UseChatStreamParams) {
           { id: assistantId, role: 'assistant', content: '', createdAt: new Date().toISOString() },
         ];
     setMessages((m) => ({ ...m, [sid]: [...(m[sid] || []), ...newMessages] }));
-    setSessions((s) => s.map((x) => x.id === sid ? { ...x, updatedAt: new Date().toISOString(), messageCount: (x.messageCount || 0) + newMessages.length } : x));
+    setSessions((s) => s.map((x) => x.id === sid ? {
+      ...x,
+      model: selectedModel || x.model,
+      reasoningEffort: reasoningEffort || x.reasoningEffort,
+      updatedAt: new Date().toISOString(),
+      messageCount: (x.messageCount || 0) + newMessages.length,
+    } : x));
     // Snapshot the attachments we just sent so we can restore them if the
     // request fails before the server acknowledges (network drop, 5xx). The
     // user's "I uploaded these" mental model shouldn't break on transient

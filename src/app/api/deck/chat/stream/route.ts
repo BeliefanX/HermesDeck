@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
         message: typeof streamBody.message === 'string' ? streamBody.message : '',
         attachments: streamBody.attachments,
         model: typeof streamBody.model === 'string' ? streamBody.model : undefined,
+        reasoningEffort: typeof streamBody.reasoningEffort === 'string' ? streamBody.reasoningEffort : undefined,
         previousResponseId: typeof streamBody.previousResponseId === 'string' ? streamBody.previousResponseId : undefined,
       });
       if (requestedSessionId && requestedSessionId !== sessionId) {
@@ -109,8 +110,8 @@ export async function POST(req: NextRequest) {
     onCanonicalSessionId({ oldSessionId, sessionId, profileId: projectedProfileId }) {
       reconcileProjectedSessionId(oldSessionId, sessionId, projectedProfileId);
     },
-    onDone({ sessionId, profileId: projectedProfileId, content, responseId, attachments: doneAttachments }) {
-      finalizeProjectedTurn({ sessionId, profileId: projectedProfileId, content, responseId, attachments: doneAttachments });
+    onDone({ sessionId, profileId: projectedProfileId, content, responseId, attachments: doneAttachments, model, reasoningEffort }) {
+      finalizeProjectedTurn({ sessionId, profileId: projectedProfileId, content, responseId, attachments: doneAttachments, model, reasoningEffort });
     },
     onError({ sessionId, profileId: projectedProfileId, error, detail }) {
       recordProjectedTurnError({ sessionId, profileId: projectedProfileId, error, detail });

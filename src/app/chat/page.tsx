@@ -75,7 +75,7 @@ function ChatPageInner() {
   // Per-turn overrides surfaced in the composer. Both are forwarded to the
   // Hermes /v1/responses endpoint via the chat-stream BFF.
   const {
-    modelOptions, selectedModel, setSelectedModel,
+    modelOptions, selectedModel, setSelectedModel, setObservedModel,
     reasoningEffort, setReasoningEffort,
     defaultReasoning, reasoningLevels, reasoningTouchedRef,
   } = useChatModels(profile);
@@ -183,6 +183,17 @@ function ChatPageInner() {
   }, [profile, hydrated, setMetaStoreRaw]);
 
   const activeMessages = messages[active] || [];
+  const activeSession = sessions.find((s) => s.id === active);
+
+  useEffect(() => {
+    if (!hydrated || !activeSession) return;
+    if (activeSession.model) setObservedModel(activeSession.model, activeSession.source || 'session');
+    const actualReasoning = activeSession.reasoningEffort?.trim().toLowerCase();
+    if (actualReasoning && actualReasoning !== 'auto') {
+      reasoningTouchedRef.current = false;
+      setReasoningEffort(actualReasoning);
+    }
+  }, [activeSession?.id, activeSession?.model, activeSession?.reasoningEffort, activeSession?.source, hydrated, reasoningTouchedRef, setObservedModel, setReasoningEffort]);
 
   const { toolNameByCallId, visibleMessages, hiddenToolCount } = useVisibleMessages(
     activeMessages, showToolDetails, busy,

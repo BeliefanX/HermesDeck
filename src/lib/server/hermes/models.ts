@@ -2,7 +2,6 @@ import type { DeckModelsResponse, ModelInfo } from '@/lib/types';
 import { apiHeaders, getHermesApiBase, HERMES_API_BASE, makeKeyedCache } from './core';
 
 const BASE_REASONING_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const;
-const DEFAULT_REASONING_EFFORT = 'medium';
 const HERMES_AGENT_PLACEHOLDER_MODEL = 'hermes agent';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -56,12 +55,11 @@ function firstString(...values: unknown[]): string {
   return '';
 }
 
-function normalizeReasoningEffort(value: unknown): string {
+function normalizeReasoningEffort(value: unknown): string | undefined {
   const raw = firstString(value).toLowerCase();
-  // Deck resolves Hermes/OpenAI's implicit or "auto" runtime reasoning default
-  // to the current composer baseline. If the API starts returning an explicit
-  // resolved field, normalizeApiProfileRuntime should pass that through first.
-  if (!raw || raw === 'auto') return DEFAULT_REASONING_EFFORT;
+  // Missing/"auto" is not a resolved runtime value. Deck must not invent a
+  // hard-coded default; if Hermes exposes a resolved/current field, pass it first.
+  if (!raw || raw === 'auto') return undefined;
   return raw;
 }
 
@@ -84,12 +82,18 @@ function normalizeApiProfileRuntime(raw: unknown): ApiProfileRuntime | null {
   const model = firstString(raw.model, raw.current_model, raw.currentModel, raw.default_model, raw.defaultModel, agent?.model);
   const provider = firstString(raw.provider, raw.current_provider, raw.currentProvider, raw.default_provider, raw.defaultProvider, agent?.provider);
   const reasoningEffort = normalizeReasoningEffort(
-    raw.reasoning_effort
+    raw.resolved_reasoning_effort
+      ?? raw.resolvedReasoningEffort
+      ?? raw.current_reasoning_effort
+      ?? raw.currentReasoningEffort
+      ?? raw.reasoning_effort
       ?? raw.reasoningEffort
       ?? raw.default_reasoning_effort
       ?? raw.defaultReasoningEffort
-      ?? raw.current_reasoning_effort
-      ?? raw.currentReasoningEffort
+      ?? agent?.resolved_reasoning_effort
+      ?? agent?.resolvedReasoningEffort
+      ?? agent?.current_reasoning_effort
+      ?? agent?.currentReasoningEffort
       ?? agent?.reasoning_effort
       ?? agent?.reasoningEffort,
   );
@@ -161,7 +165,10 @@ async function getModelsUncached(profile = 'default'): Promise<DeckModelsRespons
   }
 
   const reasoningEffort = normalizeReasoningEffort(profileRuntime?.reasoningEffort);
-  const reasoningLevels = Array.from(new Set([...BASE_REASONING_LEVELS, reasoningEffort]));
+  const reasoningLevels = Array.from(new Set([
+    ...BASE_REASONING_LEVELS,
+    ...(reasoningEffort ? [reasoningEffort] : []),
+  ]));
 
   if (!modelItems.length) {
     return {
