@@ -1778,6 +1778,13 @@ p{line-height:1.6}
   html[data-chat-mobile-view="thread"] .composer{
     padding-bottom:calc(8px + var(--safe-bottom)) !important;
   }
+  /* Keyboard-visible only: iOS PWA can keep reporting a non-zero safe-bottom
+     while visualViewport has already lifted .page-chat to the keyboard edge.
+     Keep the hidden-keyboard home-indicator gap above, but collapse it once the
+     textarea is focused so the composer sits close to the keyboard. */
+  html[data-composer-focus="1"][data-chat-mobile-view="thread"] .composer{
+    padding-bottom:4px !important;
+  }
   /* Flat composer: tighten the inner card box on mobile so the textarea sits
      close to the controls without the old 12px nested padding stealing space. */
   .composer.composer-flat .composer-row.composer-row-stack{padding:6px 8px;gap:4px}
