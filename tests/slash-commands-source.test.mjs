@@ -12,8 +12,17 @@ test('chat slash menu exposes the complete command catalog and quick-start promp
     'new', 'clear', 'regen', 'stop',
     'summarize', 'translate-en', 'translate-zh', 'explain', 'fix', 'test',
     'refactor', 'docstring', 'improve', 'brainstorm', 'plan',
+    'model', 'reasoning',
     'deck', 'profile', 'readme',
   ]);
+
+  // Composer pickers are not slash-dispatched actions yet; expose safe prompt
+  // commands so users can discover the model/reasoning controls without the
+  // menu claiming it changed state.
+  assert.match(prompts, /key: 'reasoning'/);
+  assert.match(prompts, /reasoningTpl: '请说明当前对话的推理强度（reasoning effort）选择方式/);
+  assert.match(prompts, /key: 'model'/);
+  assert.match(prompts, /modelTpl: '请说明当前对话的模型选择方式/);
 
   // The last three mirror the empty-state quick actions so those prompts are
   // discoverable after the welcome screen is gone too.

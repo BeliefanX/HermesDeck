@@ -91,6 +91,14 @@ export function useLocalizedCommands(): SlashCommand[] {
       planDesc: '把目标拆为可执行步骤',
       planTpl: '请将下方目标拆解为清晰、可执行的分步计划:\n\n{cursor}',
 
+      modelLabel: '模型选择',
+      modelDesc: '说明如何选择本轮对话模型',
+      modelTpl: '请说明当前对话的模型选择方式，以及如何根据任务选择合适模型。{cursor}',
+
+      reasoningLabel: '推理强度',
+      reasoningDesc: '说明如何选择本轮 reasoning effort',
+      reasoningTpl: '请说明当前对话的推理强度（reasoning effort）选择方式，以及 low / medium / high 适合哪些任务。{cursor}',
+
       deckLabel: 'HermesDeck 介绍',
       deckDesc: '说明 HermesDeck 当前能力',
       deckTpl: '请介绍一下 HermesDeck 现在能做些什么。{cursor}',
@@ -153,6 +161,14 @@ export function useLocalizedCommands(): SlashCommand[] {
       planDesc: 'Break a goal into actionable steps',
       planTpl: 'Please break the goal below into a clear, actionable step-by-step plan:\n\n{cursor}',
 
+      modelLabel: 'Model selection',
+      modelDesc: 'Explain how to choose the model for this turn',
+      modelTpl: 'Please explain how model selection works for this chat, and how to choose an appropriate model for a task. {cursor}',
+
+      reasoningLabel: 'Reasoning effort',
+      reasoningDesc: 'Explain how to choose reasoning effort for this turn',
+      reasoningTpl: 'Please explain how reasoning effort works for this chat, and which tasks fit low / medium / high. {cursor}',
+
       deckLabel: 'HermesDeck overview',
       deckDesc: 'Summarize what HermesDeck can do right now',
       deckTpl: 'Please summarize what HermesDeck can do right now. {cursor}',
@@ -184,6 +200,10 @@ export function useLocalizedCommands(): SlashCommand[] {
     { kind: 'prompt', key: 'improve',      label: t.improveLabel,   description: t.improveDesc,   template: t.improveTpl },
     { kind: 'prompt', key: 'brainstorm',   label: t.brainstormLabel,description: t.brainstormDesc,template: t.brainstormTpl },
     { kind: 'prompt', key: 'plan',         label: t.planLabel,      description: t.planDesc,      template: t.planTpl },
+    // Composer controls are pickers today, not slash-dispatched actions. Keep
+    // them discoverable without pretending the template can change model state.
+    { kind: 'prompt', key: 'model',        label: t.modelLabel,     description: t.modelDesc,     template: t.modelTpl },
+    { kind: 'prompt', key: 'reasoning',    label: t.reasoningLabel, description: t.reasoningDesc, template: t.reasoningTpl },
     // Keep the empty-state quick-start prompts discoverable from the slash menu too.
     { kind: 'prompt', key: 'deck',         label: t.deckLabel,      description: t.deckDesc,      template: t.deckTpl },
     { kind: 'prompt', key: 'profile',      label: t.profileLabel,   description: t.profileDesc,   template: t.profileTpl },
