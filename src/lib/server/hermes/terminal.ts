@@ -1,20 +1,36 @@
 import type { TerminalAction, TerminalRunRequest, TerminalRunResult } from '@/lib/types';
 import { execFileAsync, redactSecrets } from './core';
-import { getHealth } from './health';
+import { getHealth, hermesVersion } from './health';
+import { getProfiles } from './profiles';
 
+type BuiltTerminalAction = { file: string; args: string[] } | { synthetic: () => Promise<{ stdout: string; stderr?: string }> };
 type TerminalActionSpec = TerminalAction & {
-  build: (req: Required<Pick<TerminalRunRequest, 'profileId'>>) => { file: string; args: string[] } | { synthetic: () => Promise<{ stdout: string; stderr?: string }> };
+  localOnly?: boolean;
+  build: (req: Required<Pick<TerminalRunRequest, 'profileId'>>) => BuiltTerminalAction;
 };
 
-const terminalActions: TerminalActionSpec[] = [
-  { id: 'hermes.version', label: 'Hermes version', description: 'Print the active Hermes CLI version.', commandPreview: 'hermes --version', category: 'hermes', maxTimeoutMs: 8000, build: () => ({ file: 'hermes', args: ['--version'] }) },
-  { id: 'hermes.profile.list', label: 'List profiles', description: 'List Hermes profiles used for agent / execution-context switching.', commandPreview: 'hermes profile list', category: 'hermes', maxTimeoutMs: 10000, build: () => ({ file: 'hermes', args: ['profile', 'list'] }) },
-  { id: 'hermes.profile.show', label: 'Show profile', description: 'Print the configuration summary for the active or selected profile.', commandPreview: 'hermes profile show [profile]', category: 'hermes', profileAware: true, maxTimeoutMs: 10000, build: ({ profileId }) => ({ file: 'hermes', args: profileId && profileId !== 'default' ? ['profile', 'show', profileId] : ['profile', 'show'] }) },
-  { id: 'hermes.tools.list', label: 'List tools', description: 'List the toolsets Hermes currently exposes.', commandPreview: 'hermes tools list', category: 'hermes', maxTimeoutMs: 12000, build: () => ({ file: 'hermes', args: ['tools', 'list'] }) },
-  { id: 'hermes.skills.list', label: 'List skills', description: 'List Hermes skills (output is truncated to a safe length).', commandPreview: 'hermes skills list', category: 'hermes', maxTimeoutMs: 12000, build: () => ({ file: 'hermes', args: ['skills', 'list'] }) },
-  { id: 'system.cwd', label: 'Process snapshot', description: 'Show the HermesDeck server working directory and Node runtime info.', commandPreview: 'node process snapshot', category: 'system', maxTimeoutMs: 3000, build: () => ({ synthetic: async () => ({ stdout: JSON.stringify({ cwd: process.cwd(), node: process.version, platform: process.platform, pid: process.pid, uptimeSeconds: Math.round(process.uptime()) }, null, 2) }) }) },
-  { id: 'diagnostic.health', label: 'Deck health check', description: 'Run the HermesDeck BFF health check, including API Server / Dashboard probes.', commandPreview: 'HermesDeck health snapshot', category: 'diagnostic', maxTimeoutMs: 5000, build: () => ({ synthetic: async () => ({ stdout: JSON.stringify(await getHealth(), null, 2) }) }) },
+const apiTerminalActions: TerminalActionSpec[] = [
+  { id: 'diagnostic.health', label: 'Deck health check', description: 'Run the HermesDeck BFF health check against the Hermes Agent API.', commandPreview: 'Hermes Agent API health snapshot', category: 'diagnostic', maxTimeoutMs: 5000, build: () => ({ synthetic: async () => ({ stdout: JSON.stringify(await getHealth(), null, 2) }) }) },
+  { id: 'hermes.api.version', label: 'Hermes API version', description: 'Read Hermes Agent version information from the configured API.', commandPreview: 'Hermes Agent API /health', category: 'hermes', maxTimeoutMs: 5000, build: () => ({ synthetic: async () => ({ stdout: `${await hermesVersion()}\n` }) }) },
+  { id: 'hermes.api.profiles', label: 'List profiles', description: 'List Hermes profiles from the Hermes Agent profiles API.', commandPreview: 'Hermes Agent API profiles', category: 'hermes', maxTimeoutMs: 8000, build: () => ({ synthetic: async () => ({ stdout: JSON.stringify({ profiles: await getProfiles() }, null, 2) }) }) },
 ];
+
+const localDiagnosticActions: TerminalActionSpec[] = [
+  { id: 'hermes.version', label: 'Hermes CLI version', description: 'Developer-only local Hermes CLI version diagnostic.', commandPreview: 'hermes --version', category: 'hermes', localOnly: true, maxTimeoutMs: 8000, build: () => ({ file: 'hermes', args: ['--version'] }) },
+  { id: 'hermes.profile.list', label: 'List profiles (CLI)', description: 'Developer-only local Hermes CLI profile listing.', commandPreview: 'hermes profile list', category: 'hermes', localOnly: true, maxTimeoutMs: 10000, build: () => ({ file: 'hermes', args: ['profile', 'list'] }) },
+  { id: 'hermes.profile.show', label: 'Show profile (CLI)', description: 'Developer-only local Hermes CLI profile summary.', commandPreview: 'hermes profile show [profile]', category: 'hermes', profileAware: true, localOnly: true, maxTimeoutMs: 10000, build: ({ profileId }) => ({ file: 'hermes', args: profileId && profileId !== 'default' ? ['profile', 'show', profileId] : ['profile', 'show'] }) },
+  { id: 'hermes.tools.list', label: 'List tools (CLI)', description: 'Developer-only local Hermes CLI tools listing.', commandPreview: 'hermes tools list', category: 'hermes', localOnly: true, maxTimeoutMs: 12000, build: () => ({ file: 'hermes', args: ['tools', 'list'] }) },
+  { id: 'hermes.skills.list', label: 'List skills (CLI)', description: 'Developer-only local Hermes CLI skills listing.', commandPreview: 'hermes skills list', category: 'hermes', localOnly: true, maxTimeoutMs: 12000, build: () => ({ file: 'hermes', args: ['skills', 'list'] }) },
+  { id: 'system.cwd', label: 'Process snapshot', description: 'Developer-only HermesDeck server process snapshot.', commandPreview: 'node process snapshot', category: 'system', localOnly: true, maxTimeoutMs: 3000, build: () => ({ synthetic: async () => ({ stdout: JSON.stringify({ cwd: process.cwd(), node: process.version, platform: process.platform, pid: process.pid, uptimeSeconds: Math.round(process.uptime()) }, null, 2) }) }) },
+];
+
+function localDiagnosticsEnabled() {
+  return process.env.HERMESDECK_LOCAL_DIAGNOSTICS === '1';
+}
+
+function availableTerminalActions(): TerminalActionSpec[] {
+  return localDiagnosticsEnabled() ? [...apiTerminalActions, ...localDiagnosticActions] : apiTerminalActions;
+}
 
 function clampTimeout(input: unknown, max: number) {
   const n = Number(input || 8000);
@@ -33,13 +49,17 @@ function limitOutput(value: string, max = 64000) {
 }
 
 export function listTerminalActions(): TerminalAction[] {
-  return terminalActions.map(({ build: _build, ...action }) => action);
+  return availableTerminalActions().map(({ build: _build, localOnly: _localOnly, ...action }) => action);
 }
 
 export async function runTerminalAction(body: TerminalRunRequest): Promise<TerminalRunResult> {
   const actionId = String(body?.actionId || '');
-  const spec = terminalActions.find((a) => a.id === actionId);
-  if (!spec) throw new Error('Unknown terminal action');
+  const spec = availableTerminalActions().find((a) => a.id === actionId);
+  if (!spec) {
+    const localSpec = localDiagnosticActions.find((a) => a.id === actionId);
+    if (localSpec) throw new Error('Terminal action unavailable: local diagnostics require HERMESDECK_LOCAL_DIAGNOSTICS=1.');
+    throw new Error('Unknown terminal action');
+  }
   const profileId = validateProfileId(body.profileId);
   const timeout = clampTimeout(body.timeoutMs, spec.maxTimeoutMs);
   const startedAtMs = Date.now();
