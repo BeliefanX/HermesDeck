@@ -50,5 +50,7 @@ test('bilingual UI controls and translations are wired into major HermesDeck sur
   assert.match(chat, /composerPlaceholder: 'Ask Hermes/);
 
   const sw = read('public/sw.js');
-  assert.match(sw, /hermesdeck-pwa-v13/);
+  assert.match(sw, /const CACHE_VERSION = 'hermesdeck-pwa-v\d+'/);
+  assert.match(sw, /const SHELL_CACHE = `\$\{CACHE_VERSION\}-shell`/);
+  assert.match(sw, /const RUNTIME_CACHE = `\$\{CACHE_VERSION\}-runtime`/);
 });
