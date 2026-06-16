@@ -90,6 +90,18 @@ export function useLocalizedCommands(): SlashCommand[] {
       planLabel: '拆解步骤',
       planDesc: '把目标拆为可执行步骤',
       planTpl: '请将下方目标拆解为清晰、可执行的分步计划:\n\n{cursor}',
+
+      deckLabel: 'HermesDeck 介绍',
+      deckDesc: '说明 HermesDeck 当前能力',
+      deckTpl: '请介绍一下 HermesDeck 现在能做些什么。{cursor}',
+
+      profileLabel: 'Profile 模型与工具集',
+      profileDesc: '列出当前 Profile 的模型与工具集',
+      profileTpl: '请列出当前 Profile 的模型与工具集。{cursor}',
+
+      readmeLabel: 'README 草稿',
+      readmeDesc: '为本次会话起草 README 描述',
+      readmeTpl: '请为本次会话起草一段 README 描述。{cursor}',
     },
     en: {
       newLabel: 'New chat',     newDesc: 'Open a fresh local conversation',
@@ -140,6 +152,18 @@ export function useLocalizedCommands(): SlashCommand[] {
       planLabel: 'Plan steps',
       planDesc: 'Break a goal into actionable steps',
       planTpl: 'Please break the goal below into a clear, actionable step-by-step plan:\n\n{cursor}',
+
+      deckLabel: 'HermesDeck overview',
+      deckDesc: 'Summarize what HermesDeck can do right now',
+      deckTpl: 'Please summarize what HermesDeck can do right now. {cursor}',
+
+      profileLabel: 'Profile models & toolsets',
+      profileDesc: 'List the active profile’s model and toolsets',
+      profileTpl: 'Please list the active profile’s model and toolsets. {cursor}',
+
+      readmeLabel: 'README draft',
+      readmeDesc: 'Draft a README description for this session',
+      readmeTpl: 'Please draft a README description for this session. {cursor}',
     },
   });
 
@@ -160,6 +184,10 @@ export function useLocalizedCommands(): SlashCommand[] {
     { kind: 'prompt', key: 'improve',      label: t.improveLabel,   description: t.improveDesc,   template: t.improveTpl },
     { kind: 'prompt', key: 'brainstorm',   label: t.brainstormLabel,description: t.brainstormDesc,template: t.brainstormTpl },
     { kind: 'prompt', key: 'plan',         label: t.planLabel,      description: t.planDesc,      template: t.planTpl },
+    // Keep the empty-state quick-start prompts discoverable from the slash menu too.
+    { kind: 'prompt', key: 'deck',         label: t.deckLabel,      description: t.deckDesc,      template: t.deckTpl },
+    { kind: 'prompt', key: 'profile',      label: t.profileLabel,   description: t.profileDesc,   template: t.profileTpl },
+    { kind: 'prompt', key: 'readme',       label: t.readmeLabel,    description: t.readmeDesc,    template: t.readmeTpl },
   ], [t]);
 }
 

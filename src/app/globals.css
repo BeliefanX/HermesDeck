@@ -2669,7 +2669,8 @@ p{line-height:1.6}
 .slash-menu{
   position:absolute;left:0;right:0;bottom:calc(100% + 6px);
   z-index:60;
-  max-height:300px;overflow:auto;
+  max-height:min(70vh, 640px);overflow:auto;
+  overscroll-behavior:contain;
   background:var(--card-bg-strong);
   border:1px solid var(--line-strong);
   border-radius:var(--r-3);
@@ -2679,17 +2680,23 @@ p{line-height:1.6}
   animation:menuFadeIn .14s var(--ease-out);
 }
 .slash-header{
-  padding:6px 10px 4px;
+  position:sticky;top:0;z-index:1;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:6px 10px 5px;
+  background:var(--card-bg-strong);
   border-bottom:1px solid var(--line);
   margin-bottom:2px;
 }
+.slash-count{font-size:10px;color:var(--muted-2);font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);white-space:nowrap}
+.slash-list{display:grid;grid-template-columns:1fr;gap:1px;min-width:0}
 .slash-empty{padding:18px 12px;text-align:center;color:var(--muted);font-size:12px}
 .slash-item{
   display:flex;align-items:center;gap:10px;
-  padding:8px 10px;
+  padding:7px 9px;
   border:0;background:transparent;color:var(--text);
   border-radius:var(--r-2);cursor:pointer;text-align:left;
   font-size:12.5px;
+  min-width:0;
   transition:background var(--t-2) var(--ease);
 }
 .slash-item:hover,.slash-item.active{background:var(--accent-soft);color:var(--strong-text)}
@@ -2699,21 +2706,33 @@ p{line-height:1.6}
 }
 .slash-icon.action{background:var(--accent-soft);color:var(--accent)}
 .slash-meta{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
-.slash-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.slash-title{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;min-width:0}
 .slash-key{
   font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);
   font-size:11.5px;color:var(--muted);
   background:var(--glass);
   padding:1px 6px;border-radius:var(--r-1);
+  white-space:nowrap;flex-shrink:0;
 }
-.slash-label{font-size:13px;font-weight:550;color:var(--strong-text)}
+.slash-label{font-size:13px;font-weight:550;color:var(--strong-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .slash-desc{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .slash-pill{margin-left:auto;flex-shrink:0;font-size:10px}
 .slash-close{
+  position:sticky;bottom:0;z-index:2;
   margin-top:4px;padding:6px 10px;font-size:11.5px;color:var(--muted);
-  border:0;background:transparent;cursor:pointer;border-radius:var(--r-1);
+  border:0;background:var(--card-bg-strong);cursor:pointer;border-radius:var(--r-1);
 }
 .slash-close:hover{background:var(--glass);color:var(--strong-text)}
+
+@media (min-width:560px){
+  .slash-list{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:3px}
+  .slash-item{padding:6px 8px;gap:7px;min-height:44px}
+  .slash-icon{width:21px;height:21px}
+  .slash-key{font-size:10.5px;padding:1px 5px}
+  .slash-label{font-size:12px}
+  .slash-desc{font-size:10.5px}
+  .slash-pill{font-size:9px;padding:1px 5px}
+}
 
 /* ─────────────────────────────────────────────
    Inline dialog (rename / tags / new folder)
@@ -2749,9 +2768,13 @@ p{line-height:1.6}
 @media (max-width:880px){
   .sessions-toolbar{padding:8px 12px 0}
   .session-kebab{opacity:.6}
-  .slash-menu{max-height:240px}
-  .slash-item{padding:9px 10px}
-  .slash-label{font-size:13.5px}
+  .slash-menu{max-height:min(82vh, 720px)}
+  .slash-item{padding:6px 8px;gap:7px;min-height:36px}
+  .slash-icon{width:20px;height:20px}
+  .slash-key{font-size:10.5px;padding:1px 5px}
+  .slash-label{font-size:12.5px}
+  .slash-desc{display:none}
+  .slash-pill{font-size:9px;padding:1px 5px}
 }
 
 /* ─────────────────────────────────────────────
