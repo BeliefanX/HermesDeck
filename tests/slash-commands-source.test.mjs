@@ -4,6 +4,7 @@ import {
   applyPromptTemplate,
   extractSlashQuery,
   filterCommands,
+  filterVisibleSlashCommands,
   parseSlashSubmit,
   resolveSlashSubmit,
 } from '../src/lib/slash-core.ts';
@@ -15,6 +16,7 @@ const catalog = [
   { kind: 'control', key: 'reasoning', aliases: ['think'], label: 'Reasoning', description: 'composer control', category: 'control', control: 'reasoning', argHint: '<level>' },
   { kind: 'unsupported', key: 'help', label: 'Help', description: 'Telegram command', category: 'telegram', unsupportedMode: 'telegram' },
   { kind: 'unsupported', key: 'restart', label: 'Restart', description: 'Gateway command', category: 'telegram', unsupportedMode: 'telegram' },
+  { kind: 'unsupported', key: 'compress', label: 'Compress', description: 'Telegram command', category: 'telegram', unsupportedMode: 'telegram' },
   { kind: 'snippet', key: 'deck', label: 'HermesDeck overview', description: 'Prompt snippet', category: 'Prompt snippet', template: 'Describe HermesDeck. {cursor}' },
 ];
 
@@ -24,6 +26,12 @@ test('slash query triggers only at line-leading slash and filters Telegram-like 
   assert.equal(extractSlashQuery('hello /rea', 10), null);
   assert.deepEqual(filterCommands(catalog, 'rea').map((c) => c.key), ['reasoning']);
   assert.deepEqual(filterCommands(catalog, 'think').map((c) => c.key), ['reasoning']);
+});
+
+test('visible slash palette hides unsupported Telegram-only commands even when they fuzzy-match', () => {
+  assert.deepEqual(filterVisibleSlashCommands(catalog, '').map((c) => c.key), ['new', 'stop', 'model', 'reasoning', 'deck']);
+  assert.deepEqual(filterVisibleSlashCommands(catalog, 'restart').map((c) => c.key), []);
+  assert.deepEqual(filterVisibleSlashCommands(catalog, 'telegram').map((c) => c.key), []);
 });
 
 test('parser recognizes single-line commands and leaves ordinary slash text alone', () => {
@@ -61,6 +69,9 @@ test('recognized unsupported commands are intercepted instead of sent to LLM', (
   const restart = resolveSlashSubmit('/restart now', catalog);
   assert.equal(restart.handled, true);
   assert.equal(restart.type, 'unsupported');
+  const compress = resolveSlashSubmit('/compress', catalog);
+  assert.equal(compress.handled, true);
+  assert.equal(compress.type, 'unsupported');
 });
 
 test('prompt snippets are explicit snippets and separate from model/reasoning controls', () => {

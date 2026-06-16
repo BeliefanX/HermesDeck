@@ -60,6 +60,14 @@ export function filterCommands(commands: SlashCommand[], query: string): SlashCo
   return [...prefix, ...substr];
 }
 
+export function isVisibleSlashCommand(command: SlashCommand): boolean {
+  return command.kind !== 'unsupported';
+}
+
+export function filterVisibleSlashCommands(commands: SlashCommand[], query: string): SlashCommand[] {
+  return filterCommands(commands.filter(isVisibleSlashCommand), query);
+}
+
 export function applyPromptTemplate(text: string, start: number, end: number, template: string, cursorMarker = '{cursor}'): { text: string; caret: number } {
   const before = text.slice(0, start);
   const after = text.slice(end);

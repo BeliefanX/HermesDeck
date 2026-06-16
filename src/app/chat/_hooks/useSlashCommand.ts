@@ -4,7 +4,7 @@ import {
   type SlashCommand,
   applyPromptTemplate,
   extractSlashQuery,
-  filterCommands,
+  filterVisibleSlashCommands,
   resolveSlashSubmit,
   useLocalizedSlashCommands,
 } from '@/lib/slash-commands';
@@ -48,7 +48,7 @@ export function useSlashCommand({
   const [slashIdx, setSlashIdx] = useState(0);
   const localizedCommands = useLocalizedSlashCommands();
   const slashCommands = useMemo(
-    () => slashRange ? filterCommands(localizedCommands, slashRange.query) : [],
+    () => slashRange ? filterVisibleSlashCommands(localizedCommands, slashRange.query) : [],
     [slashRange, localizedCommands],
   );
   useEffect(() => {

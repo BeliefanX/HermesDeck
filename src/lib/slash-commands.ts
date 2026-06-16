@@ -8,6 +8,8 @@ export {
   applyPromptTemplate,
   extractSlashQuery,
   filterCommands,
+  filterVisibleSlashCommands,
+  isVisibleSlashCommand,
   parseSlashSubmit,
   findSlashCommand,
   resolveSlashSubmit,
