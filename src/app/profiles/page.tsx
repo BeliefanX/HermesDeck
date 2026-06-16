@@ -216,7 +216,7 @@ export default function ProfilesPage() {
             <div style={{ height: 8 }} />
             <div className="skel" style={{ width: 280, height: 12 }} />
           </Card>
-        ) : profiles.length === 0 ? (
+        ) : profiles.length === 0 && !activeProfile ? (
           <NoAssignedAgentsState />
         ) : (
           <ProfileSelector

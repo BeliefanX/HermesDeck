@@ -7,6 +7,7 @@ import {
   hasProjectedSession,
   projectedResponseIdMatches,
   reconcileProjectedSessionId,
+  recordProjectedRunEvent,
   recordProjectedTurnError,
   startProjectedTurn,
 } from '@/lib/server/deck-chat-projection';
@@ -53,7 +54,8 @@ export async function POST(req: NextRequest) {
     : '';
   const hasPreviousResponseId = typeof bodyRecord.previousResponseId === 'string' && bodyRecord.previousResponseId.trim().length > 0;
   const previousResponseId = hasPreviousResponseId ? (bodyRecord.previousResponseId as string).trim() : '';
-  const projectedSessionIsTrusted = requestedSessionId ? hasProjectedSession(requestedSessionId, profileId) : false;
+  const projectionViewer = { userId: auth.user.id, role: auth.user.role };
+  const projectedSessionIsTrusted = requestedSessionId ? hasProjectedSession(requestedSessionId, profileId, projectionViewer) : false;
   if (profileId !== 'default' && hasPreviousResponseId && !projectedSessionIsTrusted) {
     return rbacJsonError(
       403,
@@ -61,7 +63,7 @@ export async function POST(req: NextRequest) {
       'Cannot continue a named-profile session without a Deck-owned proof that it belongs to the selected agent.',
     );
   }
-  if (profileId !== 'default' && hasPreviousResponseId && !projectedResponseIdMatches(requestedSessionId, profileId, previousResponseId)) {
+  if (profileId !== 'default' && hasPreviousResponseId && !projectedResponseIdMatches(requestedSessionId, profileId, previousResponseId, projectionViewer)) {
     return rbacJsonError(
       403,
       'response_profile_unverified',
@@ -104,17 +106,20 @@ export async function POST(req: NextRequest) {
         previousResponseId: typeof streamBody.previousResponseId === 'string' ? streamBody.previousResponseId : undefined,
       });
       if (requestedSessionId && requestedSessionId !== sessionId) {
-        reconcileProjectedSessionId(requestedSessionId, sessionId, metadata.profileId);
+        reconcileProjectedSessionId(requestedSessionId, sessionId, metadata.profileId, projectionViewer);
       }
     },
     onCanonicalSessionId({ oldSessionId, sessionId, profileId: projectedProfileId }) {
-      reconcileProjectedSessionId(oldSessionId, sessionId, projectedProfileId);
+      reconcileProjectedSessionId(oldSessionId, sessionId, projectedProfileId, projectionViewer);
+    },
+    onRunEvent({ sessionId, profileId: projectedProfileId, type, payload }) {
+      recordProjectedRunEvent({ sessionId, profileId: projectedProfileId, viewer: projectionViewer, type, payload });
     },
     onDone({ sessionId, profileId: projectedProfileId, content, responseId, attachments: doneAttachments, model, reasoningEffort }) {
-      finalizeProjectedTurn({ sessionId, profileId: projectedProfileId, content, responseId, attachments: doneAttachments, model, reasoningEffort });
+      finalizeProjectedTurn({ sessionId, profileId: projectedProfileId, viewer: projectionViewer, content, responseId, attachments: doneAttachments, model, reasoningEffort });
     },
     onError({ sessionId, profileId: projectedProfileId, error, detail }) {
-      recordProjectedTurnError({ sessionId, profileId: projectedProfileId, error, detail });
+      recordProjectedTurnError({ sessionId, profileId: projectedProfileId, viewer: projectionViewer, error, detail });
     },
   };
   try {

@@ -5,6 +5,7 @@ import {
   getHermesApiBase,
   redactSecrets,
 } from './core';
+import { CHAT_STREAM_DEFAULT_TIMEOUT_MS, CHAT_STREAM_HARD_TIMEOUT_MS } from '../../chat-timeouts';
 import {
   buildPromptWithAttachments,
   extractAttachmentsFromEvent,
@@ -39,6 +40,7 @@ export interface ChatStreamBody {
 export interface ChatStreamProjectionHooks {
   onStart?: (input: { sessionId: string; body: ChatStreamBody; metadata: ActiveStreamMetadata }) => void;
   onCanonicalSessionId?: (input: { oldSessionId: string; sessionId: string; profileId: string }) => void;
+  onRunEvent?: (input: { sessionId: string; profileId: string; type: string; payload: unknown }) => void;
   onDone?: (input: { sessionId: string; profileId: string; content?: string; responseId?: string; attachments?: unknown; model?: string; reasoningEffort?: string }) => void;
   onError?: (input: { sessionId: string; profileId: string; error: string; detail?: string }) => void;
 }
@@ -250,11 +252,11 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
     if (upstreamReader) { try { upstreamReader.cancel('hub-abort'); } catch {} }
   }, { once: true });
 
-  // Long tasks are common with tool-heavy prompts. Default cap is 30 min.
+  // Long tasks are common with tool-heavy prompts/subagents. Default cap tracks
+  // Hermes Agent's subagent timeout plus a 5-minute completion margin.
   // Client may request a smaller value but we never exceed the hard ceiling.
-  const HARD_TIMEOUT_MS = 30 * 60 * 1000;
-  const requestedTimeout = Number(body?.timeoutMs || 600_000);
-  const timeoutMs = Math.min(Math.max(1000, requestedTimeout), HARD_TIMEOUT_MS);
+  const requestedTimeout = Number(body?.timeoutMs || CHAT_STREAM_DEFAULT_TIMEOUT_MS);
+  const timeoutMs = Math.min(Math.max(1000, requestedTimeout), CHAT_STREAM_HARD_TIMEOUT_MS);
 
   try {
     const inputForApi: unknown = hasImages
@@ -390,6 +392,12 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
         // Always forward the raw event so the client can render tool calls,
         // skill events, subagent delegations, etc. into the chat thread.
         emitToHub(stream, 'run-event', { type: type || 'api.event', payload: obj, ts: Date.now() });
+        runProjectionHook(() => hooks?.onRunEvent?.({
+          sessionId: sessionId || stream.sessionId,
+          profileId: profile,
+          type: type || 'api.event',
+          payload: obj,
+        }));
 
         // Pluck out any image / file artifacts.
         noteAttachments(obj);

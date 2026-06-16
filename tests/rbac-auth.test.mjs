@@ -728,6 +728,96 @@ test('Deck chat projection is profile scoped and rejects cross-profile message r
   }
 });
 
+test('Deck chat projection proof/write helpers reject non-admin owner mismatches', async () => {
+  const home = makeHome();
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  try {
+    delete process.env.HERMESDECK_DATA_DIR;
+    process.env.HERMESDECK_AUTH_DIR = join(home, '.hermesdeck');
+    const projection = await import(`${pathToFileURL(deckChatProjectionModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    projection.startProjectedTurn({
+      sessionId: 'owner-scoped-local-1',
+      profileId: 'sensgift',
+      ownerUserId: 'owner-a',
+      ownerRole: 'user',
+      message: 'hello owner',
+    });
+    projection.finalizeProjectedTurn({
+      sessionId: 'owner-scoped-local-1',
+      profileId: 'sensgift',
+      viewer: { userId: 'owner-a', role: 'user' },
+      content: 'owner answer',
+      responseId: 'resp_owner_a',
+    });
+
+    assert.equal(projection.hasProjectedSession('owner-scoped-local-1', 'sensgift', { userId: 'owner-a', role: 'user' }), true);
+    assert.equal(projection.projectedResponseIdMatches('owner-scoped-local-1', 'sensgift', 'resp_owner_a', { userId: 'owner-a', role: 'user' }), true);
+    assert.equal(projection.hasProjectedSession('owner-scoped-local-1', 'sensgift', { userId: 'owner-b', role: 'user' }), false);
+    assert.equal(projection.projectedResponseIdMatches('owner-scoped-local-1', 'sensgift', 'resp_owner_a', { userId: 'owner-b', role: 'user' }), false);
+    assert.equal(projection.hasProjectedSession('owner-scoped-local-1', 'sensgift', { userId: 'admin-1', role: 'admin' }), true);
+    assert.throws(
+      () => projection.recordProjectedRunEvent({
+        sessionId: 'owner-scoped-local-1',
+        profileId: 'sensgift',
+        viewer: { userId: 'owner-b', role: 'user' },
+        type: 'response.output_item.added',
+        payload: { item: { id: 'fc_denied', type: 'function_call', name: 'tool' } },
+      }),
+      (err) => err?.code === 'session_profile_mismatch' && err?.status === 403,
+    );
+  } finally {
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+  }
+});
+
+test('Deck chat projection does not durably write argument deltas', async () => {
+  const home = makeHome();
+  const dataDir = join(home, '.hermesdeck');
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  try {
+    process.env.HERMESDECK_DATA_DIR = dataDir;
+    delete process.env.HERMESDECK_AUTH_DIR;
+    const projection = await import(`${pathToFileURL(deckChatProjectionModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    projection.startProjectedTurn({
+      sessionId: 'delta-local-1',
+      profileId: 'sensgift',
+      ownerUserId: 'owner-a',
+      ownerRole: 'user',
+      message: 'use a tool',
+    });
+    const storePath = join(dataDir, 'chat-projection.v1.json');
+    const beforeDelta = readFileSync(storePath, 'utf8');
+
+    projection.recordProjectedRunEvent({
+      sessionId: 'delta-local-1',
+      profileId: 'sensgift',
+      viewer: { userId: 'owner-a', role: 'user' },
+      type: 'response.function_call.arguments.delta',
+      payload: { item_id: 'fc_delta', delta: '{"q"' },
+    });
+    assert.equal(readFileSync(storePath, 'utf8'), beforeDelta);
+
+    projection.recordProjectedRunEvent({
+      sessionId: 'delta-local-1',
+      profileId: 'sensgift',
+      viewer: { userId: 'owner-a', role: 'user' },
+      type: 'response.function_call.arguments.done',
+      payload: { item_id: 'fc_delta', arguments: '{"q":"done"}', name: 'search' },
+    });
+    assert.match(readFileSync(storePath, 'utf8'), /"arguments": "\{\\"q\\":\\"done\\"\}"/);
+  } finally {
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+  }
+});
+
 test('Deck chat projection uses a lock, atomic writes and prunes stale sessions', async () => {
   const home = makeHome();
   const dataDir = join(home, '.hermesdeck');
@@ -796,8 +886,8 @@ test('named-profile chat stream does not forward unproven client session ids ups
   const routeSource = readFileSync(chatStreamRoutePath, 'utf8');
   const streamSource = readFileSync(chatStreamModulePath, 'utf8');
 
-  assert.match(routeSource, /hasProjectedSession\(requestedSessionId, profileId\)/);
-  assert.match(routeSource, /projectedResponseIdMatches\(requestedSessionId, profileId, previousResponseId\)/);
+  assert.match(routeSource, /hasProjectedSession\(requestedSessionId, profileId, projectionViewer\)/);
+  assert.match(routeSource, /projectedResponseIdMatches\(requestedSessionId, profileId, previousResponseId, projectionViewer\)/);
   assert.match(routeSource, /session_profile_unverified/);
   assert.match(routeSource, /response_profile_unverified/);
   assert.match(routeSource, /`deck_\$\{randomUUID\(\)\}`/);
@@ -898,7 +988,7 @@ test('session and stats routes preserve profile-routing errors instead of generi
   assert.match(messagesRouteSource, /const messages = await getMessages\(decodedId, profile/);
   assert.doesNotMatch(messagesRouteSource, /noProjectedSessionError|profile !== 'default'/);
   assert.doesNotMatch(sessionsRouteSource, /profile === 'default'\s*\?/);
-  assert.match(statsRouteSource, /listProjectedSessions\('default'\)/);
+  assert.match(statsRouteSource, /listProjectedSessions\('default', viewer\)/);
   assert.match(statsRouteSource, /getSessionsForStats\('default'\)/);
   assert.match(statsRouteSource, /statsFromSessions\(mergeSessionRows\(projected, api\), 'default'\)/);
 });

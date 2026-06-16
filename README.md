@@ -7,8 +7,8 @@ HermesDeck 是 Hermes Agent 的浏览器控制台：多会话聊天、profile-aw
 - **API-only runtime**：聊天、profiles、models、cron proof、runs/stats/messages 等运行时数据通过 Hermes Agent API Server 暴露给 Deck BFF；BFF 再以 `/api/deck/*` 给前端提供稳定契约。
 - **RBAC fail-closed**：Deck 有自己的登录 cookie、用户/角色和 profile assignment。生产多用户场景中，未能证明权限或 profile 归属时拒绝访问，而不是枚举本地 profile/model 目录补齐结果。
 - **Canonical visible entrypoint：`http://<host>:6117`**。项目脚本启动 Next 服务在 `6118`，同时启动 `6117 -> 6118` 的同源反向代理；用户、PWA、反向代理/launchd 对外应以 `6117` 为入口，`6118` 是内部目标。
-- **聊天流**：Deck BFF 调 Hermes API Server `/v1/responses`，用 SSE 向浏览器转发文本、run-event、attachment、done/error，并发送 keep-alive 注释保持长连接活性。
-- **Deck-owned chat projection**：`~/.hermesdeck/chat-projection.v1.json`（或 `HERMESDECK_DATA_DIR`）只保存 Deck UX/proof 状态，用 lock、atomic write、TTL/cap prune 维护；它不是 Hermes runtime 数据源。
+- **聊天流**：Deck BFF 调 Hermes API Server `/v1/responses`，用 SSE 向浏览器转发文本、raw run-event、attachment、done/error，并发送 keep-alive 注释保持长连接活性。前端发送 35 分钟 timeout（2,100,000ms），服务端夹在 `[1000, 2100000]`，匹配 Hermes active subagent 30 分钟上限 + 5 分钟收尾余量。
+- **Deck-owned chat projection**：`~/.hermesdeck/chat-projection.v1.json`（或 `HERMESDECK_DATA_DIR`）只保存 Deck UX/proof 状态，用 lock、atomic write、TTL/cap prune 维护；它不是 Hermes runtime 数据源。Projection 会持久化 draft/final assistant、tool-call、tool-result 行和 response/session aliases（不逐 delta 持久化 tool/function arguments），刷新后仍可显示 in-flight 状态。Projection proof/write 对普通用户按 `ownerUserId` 收紧，admin/super_admin 仍需先通过 profile 授权。
 - **安全 PWA cache**：Service Worker 只预缓存公开离线 shell 和图标；认证页面、API 响应、聊天 HTML 不被持久缓存。
 
 ## 快速开始

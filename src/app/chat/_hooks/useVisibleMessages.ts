@@ -2,6 +2,10 @@
 import { useMemo } from 'react';
 import type { DeckMessage } from '@/lib/types';
 
+export function isProjectedDraftMessage(m: DeckMessage): boolean {
+  return m.role === 'assistant' && m.metadata?.projectionStatus === 'draft';
+}
+
 /**
  * Two-stage filter for the chat thread:
  *   1) Default-noise rules — hide tool / system / session_meta / compaction
@@ -33,7 +37,8 @@ export function useVisibleMessages(activeMessages: DeckMessage[], showToolDetail
       const hasToolCalls = (m.toolCalls?.length || 0) > 0;
       const hasAttachments = (m.attachments?.length || 0) > 0;
       const isStreamingTarget =
-        busy && idx === activeMessages.length - 1 && m.role === 'assistant' && !hasToolCalls;
+        (busy && idx === activeMessages.length - 1 && m.role === 'assistant' && !hasToolCalls)
+        || (isProjectedDraftMessage(m) && !hasToolCalls);
 
       if (!showToolDetails) {
         if (m.role === 'tool' || m.role === 'system' || m.role === 'session_meta') return false;

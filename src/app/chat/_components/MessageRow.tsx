@@ -7,6 +7,7 @@ import { MessageActions } from '@/components/MessageActions';
 import { AttachmentChip } from '@/components/AttachmentChip';
 import { type AttachmentItem } from '@/lib/attachments';
 import { isSubagentTool } from '../_lib/subagent';
+import { isProjectedDraftMessage } from '../_hooks/useVisibleMessages';
 
 // Memoized chat row: the streaming assistant message updates content rapidly
 // during a response. Without memo, every prior message re-runs MessageContent's
@@ -33,7 +34,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
 }) {
   const isLastAssistant = isLast && m.role === 'assistant';
   const showRegenerate = isLastAssistant && !busy && !!m.content && hasUserMessage;
-  const showTyping = m.role === 'assistant' && !m.content && busy && !m.toolCalls?.length;
+  const showTyping = m.role === 'assistant' && !m.content && !m.toolCalls?.length && (busy || isProjectedDraftMessage(m));
   const isTool = m.role === 'tool';
   const isToolCall = m.role === 'assistant' && (m.toolCalls?.length || 0) > 0 && !m.content;
   const isSubagentRow =

@@ -53,21 +53,22 @@ Fail-closed 规则：
 2. Route handler 执行 auth、CSRF、profile access、named-profile continuation proof。
 3. `createChatStream` 建立进程内 Stream Hub，先写 Deck projection draft，再后台 pump upstream。
 4. BFF 调 Hermes API Server `/v1/responses`，以 SSE 解析 upstream events。
-5. BFF 只把文本 delta 写入 assistant bubble；tool/function argument delta 保留为 `run-event`，不混入可见聊天文本。
-6. 浏览器断线/刷新只 detach 当前 subscriber；hub 继续 pump，`GET /api/deck/chat/resume?sessionId=<id>&since=<seq>` 可回放。
+5. BFF 仍原样转发 raw `run-event`，但 `onRunEvent` projection hook 只在 tool/function call/result 语义边界物化为 `tool-call`/`tool-result` message rows；tool output arrays 会归一化为文本。
+6. 只有文本 delta 写入 assistant bubble；tool/function argument delta 不混入普通助手正文，也不触发 durable projection write，持久参数来自 `arguments.done`/done item。
+7. 浏览器断线/刷新只 detach 当前 subscriber；hub 继续 pump，`GET /api/deck/chat/resume?sessionId=<id>&since=<seq>` 可回放，sessions/messages polling 也能读到 projection 中的 draft assistant/tool rows。
 
-SSE keep-alive：服务端每 15 秒发送 `: keep-alive <ts>` 注释，响应头含 `Cache-Control: no-cache, no-transform`、`Connection: keep-alive`、`X-Accel-Buffering: no`，用于代理和客户端 watchdog 的 liveness。
+SSE keep-alive：服务端每 15 秒发送 `: keep-alive <ts>` 注释，响应头含 `Cache-Control: no-cache, no-transform`、`Connection: keep-alive`、`X-Accel-Buffering: no`，用于代理和客户端 watchdog 的 liveness。聊天 stream timeout 默认/硬上限是 2,100,000ms（35 分钟）：Hermes active subagent 30 分钟 + 5 分钟收尾余量；客户端发送该常量，服务端将请求值夹在 1000ms 到 2,100,000ms。
 
 ## Trusted session id 与 named-profile protection
 
 - 对 default profile，已有 session id 可继续使用。
-- 对 named profile，Deck 只有在 projection 中证明 session/response 属于该 profile 时，才允许 continuation。
+- 对 named profile，Deck 只有在 projection 中证明 session/response 属于该 profile 且普通用户匹配 projection owner 时，才允许 continuation；admin/super_admin 必须先通过 route-level profile 授权。
 - 若 named profile 请求携带未被证明的 session id，Deck 生成 `deck_<uuid>`，并把它作为可信 Deck-generated session id 传给 upstream，避免 Hermes 创建额外的 `api` 话题或跨 profile 续写。
 - 只有可信 session id 才会作为 `X-Hermes-Session-Id` 发送给 Hermes API Server。
 
 ## Deck-owned chat projection
 
-Projection 是 UX/proof 状态，不是 Hermes runtime 数据源。它保存 Deck 观察到的 sessions/messages、owner/profile/status、response id aliases，用于刷新后会话列表、named-profile proof、错误/完成状态展示。
+Projection 是 UX/proof 状态，不是 Hermes runtime 数据源。它保存 Deck 观察到的 sessions/messages、owner/profile/status、response id aliases，用于刷新后会话列表、server-projected draft assistant 行、tool-call/tool-result 行、named-profile proof、错误/完成状态展示。普通用户只可读取/证明/继续/写入 ownerUserId 等于自己的 projected sessions/messages/stats；admin/super_admin 绕过 owner filter/check，但仍需通过 profile RBAC/catalog 授权。
 
 完整不变量见 [deck-chat-projection.md](deck-chat-projection.md)。
 

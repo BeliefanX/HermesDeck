@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { deckApi, ApiError } from '@/lib/api';
 import { resumeChatStreamClient, streamChat, type StreamCallbacks } from '@/lib/client-sse';
+import { CHAT_STREAM_DEFAULT_TIMEOUT_MS } from '@/lib/chat-timeouts';
 import {
   attachmentToPayload,
   type AttachmentItem,
@@ -904,9 +905,8 @@ export function useChatStream(params: UseChatStreamParams) {
           sessionId: sid,
           previousResponseId: currentResponseId,
           attachments: liveAtts,
-          // Bumped to 10 minutes so a tool-heavy long run doesn't kill the
-          // upstream early. Server hard-caps to 30 min.
-          timeoutMs: 10 * 60_000,
+          // Match Hermes Agent's subagent timeout plus a 5-minute completion margin.
+          timeoutMs: CHAT_STREAM_DEFAULT_TIMEOUT_MS,
           ...(selectedModel ? { model: selectedModel } : {}),
           ...(reasoningEffort !== defaultReasoning ? { reasoningEffort } : {}),
         },
@@ -977,7 +977,13 @@ export function useChatStream(params: UseChatStreamParams) {
     // rebuilding from the persisted message list if the stash didn't carry it
     // (older format, or a fresh run that never persisted any).
     const stashedToolCalls = stash.toolCalls && stash.toolCalls.length
-      ? new Map(stash.toolCalls.map((x) => [x.id, { assistantId: x.assistantId, name: x.name, args: x.args } as ToolCallSlot]))
+      ? new Map(stash.toolCalls.map((x) => [x.id, {
+        assistantId: x.assistantId,
+        name: x.name,
+        args: x.args,
+        itemId: x.itemId,
+        callId: x.callId,
+      } as ToolCallSlot]))
       : rebuildToolCallsMap(list);
     inflightRef.current = {
       hubKey,

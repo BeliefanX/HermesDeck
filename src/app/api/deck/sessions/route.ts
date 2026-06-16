@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   const access = requireProfileAccess(auth.user, profile, { fallback: profile });
   if (!access.ok) return access.response;
   try {
-    const projected = listProjectedSessions(profile);
+    const projected = listProjectedSessions(profile, { userId: auth.user.id, role: auth.user.role });
     const api = await getSessions(profile);
     const sessions = mergeSessions(projected, api);
     return NextResponse.json(

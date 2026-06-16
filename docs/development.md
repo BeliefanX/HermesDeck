@@ -45,7 +45,8 @@ npm run dev
 - `src/lib/server/hermes/core.ts`：Hermes API base/key/profile env 解析、fetch helper、redaction、cache helper。
 - `src/lib/server/hermes/profiles.ts`：API-backed profiles catalog，无本地枚举补齐。
 - `src/lib/server/hermes/models.ts`：per-profile `/v1/models` adapter，无本地模型清单补齐。
-- `src/lib/server/hermes/chat-stream.ts`：SSE hub/upstream pump/keep-alive/text delta filtering。
+- `src/lib/server/hermes/chat-stream.ts`：SSE hub/upstream pump/keep-alive/text delta filtering；chat timeout clamp 是 `[1000, 2100000]` ms。
+- `src/lib/chat-timeouts.ts`：35 分钟 chat stream default/hard cap（Hermes active subagent 30 分钟 + 5 分钟余量），前端与服务端共享。
 - `src/lib/server/hermes/cron.ts`：cron profile routing proof。
 - `src/lib/server/auth.ts`、`rbac.ts`：Deck users/roles/capabilities/profile scope。
 - `src/lib/server/deck-chat-projection.ts`：projection store lock/atomic write/prune。
@@ -70,7 +71,7 @@ curl -N \
   -d '{"message":"hi","profileId":"default"}'
 ```
 
-预期：先收到 `event: hub/status`，长工具调用期间每 15 秒有 `: keep-alive ...` 注释，结束时 `event: done` 或 `event: error`。当前路径是 Hermes API Server only。
+预期：先收到 `event: hub/status`，长工具调用期间每 15 秒有 `: keep-alive ...` 注释，结束时 `event: done` 或 `event: error`。当前路径是 Hermes API Server only。前端默认发送 2,100,000ms timeout；服务端最多允许 35 分钟，反代 read timeout 应大于这个值。
 
 Resume：
 
@@ -84,6 +85,7 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 - 未证明归属的 named-profile continuation 应返回 `session_profile_unverified` 或 `response_profile_unverified`。
 - 新 named-profile turn 如带未证明 session id，Deck 会改用 `deck_<uuid>` 并通过 `X-Hermes-Session-Id` 让 upstream/Deck projection 对齐。
 - 如果看到额外 `api` 话题，先查 projection proof、`X-Hermes-Session-Id` header 与 profile API base。
+- 刷新后仍应从 projection 看到 draft assistant/tool-call/tool-result rows；普通用户只能读/证明/继续/写入自己的 owner-scoped projection，admin/super_admin 可跨 owner 但仍受 profile auth 约束。不要逐条持久化 tool/function `arguments.delta`；只在 `arguments.done`/done item 等语义边界写 projection。
 
 ### Cron
 
@@ -107,7 +109,10 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 ## Pre-merge verification
 
 ```bash
-npm run typecheck
+node --test tests/chat-stream-runtime-settings.test.mjs
+node --test tests/tool-call-linking.test.mjs
+node --test tests/chat-projection-draft-ui.test.mjs
+npm run typecheck -- --pretty false
 npm run lint
 npm run verify:pwa
 npm run test:rbac

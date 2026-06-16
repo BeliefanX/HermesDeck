@@ -2,7 +2,7 @@
 
 ## HermesDeck
 
-Deck/BFF/UI layer for Hermes Agent. It owns browser UX, Deck auth/RBAC, profile scoping, SSE forwarding, projection proof and PWA behavior. It does not own Hermes runtime persistence.
+Deck/BFF/UI layer for Hermes Agent. It owns browser UX, Deck auth/RBAC, profile scoping, SSE forwarding, projection proof and PWA behavior. It does not own Hermes runtime persistence. Its chat stream timeout cap is 35 minutes (2,100,000ms), aligned to Hermes active subagent timeout plus margin.
 
 ## Hermes Agent API Server
 
@@ -42,11 +42,20 @@ In-process SSE replay bus. It buffers events with sequence numbers, supports res
 
 ## Run event
 
-Raw upstream event from Hermes API Server. Tool calls, function argument deltas, skill/subagent events and attachments are forwarded as run events; only text deltas become assistant bubble text.
+Raw upstream event from Hermes API Server. Tool calls, function argument deltas, skill/subagent events and attachments are forwarded as run events; only text deltas become assistant bubble text. Projectable tool/function call/result semantic boundaries are materialized into Deck projection rows, but argument deltas themselves are not durably written per delta.
 
 ## Deck chat projection
 
-Deck-owned file-backed UX/proof state. It records observed sessions/messages/status/response aliases with locking, atomic writes and prune limits. It is not Hermes runtime persistence.
+Deck-owned file-backed UX/proof state. It records observed sessions/messages/status/response aliases with locking, atomic writes and prune limits. It can persist draft assistant, tool-call and tool-result rows so refresh/polling can recover in-flight UI. It is not Hermes runtime persistence.
+
+
+## Tool-call row
+
+A projected assistant message representing a tool/function invocation. Deck links both Responses item ids (for example `fc_*`) and stable call ids (for example `call_*`) so completed arguments and later outputs attach to the same visible call.
+
+## Tool-result row
+
+A projected tool message representing tool output. If upstream sends an array of content parts, Deck normalizes text parts into a single text payload before storing the row.
 
 ## Cron proof
 

@@ -66,11 +66,13 @@ type ChatStreamRequest = {
 
 - body hard cap：8 MiB；发送给 Hermes `/v1/responses` 的 upstream body hard cap：1 MiB。
 - profile 必须合法且当前用户可访问。
-- named profile continuation 必须通过 Deck projection 证明 session/response 属于该 profile；否则 403。
+- named profile continuation 必须通过 Deck projection 证明 session/response 属于该 profile，且普通用户必须是该 projection 的 `ownerUserId`；否则 403。admin/super_admin 只有在 route 已通过 profile 授权后才可跨 owner 使用 proof。
 - 未被证明的 named-profile session 会替换为 server-generated `deck_<uuid>`，并作为可信 session 传 upstream，避免产生额外 `api` 话题。
 - 若显式 `model` 缺省，Deck 会读取该用户/profile 的 model preference。
+- `timeoutMs` 可选；前端默认发送 `2100000`（35 分钟），服务端 clamp 到 `[1000, 2100000]`。这个上限等于 Hermes active subagent 30 分钟 timeout + 5 分钟收尾余量。
 - 响应为 SSE，包含 `hub`、`status`、`delta`、`run-event`、`attachment`、`done`、`error`。keep-alive 是 SSE comment，不触发 event listener。
-- 仅文本 delta 进入 assistant bubble；tool/function argument delta 只作为 raw run-event。
+- Raw run-events 仍会转发给浏览器；同时 `onRunEvent` 会把 projectable tool/function call/result 语义边界物化进 Deck projection。tool/function `arguments.delta` 不逐条持久化；持久参数来自 `arguments.done`/done item。
+- 仅文本 delta 进入 assistant bubble；tool/function argument delta 不混入普通助手正文，projectable 工具调用显示为 `tool-call` 行，结果显示为 `tool-result`/`tool` 行。
 
 ### `GET /api/deck/chat/resume?sessionId=<id>&since=<seq>`
 
@@ -78,11 +80,11 @@ type ChatStreamRequest = {
 
 ## Sessions, messages, runs, stats
 
-- `GET /api/deck/sessions?profile=<id>`：返回 profile scoped sessions；可融合 Deck projection 中的 in-flight/proof 状态。
-- `GET /api/deck/sessions/[id]/messages?profile=<id>`：返回 session messages。
+- `GET /api/deck/sessions?profile=<id>`：返回 profile scoped sessions；融合 Deck projection 中的 in-flight/proof 状态。普通用户只能看到 owner 为自己 Deck user id 的 projected rows；admin/super_admin 可跨 owner 查看，但仍受 profile auth/catalog 约束。
+- `GET /api/deck/sessions/[id]/messages?profile=<id>`：返回 session messages；projection 可返回刷新后仍存在的 draft assistant、tool-call、tool-result rows。普通用户读取他人 projection 会 403。
 - `DELETE /api/deck/sessions/[id]?profile=<id>`：删除/移除该 session 的 Deck 与 upstream 可删除状态；必须有 profile 权限。
 - `GET /api/deck/runs?profile=<id>`、`GET /api/deck/runs/[id]`：运行列表与详情。
-- `GET /api/deck/stats?profile=<id>`：dashboard stats。
+- `GET /api/deck/stats?profile=<id>`：dashboard stats；default profile 合并 API sessions 与 viewer-scoped projection，named profiles 使用 viewer-scoped projection stats。
 - `GET /api/deck/tokens?days=<n>&profile=<id>`：token/cost 聚合，timeout 较长。
 
 ## Cron proof

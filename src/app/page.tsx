@@ -339,7 +339,12 @@ export default function HomePage() {
   const { capabilities } = useDeckSession();
   const canUseTerminal = capabilities.canUseTerminal;
   const canViewTokenAnalytics = capabilities.canManageUsers;
-  const noAssignedAgents = hydrated && profiles.length === 0;
+  // Empty `profiles` alone can also mean the authoritative Hermes catalog is
+  // temporarily unavailable. In that case ProfileProvider keeps admin/super_admin
+  // usable with an RBAC-authorized emergency active profile (usually `default`).
+  // Only show the fail-closed assignment empty state when there is no authorized
+  // active profile at all.
+  const noAssignedAgents = hydrated && profiles.length === 0 && !activeProfile;
   /** Dashboard scope. 'active' = filter sessions/stats by the active profile;
    *  'all' = global aggregate (the previous behavior). The toggle lives next
    *  to the hero so the "scope" of the headline numbers stays obvious. */

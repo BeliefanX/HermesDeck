@@ -80,12 +80,12 @@ server {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_buffering off;
     proxy_cache off;
-    proxy_read_timeout 1800s;
+    proxy_read_timeout 2200s;
   }
 }
 ```
 
-`proxy_buffering off` 与长 `proxy_read_timeout` 对聊天 SSE 必要；服务端还会发送 keep-alive 注释。
+`proxy_buffering off` 与长 `proxy_read_timeout` 对聊天 SSE 必要；服务端还会发送 keep-alive 注释。Deck chat stream 的默认/硬上限是 2,100,000ms（2100s/35 分钟），所以生产反代 read timeout 必须至少 2100s，建议 2200s 或更高。
 
 ## Production security
 
@@ -141,5 +141,5 @@ npm run smoke
 
 - 6117 不通：检查 `scripts/redirect-6117.mjs` 是否启动，或端口是否被其他进程占用。
 - 6118 不通：检查 Next child 是否退出。
-- SSE 断流：检查反代 buffering/timeout，确认响应中有 `X-Accel-Buffering: no` 与 keep-alive 注释。
+- SSE 断流：检查反代 buffering/timeout，确认响应中有 `X-Accel-Buffering: no` 与 keep-alive 注释；read timeout 应 >= 2100s（建议 2200s+）。
 - profile/model/cron 空：先查 Hermes API Server endpoints 与 profile `.env`，不要添加本地补齐路径。

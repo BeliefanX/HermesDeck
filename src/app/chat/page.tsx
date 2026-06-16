@@ -37,6 +37,16 @@ function apiErrorDetail(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function messagesEqual(a: DeckMessage[] | undefined, b: DeckMessage[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (JSON.stringify(a[i]) !== JSON.stringify(b[i])) return false;
+  }
+  return true;
+}
+
 export default function ChatPage() {
   return (
     <Suspense fallback={null}>
@@ -90,6 +100,7 @@ function ChatPageInner() {
   const [usageBySession, setUsageBySession] = useState<Record<string, TurnUsage>>({});
 
   const abortRef = useRef<AbortController | null>(null);
+  const draftPollInFlightRef = useRef(false);
   const mobileThreadPushedRef = useRef(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -183,7 +194,53 @@ function ChatPageInner() {
   }, [profile, hydrated, setMetaStoreRaw]);
 
   const activeMessages = messages[active] || [];
+  const hasActiveServerDraft = activeMessages.some((m) => (
+    m.role === 'assistant' && m.metadata?.projectionStatus === 'draft'
+  ));
   const activeSession = sessions.find((s) => s.id === active);
+
+  useEffect(() => {
+    if (!hydrated || !profile || !active) return;
+    let alive = true;
+    deckApi.messages(active, profile)
+      .then((r) => {
+        if (!alive || !r.messages.length) return;
+        setMessages((m) => {
+          if (messagesEqual(m[active], r.messages)) return m;
+          return { ...m, [active]: r.messages };
+        });
+      })
+      .catch((err) => {
+        if (alive) setError(`Messages failed to load: ${apiErrorDetail(err)}`);
+      });
+    return () => { alive = false; };
+  }, [active, hydrated, profile, setMessages]);
+
+  useEffect(() => {
+    if (!hydrated || !profile || !active || busy) return;
+    if (!hasActiveServerDraft) return;
+    let cancelled = false;
+    const poll = async () => {
+      if (draftPollInFlightRef.current) return;
+      draftPollInFlightRef.current = true;
+      try {
+        const r = await deckApi.messages(active, profile);
+        if (!cancelled && r.messages.length) {
+          setMessages((m) => {
+            if (messagesEqual(m[active], r.messages)) return m;
+            return { ...m, [active]: r.messages };
+          });
+        }
+      } catch {
+        // Keep the server-side draft visible; the next interval may succeed.
+      } finally {
+        draftPollInFlightRef.current = false;
+      }
+    };
+    const id = window.setInterval(poll, 3000);
+    void poll();
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [active, busy, hasActiveServerDraft, hydrated, profile, setMessages]);
 
   useEffect(() => {
     if (!hydrated || !activeSession) return;
@@ -452,7 +509,9 @@ function ChatPageInner() {
     />
   );
 
-  const noAssignedAgents = profileHydrated && profiles.length === 0;
+  // Admin/super_admin may have an emergency active profile when the Hermes
+  // catalog endpoint is unavailable; do not misclassify that as unassigned.
+  const noAssignedAgents = profileHydrated && profiles.length === 0 && !profile;
 
   if (noAssignedAgents) {
     return (

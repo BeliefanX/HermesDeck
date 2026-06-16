@@ -5,11 +5,14 @@ import { resolve } from 'node:path';
 import ts from 'typescript';
 
 const modulePath = resolve('src/lib/server/hermes/chat-stream.ts');
+const timeoutsPath = resolve('src/lib/chat-timeouts.ts');
 let nonce = 0;
 
 async function loadChatStream() {
+  const timeoutsSource = readFileSync(timeoutsPath, 'utf8');
   const source = readFileSync(modulePath, 'utf8')
     .replace(/import \{[\s\S]*?\} from '\.\/core';\n/, '')
+    .replace(/import \{ CHAT_STREAM_DEFAULT_TIMEOUT_MS, CHAT_STREAM_HARD_TIMEOUT_MS \} from '\.\.\/\.\.\/chat-timeouts';\n/, `${timeoutsSource}\n`)
     .replace(/import \{[\s\S]*?\} from '\.\/attachments';\n/, '')
     .replace(/import \{[\s\S]*?\} from '\.\/stream-hub';\n/, '');
   const { outputText } = ts.transpileModule(source, {
@@ -47,4 +50,12 @@ test('extractRuntimeSettingsFromEvent does not invent reasoning for auto/missing
     type: 'response.completed',
     response: { model: 'gpt-5.5' },
   }), { model: 'gpt-5.5' });
+});
+
+test('chat stream timeout defaults to Hermes subagent timeout plus five minutes', async () => {
+  const { CHAT_STREAM_DEFAULT_TIMEOUT_MS, CHAT_STREAM_HARD_TIMEOUT_MS, HERMES_SUBAGENT_MAX_TIMEOUT_MS } = await loadChatStream();
+  assert.equal(HERMES_SUBAGENT_MAX_TIMEOUT_MS, 30 * 60_000);
+  assert.equal(CHAT_STREAM_DEFAULT_TIMEOUT_MS, HERMES_SUBAGENT_MAX_TIMEOUT_MS + 5 * 60_000);
+  assert.equal(CHAT_STREAM_DEFAULT_TIMEOUT_MS, 2_100_000);
+  assert.equal(CHAT_STREAM_HARD_TIMEOUT_MS, CHAT_STREAM_DEFAULT_TIMEOUT_MS);
 });

@@ -18,7 +18,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const limit = limitRaw ? Number(limitRaw) : undefined;
   try {
     const decodedId = decodeURIComponent(id);
-    const projected = getProjectedMessages(decodedId, profile, { limit, before: beforeRaw });
+    const projected = getProjectedMessages(decodedId, profile, {
+      limit,
+      before: beforeRaw,
+      viewer: { userId: auth.user.id, role: auth.user.role },
+    });
     if (projected) return NextResponse.json({ messages: projected });
     const messages = await getMessages(decodedId, profile, { limit, before: beforeRaw });
     return NextResponse.json({ messages });

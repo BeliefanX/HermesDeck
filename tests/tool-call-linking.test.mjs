@@ -10,6 +10,8 @@ test('Responses function_call_output links by call_id, not only fc item id', () 
   assert.match(source, /return \{ primary: callId \|\| itemId, itemId, callId \};/);
   assert.match(source, /rememberToolSlot\(inf\.toolCalls, itemId, \{[\s\S]*callId: ids\.callId \|\| undefined,[\s\S]*\}\);/);
   assert.match(source, /const tc = getToolSlot\(inf\.toolCalls, itemId\);\n\s+const toolName = tc\?\.name \|\| String\(\(item\.name as string\) \|\| 'tool'\);/);
+  assert.match(source, /itemId: x\.itemId,/);
+  assert.match(source, /callId: x\.callId,/);
 });
 
 test('tool output arrays from skill_view are rendered as text, not raw card JSON', () => {

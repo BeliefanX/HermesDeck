@@ -74,6 +74,7 @@ export type StartProjectedTurnInput = {
 export type FinalizeProjectedTurnInput = {
   sessionId: string;
   profileId: string;
+  viewer?: ProjectionViewer;
   content?: string;
   responseId?: string;
   attachments?: unknown;
@@ -84,8 +85,22 @@ export type FinalizeProjectedTurnInput = {
 export type RecordProjectedErrorInput = {
   sessionId: string;
   profileId: string;
+  viewer?: ProjectionViewer;
   error: string;
   detail?: string;
+};
+
+export type RecordProjectedRunEventInput = {
+  sessionId: string;
+  profileId: string;
+  viewer?: ProjectionViewer;
+  type: string;
+  payload: unknown;
+};
+
+export type ProjectionViewer = {
+  userId: string;
+  role?: string;
 };
 
 export type ImportProjectedChatStateInput = {
@@ -323,10 +338,11 @@ function writeStore(store: ProjectionStore): void {
   renameSync(tmp, STORE_FILE);
 }
 
-function mutateStore<T>(fn: (store: ProjectionStore) => T): T {
+function mutateStore<T>(fn: (store: ProjectionStore) => T | false): T | false {
   return withStoreLock(() => {
     const store = readStore();
     const result = fn(store);
+    if (result === false) return result;
     writeStore(store);
     return result;
   });
@@ -377,6 +393,219 @@ function findAssistantDraft(session: ProjectedSession): ProjectedMessage | undef
   return undefined;
 }
 
+type ProjectedToolSlot = {
+  message: ProjectedMessage;
+  name: string;
+  args: string;
+  itemId?: string;
+  callId?: string;
+};
+
+function toolCallIds(item: Record<string, unknown>, fallback = ''): { primary: string; itemId: string; callId: string } {
+  const itemId = String((item.id as string) || fallback || '');
+  const callId = String((item.call_id as string) || (item.tool_call_id as string) || '');
+  return { primary: callId || itemId, itemId, callId };
+}
+
+function isFunctionCallItemType(t: unknown): boolean {
+  if (typeof t !== 'string') return false;
+  return t === 'function_call' || t === 'tool_call' || t === 'mcp_call' || t === 'tool_use';
+}
+
+function isToolArgsDelta(type: string): boolean {
+  return /(?:function_call|tool_call)[._-]arguments\.delta$/i.test(type)
+    || /\bfunction_call\.arguments\.delta$/i.test(type);
+}
+
+function isToolArgsDone(type: string): boolean {
+  return /(?:function_call|tool_call)[._-]arguments\.done$/i.test(type)
+    || /\bfunction_call\.arguments\.done$/i.test(type);
+}
+
+function isToolResultEvent(type: string): boolean {
+  return type === 'tool.result'
+    || type === 'tool.completed'
+    || type === 'tool.output'
+    || type === 'response.tool_call.output'
+    || type === 'response.tool_call.completed'
+    || type === 'response.function_call.output'
+    || type === 'response.tool_result';
+}
+
+function normalizeToolOutput(output: unknown): string {
+  if (typeof output === 'string') return output;
+  if (Array.isArray(output)) {
+    const parts = output.map((part) => {
+      if (!part || typeof part !== 'object') return '';
+      const rec = part as Record<string, unknown>;
+      return typeof rec.text === 'string' ? rec.text : '';
+    }).filter(Boolean);
+    if (parts.length) return parts.join('\n');
+  }
+  return sanitizeText(output);
+}
+
+function getProjectedToolSlot(session: ProjectedSession, id: string): ProjectedToolSlot | undefined {
+  if (!id) return undefined;
+  for (const message of session.messages) {
+    if (message.role !== 'assistant' || !message.toolCalls?.length) continue;
+    const metadata = safeRecord(message.metadata) || {};
+    for (const tc of message.toolCalls) {
+      const itemId = stringValue(metadata.toolItemId) || stringValue(metadata.itemId);
+      const callId = stringValue(metadata.toolCallId) || stringValue(metadata.callId) || stringValue(tc.id);
+      if (tc.id !== id && itemId !== id && callId !== id) continue;
+      return {
+        message,
+        name: tc.name || stringValue(message.toolName) || 'tool',
+        args: tc.arguments || '',
+        itemId,
+        callId,
+      };
+    }
+  }
+  return undefined;
+}
+
+function upsertToolCallMessage(session: ProjectedSession, input: {
+  primary: string;
+  itemId?: string;
+  callId?: string;
+  name: string;
+  args: string;
+  now: string;
+}): boolean {
+  const existing = getProjectedToolSlot(session, input.primary)
+    || (input.itemId ? getProjectedToolSlot(session, input.itemId) : undefined)
+    || (input.callId ? getProjectedToolSlot(session, input.callId) : undefined);
+  const visibleId = input.callId || input.primary;
+  if (existing) {
+    const nextName = input.name || existing.name;
+    const nextMetadata = {
+      ...(existing.message.metadata || {}),
+      observedFrom: 'deck-stream',
+      projectionKind: 'tool-call',
+      toolItemId: input.itemId || existing.itemId,
+      toolCallId: input.callId || existing.callId || visibleId,
+    };
+    const current = existing.message.toolCalls?.[0];
+    const unchanged = existing.message.toolName === nextName
+      && current?.id === visibleId
+      && current?.name === nextName
+      && current?.arguments === input.args
+      && stringValue(existing.message.metadata?.toolItemId) === stringValue(nextMetadata.toolItemId)
+      && stringValue(existing.message.metadata?.toolCallId) === stringValue(nextMetadata.toolCallId)
+      && existing.message.metadata?.observedFrom === nextMetadata.observedFrom
+      && existing.message.metadata?.projectionKind === nextMetadata.projectionKind;
+    if (unchanged) return false;
+    existing.message.toolName = nextName;
+    existing.message.toolCalls = [{ id: visibleId, name: nextName, arguments: input.args }];
+    existing.message.metadata = nextMetadata;
+    existing.message.updatedAt = input.now;
+    return true;
+  }
+
+  const draft = findAssistantDraft(session);
+  if (draft && !draft.content && !(draft.toolCalls?.length) && !(draft.attachments?.length)) {
+    session.messages = session.messages.filter((message) => message !== draft);
+  }
+  const row: ProjectedMessage = {
+    id: `tc_${visibleId || randomUUID().slice(0, 8)}`,
+    role: 'assistant',
+    content: '',
+    createdAt: input.now,
+    toolName: input.name,
+    toolCalls: [{ id: visibleId, name: input.name, arguments: input.args }],
+    metadata: {
+      observedFrom: 'deck-stream',
+      projectionKind: 'tool-call',
+      toolItemId: input.itemId,
+      toolCallId: input.callId || visibleId,
+    },
+  };
+  session.messages.push(row);
+  session.messages.push({
+    id: messageId('a'),
+    role: 'assistant',
+    content: '',
+    createdAt: input.now,
+    metadata: { observedFrom: 'deck-stream', projectionStatus: 'draft' },
+  });
+  return true;
+}
+
+function insertToolResultMessage(session: ProjectedSession, input: {
+  itemId: string;
+  toolName: string;
+  content: string;
+  now: string;
+}): boolean {
+  if (!input.itemId || session.messages.some((message) => message.role === 'tool' && message.toolCallId === input.itemId)) return false;
+  const slot = getProjectedToolSlot(session, input.itemId);
+  const row: ProjectedMessage = {
+    id: `tr_${input.itemId}`,
+    role: 'tool',
+    content: input.content,
+    toolName: input.toolName,
+    toolCallId: input.itemId,
+    createdAt: input.now,
+    metadata: { observedFrom: 'deck-stream', projectionKind: 'tool-result' },
+  };
+  const idx = slot ? session.messages.findIndex((message) => message.id === slot.message.id) : -1;
+  if (idx >= 0) session.messages.splice(idx + 1, 0, row);
+  else session.messages.push(row);
+  return true;
+}
+
+function isProjectableRunEvent(type: string, payload: Record<string, unknown>, item: Record<string, unknown>): boolean {
+  if (type === 'response.output_item.added') return isFunctionCallItemType(item.type);
+  if (isToolArgsDelta(type)) return false;
+  if (isToolArgsDone(type)) {
+    const args = typeof payload.arguments === 'string'
+      ? payload.arguments
+      : (typeof item.arguments === 'string' ? item.arguments : '');
+    return Boolean(String((payload.item_id as string) || (item.id as string) || '') && args);
+  }
+  if (type === 'response.output_item.done') {
+    if (isFunctionCallItemType(item.type) && typeof item.arguments === 'string') return true;
+    const itype = String(item.type || '');
+    if (itype !== 'tool_result' && itype !== 'function_call_output' && itype !== 'tool_output') return false;
+    const itemId = String((item.call_id as string) || (item.tool_call_id as string) || (item.id as string) || '');
+    return Boolean(itemId && (item.output ?? item.content) != null);
+  }
+  if (isToolResultEvent(type)) {
+    const itemId = String(
+      (payload.item_id as string)
+      || (payload.tool_call_id as string)
+      || (payload.call_id as string)
+      || (item.id as string)
+      || ''
+    );
+    return Boolean(itemId && (payload.output ?? payload.result ?? payload.content) != null);
+  }
+  return false;
+}
+
+function canViewProjectedSession(session: ProjectedSession, viewer?: ProjectionViewer): boolean {
+  if (!viewer) return true;
+  if (viewer.role === 'admin' || viewer.role === 'super_admin') return true;
+  return session.ownerUserId === viewer.userId;
+}
+
+function canWriteProjectedSession(session: ProjectedSession, viewer?: ProjectionViewer): boolean {
+  if (!viewer) return true;
+  if (viewer.role === 'admin' || viewer.role === 'super_admin') return true;
+  return session.ownerUserId === viewer.userId;
+}
+
+function assertCanWriteProjectedSession(session: ProjectedSession, viewer?: ProjectionViewer): void {
+  if (canWriteProjectedSession(session, viewer)) return;
+  throw new SessionProfileRoutingError(
+    SESSION_PROFILE_MISMATCH,
+    'Projected session does not belong to the authenticated user.',
+    403,
+  );
+}
+
 export function startProjectedTurn(input: StartProjectedTurnInput): void {
   const profileId = normalizeProfile(input.profileId);
   const sessionId = input.sessionId.trim();
@@ -413,6 +642,7 @@ export function startProjectedTurn(input: StartProjectedTurnInput): void {
         403,
       );
     }
+    assertCanWriteProjectedSession(session, { userId: input.ownerUserId, role: input.ownerRole });
     session.ownerUserId ||= input.ownerUserId;
     session.ownerRole ||= input.ownerRole;
     session.model = input.model || session.model;
@@ -441,7 +671,7 @@ export function startProjectedTurn(input: StartProjectedTurnInput): void {
   });
 }
 
-export function reconcileProjectedSessionId(oldSessionId: string, newSessionId: string, profileId: string): void {
+export function reconcileProjectedSessionId(oldSessionId: string, newSessionId: string, profileId: string, viewer?: ProjectionViewer): void {
   const oldId = oldSessionId.trim();
   const nextId = newSessionId.trim();
   if (!oldId || !nextId || oldId === nextId) return;
@@ -459,6 +689,7 @@ export function reconcileProjectedSessionId(oldSessionId: string, newSessionId: 
     if (session.profileId !== profile) {
       throw new SessionProfileRoutingError(SESSION_PROFILE_MISMATCH, 'Projected session belongs to a different profile.', 403);
     }
+    assertCanWriteProjectedSession(session, viewer);
     const aliases = new Set([...(session.aliases || []), oldId, canonicalOld].filter((id) => id && id !== nextId));
     session.id = nextId;
     session.aliases = [...aliases];
@@ -478,6 +709,112 @@ export function reconcileProjectedSessionId(oldSessionId: string, newSessionId: 
   });
 }
 
+export function recordProjectedRunEvent(input: RecordProjectedRunEventInput): void {
+  const profile = normalizeProfile(input.profileId);
+  const sessionId = input.sessionId.trim();
+  if (!sessionId) return;
+  const innerType = input.type || 'api.event';
+  const payload = safeRecord(input.payload) || {};
+  const item = safeRecord(payload.item) || {};
+  if (!isProjectableRunEvent(innerType, payload, item)) return;
+  mutateStore((store) => {
+    const canonicalId = resolveAlias(store, sessionId);
+    const session = store.sessions[canonicalId];
+    if (!session) return false;
+    if (session.profileId !== profile) {
+      throw new SessionProfileRoutingError(SESSION_PROFILE_MISMATCH, 'Projected session belongs to a different profile.', 403);
+    }
+    assertCanWriteProjectedSession(session, input.viewer);
+    const now = nowIso();
+    let changed = false;
+
+    if (innerType === 'response.output_item.added' && isFunctionCallItemType(item.type)) {
+      const ids = toolCallIds(item, `tc_${Date.now()}`);
+      const fn = safeRecord(item.function);
+      const name = stringValue(item.name) || stringValue(fn?.name) || 'tool';
+      const args = typeof item.arguments === 'string' ? item.arguments.slice(0, 200_000) : '';
+      changed = upsertToolCallMessage(session, {
+        primary: ids.primary,
+        itemId: ids.itemId || undefined,
+        callId: ids.callId || undefined,
+        name,
+        args,
+        now,
+      });
+    } else if (isToolArgsDone(innerType)) {
+      const itemId = String((payload.item_id as string) || (item.id as string) || '');
+      const args = typeof payload.arguments === 'string'
+        ? payload.arguments
+        : (typeof item.arguments === 'string' ? item.arguments : '');
+      if (itemId && args) {
+        const slot = getProjectedToolSlot(session, itemId);
+        const name = stringValue(payload.name) || stringValue(item.name) || slot?.name || 'tool';
+        changed = upsertToolCallMessage(session, {
+          primary: itemId,
+          itemId: slot?.itemId || itemId,
+          callId: slot?.callId,
+          name,
+          args: args.slice(0, 200_000),
+          now,
+        });
+      }
+    } else if (innerType === 'response.output_item.done') {
+      if (isFunctionCallItemType(item.type) && typeof item.arguments === 'string') {
+        const ids = toolCallIds(item);
+        const slot = getProjectedToolSlot(session, ids.primary) || getProjectedToolSlot(session, ids.itemId) || getProjectedToolSlot(session, ids.callId);
+        const name = stringValue(item.name) || slot?.name || 'tool';
+        changed = upsertToolCallMessage(session, {
+          primary: ids.primary,
+          itemId: ids.itemId || slot?.itemId,
+          callId: ids.callId || slot?.callId,
+          name,
+          args: item.arguments.slice(0, 200_000),
+          now,
+        });
+      }
+      const itype = String(item.type || '');
+      if (itype === 'tool_result' || itype === 'function_call_output' || itype === 'tool_output') {
+        const itemId = String((item.call_id as string) || (item.tool_call_id as string) || (item.id as string) || '');
+        const slot = getProjectedToolSlot(session, itemId);
+        const output = item.output ?? item.content;
+        if (itemId && output != null) {
+          changed = insertToolResultMessage(session, {
+            itemId,
+            toolName: slot?.name || stringValue(item.name) || 'tool',
+            content: normalizeToolOutput(output),
+            now,
+          }) || changed;
+        }
+      }
+    } else if (isToolResultEvent(innerType)) {
+      const itemId = String(
+        (payload.item_id as string)
+        || (payload.tool_call_id as string)
+        || (payload.call_id as string)
+        || (item.id as string)
+        || ''
+      );
+      const slot = getProjectedToolSlot(session, itemId);
+      const output = payload.output ?? payload.result ?? payload.content;
+      if (itemId && output != null) {
+        changed = insertToolResultMessage(session, {
+          itemId,
+          toolName: slot?.name || stringValue(payload.tool_name) || stringValue(item.name) || 'tool',
+          content: normalizeToolOutput(output),
+          now,
+        });
+      }
+    }
+
+    if (changed) {
+      session.status = 'running';
+      session.updatedAt = now;
+      session.messageCount = session.messages.length;
+    }
+    return changed || false;
+  });
+}
+
 export function finalizeProjectedTurn(input: FinalizeProjectedTurnInput): void {
   const profile = normalizeProfile(input.profileId);
   const sessionId = input.sessionId.trim();
@@ -491,6 +828,7 @@ export function finalizeProjectedTurn(input: FinalizeProjectedTurnInput): void {
     if (session.profileId !== profile) {
       throw new SessionProfileRoutingError(SESSION_PROFILE_MISMATCH, 'Projected session belongs to a different profile.', 403);
     }
+    assertCanWriteProjectedSession(session, input.viewer);
     const now = nowIso();
     const draft = findAssistantDraft(session);
     if (draft) {
@@ -529,6 +867,7 @@ export function recordProjectedTurnError(input: RecordProjectedErrorInput): void
     if (session.profileId !== profile) {
       throw new SessionProfileRoutingError(SESSION_PROFILE_MISMATCH, 'Projected session belongs to a different profile.', 403);
     }
+    assertCanWriteProjectedSession(session, input.viewer);
     const now = nowIso();
     const draft = findAssistantDraft(session);
     const content = safeError ? `Error: ${safeError}` : 'Error: chat stream failed.';
@@ -552,16 +891,17 @@ export function recordProjectedTurnError(input: RecordProjectedErrorInput): void
   });
 }
 
-export function listProjectedSessions(profileId: string): DeckSession[] {
+export function listProjectedSessions(profileId: string, viewer?: ProjectionViewer): DeckSession[] {
   const profile = normalizeProfile(profileId);
   const store = readStore();
   return Object.values(store.sessions)
     .filter((session) => session.profileId === profile)
+    .filter((session) => canViewProjectedSession(session, viewer))
     .map(sessionSummary)
     .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
 }
 
-export function getProjectedMessages(sessionId: string, profileId: string, opts: { limit?: number; before?: string } = {}): DeckMessage[] | null {
+export function getProjectedMessages(sessionId: string, profileId: string, opts: { limit?: number; before?: string; viewer?: ProjectionViewer } = {}): DeckMessage[] | null {
   const store = readStore();
   const canonicalId = resolveAlias(store, sessionId.trim());
   const session = store.sessions[canonicalId];
@@ -571,6 +911,13 @@ export function getProjectedMessages(sessionId: string, profileId: string, opts:
     throw new SessionProfileRoutingError(
       SESSION_PROFILE_MISMATCH,
       'Session does not belong to the requested profile.',
+      403,
+    );
+  }
+  if (!canViewProjectedSession(session, opts.viewer)) {
+    throw new SessionProfileRoutingError(
+      SESSION_PROFILE_MISMATCH,
+      'Session does not belong to the authenticated user.',
       403,
     );
   }
@@ -592,8 +939,8 @@ export function getProjectedMessages(sessionId: string, profileId: string, opts:
   return messages;
 }
 
-export function getProjectedStats(profileId: string): DeckStats {
-  const sessions = listProjectedSessions(profileId);
+export function getProjectedStats(profileId: string, viewer?: ProjectionViewer): DeckStats {
+  const sessions = listProjectedSessions(profileId, viewer);
   const DAY_MS = 24 * 60 * 60 * 1000;
   const since = Date.now() - DAY_MS;
   let totalMessages = 0;
@@ -676,20 +1023,20 @@ export function importProjectedChatState(input: ImportProjectedChatStateInput): 
   return { imported };
 }
 
-export function hasProjectedSession(sessionId: string, profileId: string): boolean {
+export function hasProjectedSession(sessionId: string, profileId: string, viewer?: ProjectionViewer): boolean {
   const store = readStore();
   const canonicalId = resolveAlias(store, sessionId.trim());
   const session = store.sessions[canonicalId];
-  return !!session && session.profileId === normalizeProfile(profileId);
+  return !!session && session.profileId === normalizeProfile(profileId) && canWriteProjectedSession(session, viewer);
 }
 
-export function projectedResponseIdMatches(sessionId: string, profileId: string, responseId: string): boolean {
+export function projectedResponseIdMatches(sessionId: string, profileId: string, responseId: string, viewer?: ProjectionViewer): boolean {
   const expected = responseId.trim();
   if (!expected) return false;
   const store = readStore();
   const canonicalId = resolveAlias(store, sessionId.trim());
   const session = store.sessions[canonicalId];
-  if (!session || session.profileId !== normalizeProfile(profileId)) return false;
+  if (!session || session.profileId !== normalizeProfile(profileId) || !canWriteProjectedSession(session, viewer)) return false;
   if (session.responseId === expected) return true;
   return session.messages.some((message) => {
     const metadata = safeRecord(message.metadata);

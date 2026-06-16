@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDeckStats, getSessionsForStats, SessionProfileRoutingError } from '@/lib/server/hermes';
-import { getProjectedStats, listProjectedSessions } from '@/lib/server/deck-chat-projection';
+import { getProjectedStats, listProjectedSessions, type ProjectionViewer } from '@/lib/server/deck-chat-projection';
 import { profileScopeForUser, requireActiveUser } from '@/lib/server/rbac';
 import type { DeckSession, DeckStats } from '@/lib/types';
 
@@ -97,15 +97,15 @@ function combineStats(parts: DeckStats[], scope = 'all'): DeckStats {
   };
 }
 
-async function defaultProjectionAndApiStats(): Promise<DeckStats> {
-  const projected = listProjectedSessions('default');
+async function defaultProjectionAndApiStats(viewer: ProjectionViewer): Promise<DeckStats> {
+  const projected = listProjectedSessions('default', viewer);
   const api = await getSessionsForStats('default');
   return statsFromSessions(mergeSessionRows(projected, api), 'default');
 }
 
-function projectedOrApiStats(profile?: string): Promise<DeckStats> | DeckStats {
-  if (profile && profile !== 'default') return getProjectedStats(profile);
-  if (profile === 'default') return defaultProjectionAndApiStats();
+function projectedOrApiStats(profile: string | undefined, viewer: ProjectionViewer): Promise<DeckStats> | DeckStats {
+  if (profile && profile !== 'default') return getProjectedStats(profile, viewer);
+  if (profile === 'default') return defaultProjectionAndApiStats(viewer);
   return getDeckStats(profile);
 }
 
@@ -120,9 +120,10 @@ export async function GET(req: Request) {
   const scope = profileScopeForUser(auth.user, profile);
   if (!scope.ok) return scope.response;
   try {
+    const viewer = { userId: auth.user.id, role: auth.user.role };
     const stats = scope.profiles.length
-      ? combineStats(await Promise.all(scope.profiles.map((profileId) => projectedOrApiStats(profileId))), scope.requested ?? 'all')
-      : await projectedOrApiStats(profile);
+      ? combineStats(await Promise.all(scope.profiles.map((profileId) => projectedOrApiStats(profileId, viewer))), scope.requested ?? 'all')
+      : await projectedOrApiStats(profile, viewer);
     return NextResponse.json(stats, {
       headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=30' },
     });
