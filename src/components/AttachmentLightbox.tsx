@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { Download, X } from 'lucide-react';
 import { useT } from '@/lib/i18n';
+import { safeAttachmentDownloadUrl, safeAttachmentImageUrl } from '@/lib/safe-links';
 
 interface Props {
   src: string;
@@ -16,6 +17,8 @@ interface Props {
  * the model returned, so we don't need a server round-trip.
  */
 export function AttachmentLightbox({ src, name, onClose }: Props) {
+  const safeSrc = safeAttachmentImageUrl(src);
+  const downloadHref = safeAttachmentDownloadUrl(src);
   const t = useT({
     zh: { close: '关闭', download: '下载' },
     en: { close: 'Close', download: 'Download' },
@@ -76,10 +79,10 @@ export function AttachmentLightbox({ src, name, onClose }: Props) {
   // tab). For absolute http(s) URLs we route through a hidden fetch+blob to
   // make the download attribute take effect.
   const handleDownload = async (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (!/^https?:/i.test(src)) return; // data: / blob: already obey download
+    if (!downloadHref || !/^https?:/i.test(downloadHref)) return; // data: / blob: already obey download
     e.preventDefault();
     try {
-      const r = await fetch(src);
+      const r = await fetch(downloadHref);
       const b = await r.blob();
       const url = URL.createObjectURL(b);
       const a = document.createElement('a');
@@ -92,26 +95,30 @@ export function AttachmentLightbox({ src, name, onClose }: Props) {
     } catch { /* fall back to default link behavior */ }
   };
 
+  if (!safeSrc) return null;
+
   return (
     <div className="lightbox-backdrop" onClick={onClose} role="dialog" aria-modal="true" aria-label={fileName}>
       <div className="lightbox-toolbar" ref={toolbarRef} onClick={(e) => e.stopPropagation()}>
-        <a
-          className="btn icon sm"
-          href={src}
-          download={fileName}
-          aria-label={t.download}
-          title={t.download}
-          onClick={handleDownload}
-        >
-          <Download size={14} />
-        </a>
+        {downloadHref && (
+          <a
+            className="btn icon sm"
+            href={downloadHref}
+            download={fileName}
+            aria-label={t.download}
+            title={t.download}
+            onClick={handleDownload}
+          >
+            <Download size={14} />
+          </a>
+        )}
         <button className="btn icon sm" onClick={onClose} aria-label={t.close} title={t.close}>
           <X size={14} />
         </button>
       </div>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={src}
+        src={safeSrc}
         alt={fileName}
         className="lightbox-img"
         loading="eager"

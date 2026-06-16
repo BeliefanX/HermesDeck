@@ -13,6 +13,7 @@ import {
   SHOW_TOOL_DETAILS_KEY,
   SOURCE_FILTER_KEY,
   parseSourceFilter,
+  redactPersistedChatMessages,
   safeParseStored,
   sessionMatchesProfile,
   sourceFilterKeyForProfile,
@@ -193,7 +194,7 @@ export function useChatHydration(p: HydrationParams) {
       const active = p.active && persistIds.has(p.active) ? p.active : undefined;
       const payload: PersistedChatState = {
         sessions: cachedSessions,
-        messages: storedMessages,
+        messages: redactPersistedChatMessages(storedMessages),
         responseIds: storedResponseIds,
         active,
         profile: p.profile,

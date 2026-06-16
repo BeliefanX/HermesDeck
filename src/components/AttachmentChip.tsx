@@ -2,6 +2,7 @@
 import { AlertCircle, Download, FileText, File as FileIcon, Image as ImageIcon, Loader2, X } from 'lucide-react';
 import { type AttachmentItem, formatBytes } from '@/lib/attachments';
 import { useT } from '@/lib/i18n';
+import { safeAttachmentDownloadUrl, safeAttachmentImageUrl } from '@/lib/safe-links';
 
 interface Props {
   item: AttachmentItem;
@@ -37,12 +38,12 @@ export function AttachmentChip({ item, onRemove, onPreview, readOnly }: Props) {
   const isImage = item.kind === 'image';
   const isFile = item.kind === 'file';
   const title = item.error ? `${item.name} — ${item.error}` : item.name;
-  // Download href: prefer dataUrl (works offline), fall back to remote url.
-  const downloadHref = item.dataUrl || item.url || '';
+  // Download href: prefer dataUrl (works offline), fall back to sanitized remote url.
+  const downloadHref = safeAttachmentDownloadUrl(item.dataUrl) || safeAttachmentDownloadUrl(item.url) || '';
   const showDownload = readOnly && item.status === 'ready' && !!downloadHref;
   // Pick the chip thumbnail source for images. Either base64 inline or a
   // remote URL that the upstream provider returned.
-  const imgSrc = isImage ? (item.dataUrl || item.url || '') : '';
+  const imgSrc = isImage ? (safeAttachmentImageUrl(item.dataUrl) || safeAttachmentImageUrl(item.url) || '') : '';
   const kindLabel = isImage ? t.image : isFile ? t.file : t.text;
 
   const body = (

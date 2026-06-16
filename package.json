@@ -50,6 +50,7 @@
     "typescript": "^6.0.3"
   },
   "overrides": {
+    "dompurify": "^3.4.9",
     "postcss": "^8.5.15"
   }
 }

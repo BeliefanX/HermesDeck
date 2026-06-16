@@ -1,4 +1,4 @@
-import type { DeckMessage, DeckSession } from '@/lib/types';
+import type { DeckAttachment, DeckMessage, DeckSession } from '@/lib/types';
 
 export type LocalSession = DeckSession;
 
@@ -9,6 +9,8 @@ export type PersistedChatState = {
   active?: string;
   profile?: string;
 };
+
+const SAFE_ATTACHMENT_META_KEYS = new Set(['id', 'name', 'mime', 'size', 'kind', 'type', 'status', 'error']);
 
 export const STORAGE_KEY = 'hermesdeck.chat.v1';
 export const PANELS_KEY = 'hermesdeck.chat.panels.v1';
@@ -99,7 +101,7 @@ export function stripLegacyLocal(
 
   const messages: Record<string, DeckMessage[]> = {};
   for (const [id, list] of Object.entries(state.messages || {})) {
-    if (!id.startsWith('local:') && allowedIds.has(id)) messages[id] = list;
+    if (!id.startsWith('local:') && allowedIds.has(id)) messages[id] = redactPersistedChatMessages({ [id]: list })[id] || [];
   }
   const responseIds: Record<string, string> = {};
   for (const [id, val] of Object.entries(state.responseIds || {})) {
@@ -109,6 +111,28 @@ export function stripLegacyLocal(
     ? state.active
     : undefined;
   return { sessions, messages, responseIds, active, profile: target };
+}
+
+export function redactPersistedChatMessages(messages: Record<string, DeckMessage[]>): Record<string, DeckMessage[]> {
+  const redacted: Record<string, DeckMessage[]> = {};
+  for (const [id, list] of Object.entries(messages || {})) {
+    redacted[id] = list.map((message) => {
+      if (!message.attachments?.length) return message;
+      return {
+        ...message,
+        attachments: message.attachments.map((attachment) => {
+          const safe: Partial<DeckAttachment> = {};
+          for (const [key, value] of Object.entries(attachment)) {
+            if (SAFE_ATTACHMENT_META_KEYS.has(key)) {
+              (safe as Record<string, unknown>)[key] = value;
+            }
+          }
+          return safe as DeckAttachment;
+        }),
+      };
+    });
+  }
+  return redacted;
 }
 
 // Merge cached + remote, preferring remote field values (title/messageCount may

@@ -9,7 +9,7 @@ import rehypeKatex from 'rehype-katex';
 import rehypeHighlight from 'rehype-highlight';
 import { CodeBlock } from './CodeBlock';
 import { AttachmentLightbox } from './AttachmentLightbox';
-import { safeMarkdownHref } from '@/lib/safe-links';
+import { safeAttachmentImageUrl, safeMarkdownHref } from '@/lib/safe-links';
 
 // Hermes embeds model-generated images as filesystem paths
 // (e.g. `/Users/me/.hermes/cache/images/foo.png`) inside the assistant's
@@ -100,7 +100,8 @@ const MessageContentInner = memo(function MessageContentInner({ content, streami
           img: ({ src, alt, title, width, height }) => {
             const url = typeof src === 'string' ? src : '';
             if (!url) return null;
-            const resolved = resolveImgSrc(url);
+            const resolved = safeAttachmentImageUrl(resolveImgSrc(url));
+            if (!resolved) return null;
             return (
               <button
                 type="button"

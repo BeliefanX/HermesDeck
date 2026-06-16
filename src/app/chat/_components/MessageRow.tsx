@@ -6,6 +6,7 @@ import { MessageContent } from '@/components/MessageContent';
 import { MessageActions } from '@/components/MessageActions';
 import { AttachmentChip } from '@/components/AttachmentChip';
 import { type AttachmentItem } from '@/lib/attachments';
+import { safeAttachmentImageUrl } from '@/lib/safe-links';
 import { isSubagentTool } from '../_lib/subagent';
 import { isProjectedDraftMessage } from '../_hooks/useVisibleMessages';
 
@@ -48,7 +49,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
         {m.attachments && m.attachments.length > 0 && (
           <div className="msg-attachments" role="list" aria-label={attachmentsAria}>
             {m.attachments.map((a) => {
-              const previewSrc = a.kind === 'image' ? (a.dataUrl || a.url || '') : '';
+              const previewSrc = a.kind === 'image' ? (safeAttachmentImageUrl(a.dataUrl) || safeAttachmentImageUrl(a.url) || '') : '';
               return (
                 <AttachmentChip
                   key={a.id}
