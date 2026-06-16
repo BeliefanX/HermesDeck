@@ -193,7 +193,7 @@ function ChatPageInner() {
       reasoningTouchedRef.current = false;
       setReasoningEffort(actualReasoning);
     }
-  }, [activeSession?.id, activeSession?.model, activeSession?.reasoningEffort, activeSession?.source, hydrated, reasoningTouchedRef, setObservedModel, setReasoningEffort]);
+  }, [activeSession, hydrated, reasoningTouchedRef, setObservedModel, setReasoningEffort]);
 
   const { toolNameByCallId, visibleMessages, hiddenToolCount } = useVisibleMessages(
     activeMessages, showToolDetails, busy,

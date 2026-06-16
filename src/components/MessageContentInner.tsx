@@ -9,6 +9,7 @@ import rehypeKatex from 'rehype-katex';
 import rehypeHighlight from 'rehype-highlight';
 import { CodeBlock } from './CodeBlock';
 import { AttachmentLightbox } from './AttachmentLightbox';
+import { safeMarkdownHref } from '@/lib/safe-links';
 
 // Hermes embeds model-generated images as filesystem paths
 // (e.g. `/Users/me/.hermes/cache/images/foo.png`) inside the assistant's
@@ -79,11 +80,23 @@ const MessageContentInner = memo(function MessageContentInner({ content, streami
               </CodeBlock>
             );
           },
-          a: ({ children, href, ...rest }) => (
-            <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
-              {children}
-            </a>
-          ),
+          a: ({ children, href, ...rest }) => {
+            const safeHref = safeMarkdownHref(href);
+            if (!safeHref) {
+              return <span className="md-link-disabled">{children}</span>;
+            }
+            const external = /^[a-z][a-z0-9+.-]*:/i.test(safeHref) || safeHref.startsWith('//');
+            return (
+              <a
+                href={safeHref}
+                target={external ? '_blank' : undefined}
+                rel={external ? 'noopener noreferrer' : undefined}
+                {...rest}
+              >
+                {children}
+              </a>
+            );
+          },
           img: ({ src, alt, title, width, height }) => {
             const url = typeof src === 'string' ? src : '';
             if (!url) return null;

@@ -765,7 +765,7 @@ export function useChatStream(params: UseChatStreamParams) {
         clearInflight();
       },
     };
-  }, [applyToolEventToMessages, handleEvent, profile, pushTimeline, setError, setMessages, setResponseIds, setUsage, t]);
+  }, [applyToolEventToMessages, handleEvent, profile, pushTimeline, setError, setMessages, setResponseIds, setSessions, setUsage, t]);
 
   const send = useCallback(async (
     textArg?: string,

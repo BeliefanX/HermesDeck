@@ -1103,7 +1103,7 @@ test('model preference route and chat stream enforce profile access and use stor
   assert.match(modelsSource, /apiHeaders\(profile\)/);
   assert.doesNotMatch(modelsSource, /localModelCatalogForProfile|config\.yaml|state\.db|execFileAsync|spawn\(|runPythonOr/);
   assert.match(modelsSource, /extractModelItems/);
-  assert.match(modelsSource, /throw new Error\('\/v1\/models returned no selectable profile models\.'\)/);
+  assert.match(modelsSource, /if \(!modelItems\.length\) \{[\s\S]*providers: \[\],[\s\S]*orphanModels: \[\],[\s\S]*reasoningEffort,[\s\S]*reasoningLevels,[\s\S]*\}/);
   assert.match(clientApiSource, /\/api\/deck\/model-preferences/);
   assert.doesNotMatch(hookSource, /localStorage/);
 });
