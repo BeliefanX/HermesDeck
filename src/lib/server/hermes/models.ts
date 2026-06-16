@@ -1,7 +1,8 @@
 import type { DeckModelsResponse, ModelInfo } from '@/lib/types';
-import { apiHeaders, getHermesApiBase, makeKeyedCache } from './core';
+import { apiHeaders, getHermesApiBase, HERMES_API_BASE, makeKeyedCache } from './core';
 
-const BASE_REASONING_LEVELS = ['auto', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const;
+const BASE_REASONING_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const;
+const DEFAULT_REASONING_EFFORT = 'medium';
 const HERMES_AGENT_PLACEHOLDER_MODEL = 'hermes agent';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -9,6 +10,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 type ApiModelItem = { id: string; provider?: string; isDefault?: boolean; baseUrl?: string };
+type ApiProfileRuntime = { id: string; model?: string; provider?: string; reasoningEffort?: string };
 
 function extractModelItems(payload: unknown): ApiModelItem[] {
   const rawItems = Array.isArray(payload)
@@ -47,6 +49,80 @@ function isHermesAgentPlaceholder(provider: string | undefined, model: string | 
     || (!!profile && normalizedModel === profile.trim().toLowerCase());
 }
 
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function normalizeReasoningEffort(value: unknown): string {
+  const raw = firstString(value).toLowerCase();
+  // Deck resolves Hermes/OpenAI's implicit or "auto" runtime reasoning default
+  // to the current composer baseline. If the API starts returning an explicit
+  // resolved field, normalizeApiProfileRuntime should pass that through first.
+  if (!raw || raw === 'auto') return DEFAULT_REASONING_EFFORT;
+  return raw;
+}
+
+function extractProfiles(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload;
+  if (!isRecord(payload)) return [];
+  for (const key of ['profiles', 'items', 'data']) {
+    const value = payload[key];
+    if (Array.isArray(value)) return value;
+  }
+  if (isRecord(payload.data) && Array.isArray(payload.data.profiles)) return payload.data.profiles;
+  return [];
+}
+
+function normalizeApiProfileRuntime(raw: unknown): ApiProfileRuntime | null {
+  if (!isRecord(raw)) return null;
+  const id = firstString(raw.id, raw.profile_id, raw.profileId, raw.name);
+  if (!id) return null;
+  const agent = isRecord(raw.agent) ? raw.agent : undefined;
+  const model = firstString(raw.model, raw.current_model, raw.currentModel, raw.default_model, raw.defaultModel, agent?.model);
+  const provider = firstString(raw.provider, raw.current_provider, raw.currentProvider, raw.default_provider, raw.defaultProvider, agent?.provider);
+  const reasoningEffort = normalizeReasoningEffort(
+    raw.reasoning_effort
+      ?? raw.reasoningEffort
+      ?? raw.default_reasoning_effort
+      ?? raw.defaultReasoningEffort
+      ?? raw.current_reasoning_effort
+      ?? raw.currentReasoningEffort
+      ?? agent?.reasoning_effort
+      ?? agent?.reasoningEffort,
+  );
+  return { id, model: model || undefined, provider: provider || undefined, reasoningEffort };
+}
+
+async function fetchProfileRuntime(profile = 'default'): Promise<ApiProfileRuntime | null> {
+  const profileApiBase = getHermesApiBase(profile);
+  const bases = Array.from(new Set([profileApiBase, HERMES_API_BASE].filter((base): base is string => Boolean(base))));
+  for (const apiBase of bases) {
+    const base = apiBase.replace(/\/+$/, '');
+    const headerProfile = apiBase === profileApiBase ? profile : 'default';
+    for (const path of ['/v1/profiles', '/api/profiles']) {
+      try {
+        const response = await fetch(`${base}${path}`, {
+          cache: 'no-store',
+          headers: apiHeaders(headerProfile),
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!response.ok) continue;
+        const payload = await response.json().catch(() => null);
+        const profiles = extractProfiles(payload)
+          .map(normalizeApiProfileRuntime)
+          .filter((item): item is ApiProfileRuntime => item !== null);
+        const selected = profiles.find((item) => item.id === profile)
+          || (profile === 'default' ? profiles.find((item) => item.id === 'default') : undefined);
+        if (selected) return selected;
+      } catch { /* try the next API profile endpoint */ }
+    }
+  }
+  return null;
+}
+
 async function fetchApiModels(profile = 'default'): Promise<ApiModelItem[]> {
   const apiBase = getHermesApiBase(profile);
   if (!apiBase) throw new Error(`profile '${profile}' has no configured API server base`);
@@ -69,20 +145,37 @@ async function fetchApiModels(profile = 'default'): Promise<ApiModelItem[]> {
 }
 
 async function getModelsUncached(profile = 'default'): Promise<DeckModelsResponse> {
-  const modelItems = (await fetchApiModels(profile))
+  const [apiModelItems, profileRuntime] = await Promise.all([
+    fetchApiModels(profile),
+    fetchProfileRuntime(profile).catch(() => null),
+  ]);
+  const modelItems = apiModelItems
     .filter((item) => !isHermesAgentPlaceholder(item.provider || 'hermes', item.id, profile));
+
+  const resolvedModel = profileRuntime?.model?.trim();
+  const resolvedProvider = profileRuntime?.provider?.trim() || 'hermes';
+  const hasUsableResolvedModel = Boolean(resolvedModel)
+    && !isHermesAgentPlaceholder(resolvedProvider, resolvedModel, profile);
+  if (hasUsableResolvedModel && resolvedModel && !modelItems.some((item) => item.id === resolvedModel)) {
+    modelItems.push({ id: resolvedModel, provider: resolvedProvider, isDefault: true });
+  }
+
+  const reasoningEffort = normalizeReasoningEffort(profileRuntime?.reasoningEffort);
+  const reasoningLevels = Array.from(new Set([...BASE_REASONING_LEVELS, reasoningEffort]));
 
   if (!modelItems.length) {
     return {
       providers: [],
       orphanModels: [],
-      reasoningEffort: 'auto',
-      reasoningLevels: Array.from(new Set(BASE_REASONING_LEVELS)),
+      reasoningEffort,
+      reasoningLevels,
     };
   }
 
   const byProvider = new Map<string, ModelInfo[]>();
-  let defaultItem = modelItems.find((item) => item.isDefault) || modelItems[0];
+  let defaultItem = (resolvedModel ? modelItems.find((item) => item.id === resolvedModel) : undefined)
+    || modelItems.find((item) => item.isDefault)
+    || modelItems[0];
   for (const item of modelItems) {
     const provider = item.provider || 'hermes';
     const list = byProvider.get(provider) ?? [];
@@ -98,9 +191,6 @@ async function getModelsUncached(profile = 'default'): Promise<DeckModelsRespons
     baseUrl: modelItems.find((item) => (item.provider || 'hermes') === id)?.baseUrl,
     models,
   }));
-
-  const reasoningEffort = 'auto';
-  const reasoningLevels = Array.from(new Set(BASE_REASONING_LEVELS));
 
   return {
     default: defaultItem ? { provider: defaultItem.provider || 'hermes', model: defaultItem.id, baseUrl: defaultItem.baseUrl } : undefined,

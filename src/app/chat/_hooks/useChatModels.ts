@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { deckApi } from '@/lib/api';
 
 export type ReasoningEffort = string;
-export const REASONING_LEVELS: ReasoningEffort[] = ['auto', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+export const REASONING_LEVELS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 
 interface ModelOption { id: string; provider: string; isDefault?: boolean }
 
@@ -79,8 +79,10 @@ export function useChatModels(profile: string) {
         const cfg = (r.reasoningEffort || '').trim().toLowerCase();
         const levels = Array.from(new Set([...(r.reasoningLevels || []), ...REASONING_LEVELS, cfg]
           .map((level) => level.trim().toLowerCase())
-          .filter(Boolean)));
-        const resolved: ReasoningEffort = cfg || 'auto';
+          .filter((level) => Boolean(level) && level !== 'auto')));
+        // Deck interprets missing/"auto" reasoning from the Hermes/OpenAI runtime
+        // contract as the current default baseline; explicit API values win.
+        const resolved: ReasoningEffort = cfg && cfg !== 'auto' ? cfg : 'medium';
         const nextLevels = levels.includes(resolved) ? levels : [...levels, resolved];
         setReasoningLevels(nextLevels);
         setDefaultReasoning(resolved);
@@ -98,8 +100,8 @@ export function useChatModels(profile: string) {
         optionsRef.current = [];
         setSelectedModelState('');
         setReasoningLevels(REASONING_LEVELS);
-        setDefaultReasoning('auto');
-        setReasoningEffort('auto');
+        setDefaultReasoning('medium');
+        setReasoningEffort('medium');
       });
     return () => { alive = false; ac.abort(); };
   }, [profile]);
