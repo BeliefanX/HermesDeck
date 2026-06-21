@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDeckStats, getSessionsForStats, SessionProfileRoutingError } from '@/lib/server/hermes';
-import { getProjectedStats, listProjectedSessions, type ProjectionViewer } from '@/lib/server/deck-chat-projection';
+import { listProjectedSessions, type ProjectionViewer } from '@/lib/server/deck-chat-projection';
 import { profileScopeForUser, requireActiveUser } from '@/lib/server/rbac';
 import type { DeckSession, DeckStats } from '@/lib/types';
 
@@ -97,15 +97,14 @@ function combineStats(parts: DeckStats[], scope = 'all'): DeckStats {
   };
 }
 
-async function defaultProjectionAndApiStats(viewer: ProjectionViewer): Promise<DeckStats> {
-  const projected = listProjectedSessions('default', viewer);
-  const api = await getSessionsForStats('default');
-  return statsFromSessions(mergeSessionRows(projected, api), 'default');
+async function projectionAndApiStats(profile: string, viewer: ProjectionViewer): Promise<DeckStats> {
+  const projected = listProjectedSessions(profile, viewer);
+  const api = await getSessionsForStats(profile);
+  return statsFromSessions(mergeSessionRows(projected, api), profile);
 }
 
 function projectedOrApiStats(profile: string | undefined, viewer: ProjectionViewer): Promise<DeckStats> | DeckStats {
-  if (profile && profile !== 'default') return getProjectedStats(profile, viewer);
-  if (profile === 'default') return defaultProjectionAndApiStats(viewer);
+  if (profile) return projectionAndApiStats(profile, viewer);
   return getDeckStats(profile);
 }
 

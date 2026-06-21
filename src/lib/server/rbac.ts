@@ -41,6 +41,10 @@ export function isAdminRole(role: DeckRole | undefined | null): boolean {
   return role === 'admin' || role === 'super_admin';
 }
 
+export function isSuperAdminRole(role: DeckRole | undefined | null): boolean {
+  return role === 'super_admin';
+}
+
 export function requireDeckUser(req: Request): RbacGuard {
   const session = inspectProtectedSessionToken(readSessionCookie(req));
   if (!session.ok) {
@@ -74,7 +78,7 @@ export function normalizeProfileId(profileId: unknown, fallback = 'default'): st
 }
 
 export function hasProfileAccess(user: SafeDeckUserContext, profileId: string): boolean {
-  if (isAdminRole(user.role)) return true;
+  if (isSuperAdminRole(user.role)) return true;
   if (user.status !== 'active' || !user.capabilities.canUseApp) return false;
   return user.assignedProfileIds.includes(profileId);
 }
@@ -109,7 +113,7 @@ export function profileIdOf(profile: ProfileLike): string | undefined {
 }
 
 export function filterProfilesForUser<T extends ProfileLike>(user: SafeDeckUserContext, profiles: T[]): T[] {
-  if (isAdminRole(user.role)) return profiles;
+  if (isSuperAdminRole(user.role)) return profiles;
   const allowed = new Set(user.assignedProfileIds);
   return profiles.filter((profile) => {
     const id = profileIdOf(profile);
@@ -128,7 +132,7 @@ export function profileScopeForUser(
     if (!hasProfileAccess(user, normalized)) return { ok: false, response: rbacJsonError(403, 'unauthorized', 'Profile is not assigned to this user.') };
     return { ok: true, profiles: [normalized], requested: normalized };
   }
-  if (isAdminRole(user.role)) return { ok: true, profiles: [] };
+  if (isSuperAdminRole(user.role)) return { ok: true, profiles: [] };
   const profiles = user.assignedProfileIds.filter((id) => PROFILE_ID_RE.test(id));
   if (!profiles.length) return { ok: false, response: rbacJsonError(403, 'unauthorized', 'No profiles are assigned to this user.') };
   return { ok: true, profiles };

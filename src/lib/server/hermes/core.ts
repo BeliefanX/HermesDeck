@@ -85,10 +85,10 @@ function readHermesEnvFile(path: string): Record<string, string> {
   return env;
 }
 
-function defaultHermesRoot(): string {
+export function defaultHermesRoot(): string {
   const envHome = process.env.HERMES_HOME?.trim();
   if (!envHome) return join(homedir(), '.hermes');
-  const normalized = envHome.replace(/\\+/g, '/');
+  const normalized = envHome.replace(/\\+/g, '/').replace(/\/+$/, '');
   const marker = '/profiles/';
   const idx = normalized.lastIndexOf(marker);
   if (idx >= 0 && normalized.slice(idx + marker.length) && !normalized.slice(idx + marker.length).includes('/')) {

@@ -626,11 +626,14 @@ export function useChatStream(params: UseChatStreamParams) {
         if (!isMine()) return;
         const inf = inflightRef.current!;
         if (info.sessionId) inf.hubKey = info.sessionId;
-        inf.lastSeq = info.latestSeq;
+        if (info.gap) {
+          setError('Stream replay gap: buffered events were lost; refresh the session history before continuing.');
+          return;
+        }
         writeInflight({
           hubKey: inf.hubKey,
           sessionId: inf.sessionId,
-          lastSeq: info.latestSeq,
+          lastSeq: inf.lastSeq,
           profile,
           textAssistantId: inf.textAssistantId,
           startedAt: info.startedAt || Date.now(),

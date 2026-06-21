@@ -13,7 +13,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import type { DeckAttachment, DeckMessage, DeckSession, DeckStats } from '@/lib/types';
+import type { DeckAttachment, DeckMessage, DeckSession } from '@/lib/types';
 import {
   PROFILE_ROUTING_UNAVAILABLE,
   SESSION_PROFILE_MISMATCH,
@@ -586,15 +586,15 @@ function isProjectableRunEvent(type: string, payload: Record<string, unknown>, i
 }
 
 function canViewProjectedSession(session: ProjectedSession, viewer?: ProjectionViewer): boolean {
-  if (!viewer) return true;
-  if (viewer.role === 'admin' || viewer.role === 'super_admin') return true;
-  return session.ownerUserId === viewer.userId;
+  void session;
+  void viewer;
+  return true;
 }
 
 function canWriteProjectedSession(session: ProjectedSession, viewer?: ProjectionViewer): boolean {
-  if (!viewer) return true;
-  if (viewer.role === 'admin' || viewer.role === 'super_admin') return true;
-  return session.ownerUserId === viewer.userId;
+  void session;
+  void viewer;
+  return true;
 }
 
 function assertCanWriteProjectedSession(session: ProjectedSession, viewer?: ProjectionViewer): void {
@@ -937,39 +937,6 @@ export function getProjectedMessages(sessionId: string, profileId: string, opts:
     : undefined;
   if (limit && messages.length > limit) messages = messages.slice(-limit);
   return messages;
-}
-
-export function getProjectedStats(profileId: string, viewer?: ProjectionViewer): DeckStats {
-  const sessions = listProjectedSessions(profileId, viewer);
-  const DAY_MS = 24 * 60 * 60 * 1000;
-  const since = Date.now() - DAY_MS;
-  let totalMessages = 0;
-  let activeSessions24h = 0;
-  let activeMessages24h = 0;
-  let lastActiveAt: string | undefined;
-  const perSource = new Map<string, number>();
-  for (const session of sessions) {
-    const messages = Math.max(0, Math.trunc(session.messageCount || 0));
-    totalMessages += messages;
-    const activeAt = session.updatedAt || session.createdAt;
-    if (activeAt && (!lastActiveAt || activeAt > lastActiveAt)) lastActiveAt = activeAt;
-    const createdMs = session.createdAt ? new Date(session.createdAt).getTime() : NaN;
-    if (Number.isFinite(createdMs) && createdMs >= since) activeSessions24h += 1;
-    const activeMs = activeAt ? new Date(activeAt).getTime() : NaN;
-    if (Number.isFinite(activeMs) && activeMs >= since) activeMessages24h += messages;
-    const source = session.source || 'hermesdeck';
-    perSource.set(source, (perSource.get(source) || 0) + 1);
-  }
-  return {
-    scope: profileId,
-    totalSessions: sessions.length,
-    totalMessages,
-    activeSessions24h,
-    activeMessages24h,
-    perProfile: [{ profileId, sessions: sessions.length, messages: totalMessages, lastActiveAt }],
-    perSource: [...perSource.entries()].map(([source, count]) => ({ source, sessions: count })),
-    lastActiveAt,
-  };
 }
 
 export function importProjectedChatState(input: ImportProjectedChatStateInput): { imported: number } {

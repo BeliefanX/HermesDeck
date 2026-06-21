@@ -39,11 +39,11 @@ test('projection polling is bounded by active draft state and avoids whole-messa
   assert.match(chatPage, /\}, \[active, busy, hasActiveServerDraft, hydrated, profile, setMessages\]\);/);
 });
 
-test('Deck chat projection reads are profile and owner scoped', () => {
+test('Deck chat projection reads are profile-scoped for shared assigned agents', () => {
   assert.match(projection, /export type ProjectionViewer/);
   assert.match(projection, /canViewProjectedSession/);
   assert.match(projection, /canWriteProjectedSession/);
-  assert.match(projection, /session\.ownerUserId === viewer\.userId/);
+  assert.match(projection, /void viewer;/);
   assert.match(projection, /hasProjectedSession\(sessionId: string, profileId: string, viewer\?: ProjectionViewer\)/);
   assert.match(projection, /projectedResponseIdMatches\(sessionId: string, profileId: string, responseId: string, viewer\?: ProjectionViewer\)/);
   assert.doesNotMatch(projection, /return !session\.ownerUserId \|\| session\.ownerUserId === viewer\.userId/);
@@ -54,13 +54,11 @@ test('Deck chat projection reads are profile and owner scoped', () => {
 
 test('Deck stats projection reads are owner scoped for authenticated viewers', () => {
   const statsRoute = readFileSync(new URL('../src/app/api/deck/stats/route.ts', import.meta.url), 'utf8');
-  assert.match(projection, /getProjectedStats\(profileId: string, viewer\?: ProjectionViewer\)/);
-  assert.match(projection, /listProjectedSessions\(profileId, viewer\)/);
   assert.match(statsRoute, /const viewer = \{ userId: auth\.user\.id, role: auth\.user\.role \}/);
-  assert.match(statsRoute, /listProjectedSessions\('default', viewer\)/);
-  assert.match(statsRoute, /getProjectedStats\(profile, viewer\)/);
+  assert.match(statsRoute, /projectedOrApiStats\(profileId, viewer\)/);
+  assert.match(statsRoute, /projectionAndApiStats\(profile, viewer\)/);
+  assert.match(statsRoute, /listProjectedSessions\(profile, viewer\)/);
   assert.doesNotMatch(statsRoute, /listProjectedSessions\('default'\)/);
-  assert.doesNotMatch(statsRoute, /getProjectedStats\(profile\)/);
 });
 
 test('server draft polling is single-flight guarded', () => {

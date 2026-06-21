@@ -15,9 +15,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const result = await listDeckSessionsForProfile(profile, { userId: auth.user.id, role: auth.user.role });
-    const headers: Record<string, string> = { 'Cache-Control': 'private, max-age=3, stale-while-revalidate=15' };
-    if (result.warning) headers['X-HermesDeck-Warning'] = result.warning.code;
-    return NextResponse.json(result, { headers });
+    return NextResponse.json(result, {
+      headers: { 'Cache-Control': 'private, max-age=3, stale-while-revalidate=15' },
+    });
   } catch (err) {
     if (err instanceof SessionProfileRoutingError) {
       return NextResponse.json(

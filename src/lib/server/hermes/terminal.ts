@@ -1,7 +1,7 @@
 import type { TerminalAction, TerminalRunRequest, TerminalRunResult } from '@/lib/types';
 import { execFileAsync, redactSecrets } from './core';
 import { getHealth, hermesVersion } from './health';
-import { getProfiles } from './profiles';
+import { getStrictProfiles } from './profiles';
 
 type BuiltTerminalAction = { file: string; args: string[] } | { synthetic: () => Promise<{ stdout: string; stderr?: string }> };
 type TerminalActionSpec = TerminalAction & {
@@ -12,7 +12,7 @@ type TerminalActionSpec = TerminalAction & {
 const apiTerminalActions: TerminalActionSpec[] = [
   { id: 'diagnostic.health', label: 'Deck health check', description: 'Run the HermesDeck BFF health check against the Hermes Agent API.', commandPreview: 'Hermes Agent API health snapshot', category: 'diagnostic', maxTimeoutMs: 5000, build: () => ({ synthetic: async () => ({ stdout: JSON.stringify(await getHealth(), null, 2) }) }) },
   { id: 'hermes.api.version', label: 'Hermes API version', description: 'Read Hermes Agent version information from the configured API.', commandPreview: 'Hermes Agent API /health', category: 'hermes', maxTimeoutMs: 5000, build: () => ({ synthetic: async () => ({ stdout: `${await hermesVersion()}\n` }) }) },
-  { id: 'hermes.api.profiles', label: 'List profiles', description: 'List Hermes profiles from the Hermes Agent profiles API.', commandPreview: 'Hermes Agent API profiles', category: 'hermes', maxTimeoutMs: 8000, build: () => ({ synthetic: async () => ({ stdout: JSON.stringify({ profiles: await getProfiles() }, null, 2) }) }) },
+  { id: 'hermes.api.profiles', label: 'List profiles', description: 'List Hermes profiles from the Hermes Agent profiles API.', commandPreview: 'Hermes Agent API profiles', category: 'hermes', maxTimeoutMs: 8000, build: () => ({ synthetic: async () => ({ stdout: JSON.stringify({ profiles: await getStrictProfiles() }, null, 2) }) }) },
 ];
 
 const localDiagnosticActions: TerminalActionSpec[] = [

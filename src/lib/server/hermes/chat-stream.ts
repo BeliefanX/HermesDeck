@@ -47,7 +47,7 @@ export interface ChatStreamProjectionHooks {
 
 function runProjectionHook(fn: (() => void) | undefined): void {
   if (!fn) return;
-  try { fn(); } catch { /* projection failures must not break live chat */ }
+  fn();
 }
 
 // Hermes /v1/responses currently rejects request bodies > 1MB. We pre-check

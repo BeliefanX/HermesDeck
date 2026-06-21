@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 export { HERMES_API_BASE } from './core';
 export { hermesVersion, getHealth } from './health';
-export { getProfiles, getStrictProfiles } from './profiles';
+export { AssignedProfilesUnavailableError, getAssignedRoutableProfiles, getStrictProfiles, proveProfileRoutable, type ProfileRoutabilityProof } from './profiles';
 export {
   getSessions,
   getSessionsForStats,

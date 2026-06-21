@@ -81,22 +81,26 @@ async function consumeStream(
     let data: unknown = raw;
     try { data = JSON.parse(raw); } catch {}
 
-    // The hub envelope itself is metadata, not part of the seq counter.
+    // The hub envelope itself is metadata, not part of the seq counter. Its
+    // latestSeq is a producer high-water mark, not a consumed cursor; replayed
+    // frames must advance the cursor only after they are delivered below.
     if (event === 'hub') {
       const obj = isObj(data) ? data : {};
       const latestSeq = typeof obj.latestSeq === 'number' ? obj.latestSeq : 0;
+      const gap = !!obj.gap;
       callbacks.onHub?.({
         sessionId: typeof obj.sessionId === 'string' ? obj.sessionId : '',
         latestSeq,
-        gap: !!obj.gap,
+        gap,
         startedAt: typeof obj.startedAt === 'number' ? obj.startedAt : Date.now(),
       });
+      if (gap) {
+        throw new Error('stream replay gap: buffered events were lost; refresh the session history before continuing');
+      }
       return;
     }
 
     observedSeq += 1;
-    callbacks.onSeq?.(observedSeq);
-
     callbacks.onEvent?.(event, data);
     if (event === 'status') {
       const phase = isObj(data) && typeof (data as StatusPayload).phase === 'string'
@@ -116,6 +120,7 @@ async function consumeStream(
         : raw;
       callbacks.onError?.(err);
     }
+    callbacks.onSeq?.(observedSeq);
   };
 
   const stallTimer = setInterval(() => {

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
-import { ActiveStreamAuthorizationError, createChatStream, type ChatStreamProjectionHooks } from '@/lib/server/hermes';
+import { ActiveStreamAuthorizationError, createChatStream, proveProfileRoutable, SessionProfileRoutingError, type ChatStreamProjectionHooks } from '@/lib/server/hermes';
 import { getDeckModelPreference } from '@/lib/server/auth';
 import {
   finalizeProjectedTurn,
@@ -48,6 +48,18 @@ export async function POST(req: NextRequest) {
   }
   const access = requireProfileAccess(auth.user, profileId, { fallback: profileId });
   if (!access.ok) return access.response;
+  if (profileId !== 'default') {
+    const proof = await proveProfileRoutable(profileId);
+    if (!proof.ok) {
+      return new Response(JSON.stringify({
+        error: 'profile_routing_unavailable',
+        detail: `Selected Hermes profile '${profileId}' is not identity-proven routable: ${proof.detail}`,
+      }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  }
   const hasExplicitModel = typeof bodyRecord.model === 'string' && bodyRecord.model.trim().length > 0;
   const requestedSessionId = typeof bodyRecord.sessionId === 'string' && bodyRecord.sessionId.trim()
     ? bodyRecord.sessionId.trim()
@@ -55,33 +67,33 @@ export async function POST(req: NextRequest) {
   const hasPreviousResponseId = typeof bodyRecord.previousResponseId === 'string' && bodyRecord.previousResponseId.trim().length > 0;
   const previousResponseId = hasPreviousResponseId ? (bodyRecord.previousResponseId as string).trim() : '';
   const projectionViewer = { userId: auth.user.id, role: auth.user.role };
-  const projectedSessionIsTrusted = requestedSessionId ? hasProjectedSession(requestedSessionId, profileId, projectionViewer) : false;
-  if (profileId !== 'default' && hasPreviousResponseId && !projectedSessionIsTrusted) {
+  const projectedSessionIsTrusted = requestedSessionId ? hasProjectedSession(requestedSessionId, profileId) : false;
+  if (hasPreviousResponseId && !projectedSessionIsTrusted) {
     return rbacJsonError(
       403,
       'session_profile_unverified',
-      'Cannot continue a named-profile session without a Deck-owned proof that it belongs to the selected agent.',
+      'Cannot continue a session without a Deck-owned proof that it belongs to the selected agent.',
     );
   }
-  if (profileId !== 'default' && hasPreviousResponseId && !projectedResponseIdMatches(requestedSessionId, profileId, previousResponseId, projectionViewer)) {
+  if (hasPreviousResponseId && !projectedResponseIdMatches(requestedSessionId, profileId, previousResponseId)) {
     return rbacJsonError(
       403,
       'response_profile_unverified',
-      'Cannot continue a named-profile response chain without a Deck-owned proof that it belongs to the selected agent session.',
+      'Cannot continue a response chain without a Deck-owned proof that it belongs to the selected agent session.',
     );
   }
-  const generatedDeckSessionId = profileId !== 'default' && requestedSessionId && !projectedSessionIsTrusted
+  const generatedDeckSessionId = requestedSessionId && !projectedSessionIsTrusted
     ? `deck_${randomUUID()}`
     : '';
   const sessionIdForStream = generatedDeckSessionId || requestedSessionId;
-  // For named profiles, never forward a user/client-provided unproven session
-  // id to Hermes Agent. If we had to replace it above, the replacement is a
+  // Never forward a user/client-provided unproven session id to Hermes Agent,
+  // including default profile tabs restored from stale browser state. If we had
+  // to replace it above, the replacement is a
   // server-generated Deck id scoped by this authenticated request, so it is safe
   // to use as the upstream session id. That keeps the API-created runtime
   // session and the Deck projection under one id instead of showing a separate
   // "api" topic for the same turn.
-  const trustedSessionIdForProfile = profileId === 'default'
-    || (requestedSessionId !== '' && projectedSessionIsTrusted)
+  const trustedSessionIdForProfile = (requestedSessionId !== '' && projectedSessionIsTrusted)
     || generatedDeckSessionId !== '';
   const preference = hasExplicitModel ? null : getDeckModelPreference(auth.user.id, profileId);
   const effectiveBody = {
@@ -131,6 +143,12 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     if (error instanceof ActiveStreamAuthorizationError) {
       return rbacJsonError(403, 'stream_supersede_forbidden', error.message);
+    }
+    if (error instanceof SessionProfileRoutingError) {
+      return new Response(JSON.stringify({ error: error.code, detail: error.message }), {
+        status: error.status,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
     throw error;
   }

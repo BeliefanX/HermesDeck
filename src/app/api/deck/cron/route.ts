@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { CronProfileRoutingError, getCronJobs, getProfiles } from '@/lib/server/hermes';
+import { CronProfileRoutingError, getCronJobs, getStrictProfiles } from '@/lib/server/hermes';
 import { PROFILE_ID_RE, filterProfilesForUser, profileScopeForUser, requireActiveUser } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
   try {
     let profileIds: string[] = scope.profiles ?? [];
     if (!profileIds.length) {
-      const profiles = filterProfilesForUser(auth.user, await getProfiles());
+      const profiles = filterProfilesForUser(auth.user, await getStrictProfiles());
       profileIds = profiles.map((item) => item.id).filter((id) => PROFILE_ID_RE.test(id));
     }
     const jobs = await getCronJobs(profileIds);

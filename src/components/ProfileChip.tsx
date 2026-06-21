@@ -307,7 +307,7 @@ function ProfileList({
                 textOverflow: 'ellipsis',
               }}>
                 {p.name}
-                {p.active && <span style={{ color: 'var(--muted-2)', fontWeight: 400 }}>{t.activeSuffix}</span>}
+                {active && <span style={{ color: 'var(--muted-2)', fontWeight: 400 }}>{t.activeSuffix}</span>}
               </span>
               <span style={{
                 fontSize: 10.5,
