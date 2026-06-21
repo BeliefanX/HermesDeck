@@ -1,14 +1,15 @@
 # HermesDeck
 
-HermesDeck 是 Hermes Agent 的浏览器控制台：多会话聊天、profile-aware 运行视图、配置编辑、能力/任务面板、受控终端与可安装 PWA。Deck 的运行时 source of truth 是 Hermes Agent API Server；Deck 不把 Hermes 的本地数据库、CLI 或本地 catalog 当作生产回退路径。
+HermesDeck 是 Hermes Agent 的浏览器控制台：多会话聊天、Agent-aware 运行视图、配置编辑、能力/任务面板、受控终端与可安装 PWA。Deck 的运行时 source of truth 是 Hermes Agent API Server；Deck 不把 Hermes 的本地数据库、CLI 或本地 catalog 当作生产回退路径。
 
 ## 当前架构要点
 
-- **API-only runtime**：聊天、profiles、models、cron proof、runs/stats/messages 等运行时数据通过 Hermes Agent API Server 暴露给 Deck BFF；BFF 再以 `/api/deck/*` 给前端提供稳定契约。
-- **RBAC fail-closed**：Deck 有自己的登录 cookie、用户/角色和 profile assignment。生产多用户场景中，未能证明权限或 profile 归属时拒绝访问，而不是枚举本地 profile/model 目录补齐结果。
+- **API-only runtime**：聊天、Agents、models、cron proof、runs/stats/messages 等运行时数据通过 Hermes Agent API Server 暴露给 Deck BFF；BFF 再以 `/api/deck/*` 给前端提供稳定契约。
+- **Deck 用户 ≠ Hermes Agent profile**：Deck 登录账号（user/account）由 Deck auth/RBAC 管理；Deck 分配给用户的是 Agent（技术上由 Hermes Agent profile 支撑的 runtime id）。API 兼容字段 `profile`/`profileId` 表示 Agent runtime id，不是 Deck user profile。
+- **RBAC fail-closed**：Deck 有自己的登录 cookie、用户/角色和 Agent assignment。生产多用户场景中，每条 Agent-scoped route 都必须先由 Deck server-side RBAC 授权；普通用户不得访问未分配 Agent/default。敏感 upstream 数据（如 cron/jobs）缺少 routing proof 时失败关闭，而不是把 catalog/health proof 缺失解释成用户无权限或让 Hermes Agent 管 Deck 用户权限。
 - **Canonical visible entrypoint：`http://<host>:6117`**。项目脚本启动 Next 服务在 `6118`，同时启动 `6117 -> 6118` 的同源反向代理；用户、PWA、反向代理/launchd 对外应以 `6117` 为入口，`6118` 是内部目标。
 - **聊天流**：Deck BFF 调 Hermes API Server `/v1/responses`，用 SSE 向浏览器转发文本、raw run-event、attachment、done/error，并发送 keep-alive 注释保持长连接活性。前端发送 35 分钟 timeout（2,100,000ms），服务端夹在 `[1000, 2100000]`，匹配 Hermes active subagent 30 分钟上限 + 5 分钟收尾余量。
-- **Deck-owned chat projection**：`~/.hermesdeck/chat-projection.v1.json`（或 `HERMESDECK_DATA_DIR`）只保存 Deck UX/proof 状态，用 lock、atomic write、TTL/cap prune 维护；它不是 Hermes runtime 数据源。Projection 会持久化 draft/final assistant、tool-call、tool-result 行和 response/session aliases（不逐 delta 持久化 tool/function arguments），刷新后仍可显示 in-flight 状态。Projection proof/write 对普通用户按 `ownerUserId` 收紧，admin/super_admin 仍需先通过 profile 授权。
+- **Deck-owned chat projection**：`~/.hermesdeck/chat-projection.v1.json`（或 `HERMESDECK_DATA_DIR`）只保存 Deck UX/proof 状态，用 lock、atomic write、TTL/cap prune 维护；它不是 Hermes runtime 数据源。Projection 会持久化 draft/final assistant、tool-call、tool-result 行和 response/session aliases（不逐 delta 持久化 tool/function arguments），刷新后仍可显示 in-flight 状态。Projection proof/write 对普通用户按 `ownerUserId` 收紧，admin/super_admin 仍需先通过 Agent 授权；Deck 不返回可能串台的 unlabeled upstream session rows。
 - **安全 PWA cache**：Service Worker 只预缓存公开离线 shell 和图标；认证页面、API 响应、聊天 HTML 不被持久缓存。
 
 ## 快速开始
@@ -55,7 +56,7 @@ npm run test:csrf    # CSRF/auth 单测
 - [docs/deployment.md](docs/deployment.md)：launchd/反代/HTTPS/PWA/安全边界。
 - [docs/deck-chat-projection.md](docs/deck-chat-projection.md)：Deck-owned chat projection 的用途和不变量。
 - [docs/design-handoff/README.md](docs/design-handoff/README.md)：设计交接包；以 `design.md`、`globals.css` 和当前主文档为准。
-- [docs/glossary.md](docs/glossary.md)：Profile、Session、Run、Projection、RBAC 等术语。
+- [docs/glossary.md](docs/glossary.md)：Deck user/account、Agent、Hermes Agent profile、Session、Run、Projection、RBAC 等术语。
 - [design.md](design.md)：Hallmark UI/design system 约束。
 
 ## 非目标与安全边界

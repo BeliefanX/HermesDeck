@@ -16,7 +16,7 @@ Pixel-faithful recreation of the HermesDeck WebUI — the Hermes-native multi-se
 - ✅ Dashboard (Command Deck)
 - ✅ Chat (sessions list + thread + timeline)
 - ✅ Terminal (Safe Ops)
-- ⏸️ Profiles / Models / Runs / Tools / Settings — these pages exist in the codebase but are mostly empty/planned in the source; we reference their shells but don't recreate them.
+- ⏸️ Agents / Models / Runs / Tools / Settings — these pages exist in the codebase but are mostly empty/planned in the source; we reference their shells but don't recreate them.
 
 ## Caveats
 

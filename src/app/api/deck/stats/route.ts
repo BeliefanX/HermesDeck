@@ -99,8 +99,15 @@ function combineStats(parts: DeckStats[], scope = 'all'): DeckStats {
 
 async function projectionAndApiStats(profile: string, viewer: ProjectionViewer): Promise<DeckStats> {
   const projected = listProjectedSessions(profile, viewer);
-  const api = await getSessionsForStats(profile);
-  return statsFromSessions(mergeSessionRows(projected, api), profile);
+  try {
+    const api = await getSessionsForStats(profile);
+    return statsFromSessions(mergeSessionRows(projected, api), profile);
+  } catch (err) {
+    if (err instanceof SessionProfileRoutingError && projected.length > 0) {
+      return statsFromSessions(projected, profile);
+    }
+    throw err;
+  }
 }
 
 function projectedOrApiStats(profile: string | undefined, viewer: ProjectionViewer): Promise<DeckStats> | DeckStats {

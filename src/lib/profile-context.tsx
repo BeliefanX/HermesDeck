@@ -62,12 +62,12 @@ function isAdminSession(session: DeckAuthSession | null): boolean {
 }
 
 function adminEmergencyProfileId(prev: string, pending: string | null): string {
-  // Admin/super_admin profile access is authorized server-side by RBAC for any
-  // valid profile id. If the Hermes profile catalog endpoint is down, keep the
-  // account usable with the previous explicit selection or the conventional
-  // default profile. This is not a production local catalog fallback: it does
-  // not enumerate ~/.hermes/profiles and is never used for ordinary users or
-  // assignment validation.
+  // Keep the admin/super_admin shell usable when the Agent catalog endpoint is
+  // down, but do not grant Agent access here: every Agent-scoped route still
+  // performs server-side RBAC (super_admin all Agents; admin by assignment).
+  // This is not a local catalog fallback: it does not enumerate
+  // ~/.hermes/profiles and is never used for ordinary users or assignment
+  // validation.
   for (const candidate of [pending, prev, 'default']) {
     if (candidate && PROFILE_ID_RE.test(candidate)) return candidate;
   }

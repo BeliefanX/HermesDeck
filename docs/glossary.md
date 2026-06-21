@@ -2,35 +2,43 @@
 
 ## HermesDeck
 
-Deck/BFF/UI layer for Hermes Agent. It owns browser UX, Deck auth/RBAC, profile scoping, SSE forwarding, projection proof and PWA behavior. It does not own Hermes runtime persistence. Its chat stream timeout cap is 35 minutes (2,100,000ms), aligned to Hermes active subagent timeout plus margin.
+Deck/BFF/UI layer for Hermes Agent. It owns browser UX, Deck auth/RBAC, Agent-scoped authorization, SSE forwarding, projection proof and PWA behavior. It does not own Hermes runtime persistence. Its chat stream timeout cap is 35 minutes (2,100,000ms), aligned to Hermes active subagent timeout plus margin.
+
+## Deck user / account
+
+A login identity managed by HermesDeck (`auth.json`): username, password hash, role, status and assigned Agent ids. A Deck user/account is not a Hermes Agent profile.
+
+## Agent
+
+The user-facing runtime target in HermesDeck. An Agent is backed by a Hermes Agent execution/config scope (technically a Hermes Agent profile id), but Deck users see and are assigned Agents, not user profiles. API fields named `profile` / `profileId` are legacy/compat identifiers for this Agent runtime id.
+
+## Hermes Agent profile
+
+The Hermes runtime isolation/config unit behind an Agent (`default` or `~/.hermes/profiles/<id>`). It is not a Deck user profile and does not manage Deck users or permissions.
 
 ## Hermes Agent API Server
 
-The runtime source of truth for Deck. Profiles, models, chat responses, cron proof and other runtime data must come through API endpoints. If the API cannot prove data, Deck fails closed.
+The runtime source of truth for Deck. Agents/catalog, models, chat responses, cron proof and other runtime data must come through API endpoints. If the API cannot provide required runtime proof for sensitive upstream data, Deck fails closed.
 
 ## BFF
 
-Backend-for-Frontend implemented with Next Route Handlers under `/api/deck/*`. It converts browser requests into Hermes API Server calls and enforces Deck auth/RBAC/CSRF/profile scope.
+Backend-for-Frontend implemented with Next Route Handlers under `/api/deck/*`. It converts browser requests into Hermes API Server calls and enforces Deck auth/RBAC/CSRF/Agent scope.
 
-## Profile
+## Agent assignment
 
-A Hermes Agent execution/config scope. Deck lists profiles from API-backed catalog only. Ordinary users need explicit profile assignment; admin/super_admin can see all API-backed profiles.
-
-## Profile assignment
-
-Deck auth-store mapping from user to allowed profile ids. Missing assignment for ordinary users means 403. Deck never treats a local directory as authorization proof.
+Deck auth-store mapping from a Deck user/account to allowed Agent runtime ids. Missing Agent assignment for ordinary users means 403. Deck never treats a local Hermes profile directory as authorization proof.
 
 ## Model catalog
 
-The selectable model list returned by Hermes API Server `/v1/models` for a profile. Deck does not synthesize it from local files.
+The selectable model list returned by Hermes API Server `/v1/models` for an Agent. Deck does not synthesize it from local files.
 
 ## Session
 
-A chat conversation identifier. For named profiles, Deck requires projection proof before continuing an existing session/response chain.
+A chat conversation identifier. For named Agents, Deck requires projection proof before continuing an existing session/response chain.
 
 ## Trusted Deck-generated session id
 
-A server-generated `deck_<uuid>` used when a named-profile request supplies an unproven session id. Deck can safely pass it as `X-Hermes-Session-Id` because it was generated in the authenticated/profile-scoped request.
+A server-generated `deck_<uuid>` used when a named-Agent request supplies an unproven session id. Deck can safely pass it as `X-Hermes-Session-Id` because it was generated in the authenticated/Agent-scoped request.
 
 ## `X-Hermes-Session-Id`
 
@@ -48,7 +56,6 @@ Raw upstream event from Hermes API Server. Tool calls, function argument deltas,
 
 Deck-owned file-backed UX/proof state. It records observed sessions/messages/status/response aliases with locking, atomic writes and prune limits. It can persist draft assistant, tool-call and tool-result rows so refresh/polling can recover in-flight UI. It is not Hermes runtime persistence.
 
-
 ## Tool-call row
 
 A projected assistant message representing a tool/function invocation. Deck links both Responses item ids (for example `fc_*`) and stable call ids (for example `call_*`) so completed arguments and later outputs attach to the same visible call.
@@ -59,11 +66,11 @@ A projected tool message representing tool output. If upstream sends an array of
 
 ## Cron proof
 
-Evidence in Hermes API Server cron response that requested profile routing was honored: response-level profile/routing fields or every job row carrying the requested profile. Without proof, Deck returns `profile_routing_unavailable`.
+Evidence in Hermes API Server cron response that requested Agent routing was honored: response-level `profile`/routing fields or every job row carrying the requested Agent runtime id. Without proof, Deck returns `profile_routing_unavailable`.
 
 ## RBAC fail-closed
 
-Security posture where missing auth, missing profile assignment, catalog outage or unproven routing blocks access instead of guessing, locally enumerating, or falling back to a broader profile.
+Security posture where missing auth, missing Agent assignment, invalid Agent access or unproven routing blocks access instead of guessing, locally enumerating, or falling back to a broader/default Agent. Catalog outage alone is an upstream availability issue, not proof that a user lacks permission.
 
 ## Canonical visible entrypoint
 

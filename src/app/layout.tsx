@@ -11,7 +11,7 @@ import { HERMES_THEME_COLORS } from '@/lib/theme-colors';
 
 export const metadata: Metadata = {
   title: { default: 'HermesDeck', template: '%s · HermesDeck' },
-  description: 'Hermes-native WebUI for multi-session chat, profiles, runs and safe ops.',
+  description: 'Hermes-native WebUI for multi-session chat, Agents, runs and safe ops.',
   applicationName: 'HermesDeck',
   manifest: '/manifest.webmanifest',
   appleWebApp: {

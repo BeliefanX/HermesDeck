@@ -409,7 +409,7 @@ test('active admin login still issues a protected app session', async () => {
   assert.equal(session.user.username, 'active-admin');
 });
 
-test('server RBAC helpers enforce admin roles, active status, and profile assignments', async () => {
+test('server RBAC helpers enforce admin roles, active status, and Agent assignments', async () => {
   const home = makeHome();
   const auth = await loadAuth(home);
   const store = withSuppressedBootstrapLog(() => auth.readAuth());
@@ -798,7 +798,7 @@ test('default Hermes sessions still accept legacy upstream rows without profile 
   });
 });
 
-test('Deck session list fails closed when upstream profile metadata is unavailable', async () => {
+test('Deck session list falls back to owner-scoped projections when upstream Agent metadata proof is unavailable', async () => {
   const home = makeHome();
   const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
   const oldDataDir = process.env.HERMESDECK_DATA_DIR;
@@ -831,10 +831,9 @@ test('Deck session list fails closed when upstream profile metadata is unavailab
         message: 'Other user projected turn',
       });
 
-      await assert.rejects(
-        () => sessionList.listDeckSessionsForProfile('sensgift', { userId: 'kevinchen', role: 'user' }),
-        (err) => err?.code === 'profile_routing_unavailable' && err?.status === 502,
-      );
+      const result = await sessionList.listDeckSessionsForProfile('sensgift', { userId: 'kevinchen', role: 'user' });
+      assert.deepEqual(result.sessions.map((row) => row.id), ['sensgift-kevin-projected']);
+      assert.equal(result.sessions.some((row) => row.id === 'sensgift-other-owner'), false);
     });
   } finally {
     if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
@@ -892,7 +891,7 @@ test('Deck chat projection is profile scoped and rejects cross-profile message r
   }
 });
 
-test('Deck chat projection proof/write helpers are profile-scoped and shared across assigned users', async () => {
+test('Deck chat projection proof/write helpers are profile-scoped and owner/admin-scoped', async () => {
   const home = makeHome();
   const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
   const oldDataDir = process.env.HERMESDECK_DATA_DIR;
@@ -917,16 +916,19 @@ test('Deck chat projection proof/write helpers are profile-scoped and shared acr
 
     assert.equal(projection.hasProjectedSession('owner-scoped-local-1', 'sensgift', { userId: 'owner-a', role: 'user' }), true);
     assert.equal(projection.projectedResponseIdMatches('owner-scoped-local-1', 'sensgift', 'resp_owner_a', { userId: 'owner-a', role: 'user' }), true);
-    assert.equal(projection.hasProjectedSession('owner-scoped-local-1', 'sensgift', { userId: 'owner-b', role: 'user' }), true);
-    assert.equal(projection.projectedResponseIdMatches('owner-scoped-local-1', 'sensgift', 'resp_owner_a', { userId: 'owner-b', role: 'user' }), true);
+    assert.equal(projection.hasProjectedSession('owner-scoped-local-1', 'sensgift', { userId: 'owner-b', role: 'user' }), false);
+    assert.equal(projection.projectedResponseIdMatches('owner-scoped-local-1', 'sensgift', 'resp_owner_a', { userId: 'owner-b', role: 'user' }), false);
     assert.equal(projection.hasProjectedSession('owner-scoped-local-1', 'sensgift', { userId: 'admin-1', role: 'admin' }), true);
-    projection.recordProjectedRunEvent({
-      sessionId: 'owner-scoped-local-1',
-      profileId: 'sensgift',
-      viewer: { userId: 'owner-b', role: 'user' },
-      type: 'response.output_item.added',
-      payload: { item: { id: 'fc_shared', type: 'function_call', name: 'tool' } },
-    });
+    assert.throws(
+      () => projection.recordProjectedRunEvent({
+        sessionId: 'owner-scoped-local-1',
+        profileId: 'sensgift',
+        viewer: { userId: 'owner-b', role: 'user' },
+        type: 'response.output_item.added',
+        payload: { item: { id: 'fc_shared', type: 'function_call', name: 'tool' } },
+      }),
+      (err) => err?.code === 'session_profile_mismatch' && err?.status === 403,
+    );
   } finally {
     if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
     else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
@@ -1043,7 +1045,7 @@ test('Deck chat projection uses a lock, atomic writes and prunes stale sessions'
   }
 });
 
-test('chat stream proves named-profile health identity before upstream responses call', async () => {
+test('chat stream proves named Agent API routability before upstream responses call', async () => {
   const home = makeHome();
   const hermesRoot = join(home, '.hermes');
   const dataDir = join(home, '.hermesdeck-data');
@@ -1088,7 +1090,6 @@ test('chat stream proves named-profile health identity before upstream responses
     const requestBody = { profileId: 'coder', message: 'hello', model: 'mock-model' };
 
     for (const [caseName, healthBody] of [
-      ['missing identity', { ok: true }],
       ['mismatched identity', { ok: true, profile_id: 'default' }],
     ]) {
       const calls = [];
@@ -1103,7 +1104,7 @@ test('chat stream proves named-profile health identity before upstream responses
       assert.equal(res.status, 502, caseName);
       const payload = await responseJson(res);
       assert.equal(payload.error, 'profile_routing_unavailable');
-      assert.match(payload.detail, /identity-proven routable|\/health/);
+      assert.match(payload.detail, /not routable|\/health/);
       assert.deepEqual(calls.map((call) => call.url), ['http://127.0.0.1:18643/health']);
       assert.equal(calls.some((call) => call.url.endsWith('/v1/responses')), false, `${caseName} must not call upstream responses`);
     }
@@ -1111,7 +1112,7 @@ test('chat stream proves named-profile health identity before upstream responses
     const calls = [];
     globalThis.fetch = async (url, init = {}) => {
       calls.push({ url: String(url), method: init.method || 'GET', auth: init.headers?.Authorization });
-      if (String(url) === 'http://127.0.0.1:18643/health') return Response.json({ ok: true, profile_id: 'coder' });
+      if (String(url) === 'http://127.0.0.1:18643/health') return Response.json({ ok: true });
       if (String(url) === 'http://127.0.0.1:18643/v1/responses') {
         const body = new ReadableStream({
           start(controller) {
@@ -1261,6 +1262,121 @@ test('default-profile chat stream does not continue from unproven restored clien
   }
 });
 
+test('chat stream rejects another ordinary user continuing owner-scoped projected sessions before active stream creation', async () => {
+  const home = makeHome();
+  const dataDir = join(home, '.hermesdeck-data');
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  const oldHermesApiBase = process.env.HERMES_API_BASE;
+  const oldApiServerKey = process.env.API_SERVER_KEY;
+  const originalFetch = globalThis.fetch;
+  const projectedSessionId = 'owner-a-projected-default-session';
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMESDECK_AUTH_DIR = join(home, '.hermesdeck');
+    process.env.HERMESDECK_DATA_DIR = dataDir;
+    process.env.HERMES_API_BASE = 'http://127.0.0.1:18702';
+    process.env.API_SERVER_KEY = 'default-secret';
+
+    const auth = await loadAuth(home);
+    let store = withSuppressedBootstrapLog(() => auth.readAuth());
+    const now = new Date().toISOString();
+    const userA = {
+      id: 'user_projected_owner_a',
+      username: 'projected-owner-a',
+      role: 'user',
+      status: 'active',
+      ...auth.createPasswordRecord('projected-owner-a-password-123'),
+      assignedProfileIds: ['default'],
+      preferences: { profiles: {} },
+      createdAt: now,
+      updatedAt: now,
+      approvedAt: now,
+      approvedBy: Object.values(store.users)[0].id,
+    };
+    const userB = {
+      id: 'user_projected_owner_b',
+      username: 'projected-owner-b',
+      role: 'user',
+      status: 'active',
+      ...auth.createPasswordRecord('projected-owner-b-password-123'),
+      assignedProfileIds: ['default'],
+      preferences: { profiles: {} },
+      createdAt: now,
+      updatedAt: now,
+      approvedAt: now,
+      approvedBy: Object.values(store.users)[0].id,
+    };
+    store = { ...store, users: { ...store.users, [userA.id]: userA, [userB.id]: userB } };
+    writeStore(home, store);
+    const userBToken = auth.issueSessionToken(userB.id);
+
+    const projection = await import(`${pathToFileURL(deckChatProjectionModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    projection.startProjectedTurn({
+      sessionId: projectedSessionId,
+      profileId: 'default',
+      ownerUserId: userA.id,
+      ownerRole: userA.role,
+      message: 'owned by user A',
+    });
+    projection.finalizeProjectedTurn({
+      sessionId: projectedSessionId,
+      profileId: 'default',
+      viewer: { userId: userA.id, role: userA.role },
+      content: 'user A answer',
+      responseId: 'resp_owner_a_projected',
+    });
+    assert.equal(projection.projectedResponseIdMatches(
+      projectedSessionId,
+      'default',
+      'resp_owner_a_projected',
+      { userId: userA.id, role: userA.role },
+    ), true);
+    assert.equal(projection.projectedResponseIdMatches(
+      projectedSessionId,
+      'default',
+      'resp_owner_a_projected',
+      { userId: userB.id, role: userB.role },
+    ), false);
+
+    const upstreamCalls = [];
+    globalThis.fetch = async (url, init = {}) => {
+      upstreamCalls.push({ url: String(url), method: init.method || 'GET' });
+      return Response.json({ unexpected: true });
+    };
+
+    const streamRoute = await loadRouteModule(chatStreamRoutePath);
+    const res = await streamRoute.POST(jsonRouteRequest('/api/deck/chat/stream', 'POST', {
+      profileId: 'default',
+      sessionId: projectedSessionId,
+      previousResponseId: 'resp_owner_a_projected',
+      message: 'user B must not continue user A session',
+      model: 'mock-model',
+    }, { cookie: cookieHeader(userBToken) }));
+    assert.equal(res.status, 403);
+    assert.equal((await responseJson(res)).error, 'session_profile_unverified');
+    assert.deepEqual(upstreamCalls, []);
+
+    const hub = await import(`${pathToFileURL(streamHubModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    assert.equal(hub.getActiveStream(projectedSessionId), undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+    if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
+    else process.env.HERMES_API_BASE = oldHermesApiBase;
+    if (oldApiServerKey === undefined) delete process.env.API_SERVER_KEY;
+    else process.env.API_SERVER_KEY = oldApiServerKey;
+  }
+});
+
 test('chat stream does not forward unproven client session ids or response ids upstream', () => {
   const routeSource = readFileSync(chatStreamRoutePath, 'utf8');
   const streamSource = readFileSync(chatStreamModulePath, 'utf8');
@@ -1268,8 +1384,8 @@ test('chat stream does not forward unproven client session ids or response ids u
   assert.match(routeSource, /proveProfileRoutable\(profileId\)/);
   assert.match(routeSource, /profileId !== 'default'/);
   assert.match(routeSource, /profile_routing_unavailable/);
-  assert.match(routeSource, /hasProjectedSession\(requestedSessionId, profileId\)/);
-  assert.match(routeSource, /projectedResponseIdMatches\(requestedSessionId, profileId, previousResponseId\)/);
+  assert.match(routeSource, /hasProjectedSession\(requestedSessionId, profileId, projectionViewer\)/);
+  assert.match(routeSource, /projectedResponseIdMatches\(requestedSessionId, profileId, previousResponseId, projectionViewer\)/);
   assert.doesNotMatch(routeSource, /profileId !== 'default' && hasPreviousResponseId/);
   assert.match(routeSource, /const generatedDeckSessionId = requestedSessionId && !projectedSessionIsTrusted/);
   assert.doesNotMatch(routeSource, /trustedSessionIdForProfile = profileId === 'default'/);
@@ -1589,7 +1705,7 @@ test('admin profile catalog does not fall back locally unless both strict Hermes
   }
 });
 
-test('ordinary assigned profile fallback returns only API-proven assigned profiles', async () => {
+test('ordinary assigned Agent list returns only configured assigned Agents without local enumeration', async () => {
   const home = makeHome();
   const hermesRoot = join(home, '.hermes');
   mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
@@ -1612,7 +1728,7 @@ test('ordinary assigned profile fallback returns only API-proven assigned profil
     globalThis.fetch = async (url, init = {}) => {
       const href = String(url);
       calls.push({ url: href, auth: init.headers?.Authorization });
-      if (href === 'http://127.0.0.1:18648/health') return Response.json({ ok: true, profile_id: 'sensgift' });
+      if (href === 'http://127.0.0.1:18648/health') return Response.json({ ok: true });
       return Response.json({ ok: true });
     };
 
@@ -1633,7 +1749,7 @@ test('ordinary assigned profile fallback returns only API-proven assigned profil
   }
 });
 
-test('named assigned profile fallback fails closed when health omits routed identity', async () => {
+test('named assigned Agent list accepts reachable health without routed identity', async () => {
   const home = makeHome();
   mkdirSync(join(home, '.hermes', 'profiles', 'sensgift'), { recursive: true });
   writeFileSync(join(home, '.hermes', 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=18648\nAPI_SERVER_KEY=sensgift-secret\n');
@@ -1651,11 +1767,8 @@ test('named assigned profile fallback fails closed when health omits routed iden
     globalThis.fetch = async () => Response.json({ ok: true });
 
     const profiles = await loadHermesProfilesModule();
-    await assert.rejects(
-      () => profiles.getAssignedRoutableProfiles(['sensgift']),
-      (err) => err?.code === 'assigned_profiles_unavailable'
-        && err?.details.some((detail) => detail.includes('/health did not prove routed profile identity')),
-    );
+    const result = await profiles.getAssignedRoutableProfiles(['sensgift']);
+    assert.deepEqual(result.map((profile) => profile.id), ['sensgift']);
   } finally {
     globalThis.fetch = originalFetch;
     process.env.HOME = oldHome;
@@ -1797,7 +1910,7 @@ test('route-level registration approval assignment and assigned-profile use pres
         return new Response('missing', { status: 404 });
       }
       if (href === 'http://127.0.0.1:18642/health') return Response.json({ ok: true, profile_id: 'default' });
-      if (href === 'http://127.0.0.1:18648/health') return Response.json({ ok: true, profile_id: 'sensgift' });
+      if (href === 'http://127.0.0.1:18648/health') return Response.json({ ok: true });
       if (href === 'http://127.0.0.1:18649/health') return Response.json({ ok: true, profile_id: 'unassigned' });
       if (href === 'http://127.0.0.1:18648/v1/models') {
         return Response.json({ data: [{ id: 'sensgift-model', provider: 'openai', default: true }] });
@@ -2200,7 +2313,7 @@ test('admin routes are guarded and validate profiles without leaking auth secret
   assert.doesNotMatch(profilesRoute, /getProfiles\(\)/);
   assert.match(profilesRoute, /replaceDeckUserProfileAssignments/);
   assert.doesNotMatch(usersRoute + userRoute + profilesRoute, /passwordHash|passwordSalt|sessionSecret/);
-  assert.match(profilesRoute, /profiles_fetch_failed|Unable to validate profile assignments/);
+  assert.match(profilesRoute, /profiles_fetch_failed|Unable to validate Agent assignments/);
   assert.match(deckProfilesRoute, /profiles_fetch_failed/);
   assert.match(deckProfilesRoute, /isSuperAdminRole\(auth\.user\.role\)[\s\S]*getStrictProfiles\(\)[\s\S]*getAssignedRoutableProfiles\(auth\.user\.assignedProfileIds\)/);
   assert.doesNotMatch(deckProfilesRoute, /getProfiles\(\)/);
@@ -2295,7 +2408,7 @@ test('phase 6 active profile reconciliation clears unauthorized stale selections
   assert.doesNotMatch(contextSource, /if \(stored\) setActiveProfileState\(stored\)/);
   assert.match(contextSource, /const pending = pendingStoredProfileRef\.current;[\s\S]*return reconcileActiveProfile\(pending \|\| prev, nextProfiles\)/);
   assert.match(contextSource, /isAdminSession\(session\)[\s\S]*adminEmergencyProfileId/);
-  assert.match(contextSource, /not a production local catalog fallback/);
+  assert.match(contextSource, /This is not a local catalog fallback/);
   assert.match(contextSource, /isAdminSession\(session\)[\s\S]*setProfiles\(\[\]\);[\s\S]*setCatalogError/);
   assert.match(contextSource, /catch \(err\) \{[\s\S]*setProfiles\(\[\]\);[\s\S]*setActiveProfileState\(NO_PROFILE\)/);
   assert.match(contextSource, /setProfilesLoaded\(true\)/);

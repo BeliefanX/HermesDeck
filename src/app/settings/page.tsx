@@ -60,11 +60,11 @@ export default function SettingsPage() {
       authLabel: '认证：',
       localCache: '本地缓存',
       browserState: '浏览器存储状态',
-      cacheDesc: 'HermesDeck 在浏览器中保存草稿、会话索引和 response_id 链路，离线浏览与多档案切换都更顺滑。',
+      cacheDesc: 'HermesDeck 在浏览器中保存草稿、会话索引和 response_id 链路，离线浏览与多 Agent 切换都更顺滑。',
       onDevice: '仅本机',
       clearCache: '清除 HermesDeck 缓存',
       cleared: '已清除',
-      confirmClear: '确认清除 HermesDeck 本地缓存？将清除草稿、会话索引、response 链路与会话组织（置顶 / 文件夹 / 标签）；主题、语言与当前 Profile 会保留。此操作无法撤销。',
+      confirmClear: '确认清除 HermesDeck 本地缓存？将清除草稿、会话索引、response 链路与会话组织（置顶 / 文件夹 / 标签）；主题、语言与当前 Agent 会保留。此操作无法撤销。',
     },
     en: {
       intro: 'Basics: theme, connection info, local cache. Sensitive config is not exposed in the frontend; future versions will edit it via a guarded BFF.',
@@ -94,11 +94,11 @@ export default function SettingsPage() {
       authLabel: 'Auth:',
       localCache: 'LOCAL CACHE',
       browserState: 'Browser-stored state',
-      cacheDesc: 'HermesDeck keeps drafts, the session index and response_id chains in the browser, so offline browsing and multi-profile switching feel snappy.',
+      cacheDesc: 'HermesDeck keeps drafts, the session index and response_id chains in the browser, so offline browsing and multi-Agent switching feel snappy.',
       onDevice: 'on-device only',
       clearCache: 'Clear HermesDeck cache',
       cleared: 'Cleared',
-      confirmClear: 'Clear HermesDeck local cache? This removes drafts, the session index, response chains and session organization (pins, folders, tags). Your theme, language and active profile are kept. This cannot be undone.',
+      confirmClear: 'Clear HermesDeck local cache? This removes drafts, the session index, response chains and session organization (pins, folders, tags). Your theme, language and active Agent are kept. This cannot be undone.',
     },
   });
 

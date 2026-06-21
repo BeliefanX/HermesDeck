@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
     email: user.email,
     role: user.role,
     status: user.status,
+    assignedAgentIds: user.assignedAgentIds,
     assignedProfileIds: user.assignedProfileIds,
     capabilities: user.capabilities,
     user,

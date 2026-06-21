@@ -586,15 +586,15 @@ function isProjectableRunEvent(type: string, payload: Record<string, unknown>, i
 }
 
 function canViewProjectedSession(session: ProjectedSession, viewer?: ProjectionViewer): boolean {
-  void session;
-  void viewer;
-  return true;
+  if (!viewer?.userId) return true;
+  if (viewer.role === 'super_admin' || viewer.role === 'admin') return true;
+  return session.ownerUserId === viewer.userId;
 }
 
 function canWriteProjectedSession(session: ProjectedSession, viewer?: ProjectionViewer): boolean {
-  void session;
-  void viewer;
-  return true;
+  if (!viewer?.userId) return true;
+  if (viewer.role === 'super_admin' || viewer.role === 'admin') return true;
+  return session.ownerUserId === viewer.userId;
 }
 
 function assertCanWriteProjectedSession(session: ProjectedSession, viewer?: ProjectionViewer): void {

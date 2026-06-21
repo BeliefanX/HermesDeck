@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     if (!proof.ok) {
       return new Response(JSON.stringify({
         error: 'profile_routing_unavailable',
-        detail: `Selected Hermes profile '${profileId}' is not identity-proven routable: ${proof.detail}`,
+        detail: `Selected Agent '${profileId}' is not routable by its configured API base/key: ${proof.detail}`,
       }), {
         status: 502,
         headers: { 'Content-Type': 'application/json' },
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
   const hasPreviousResponseId = typeof bodyRecord.previousResponseId === 'string' && bodyRecord.previousResponseId.trim().length > 0;
   const previousResponseId = hasPreviousResponseId ? (bodyRecord.previousResponseId as string).trim() : '';
   const projectionViewer = { userId: auth.user.id, role: auth.user.role };
-  const projectedSessionIsTrusted = requestedSessionId ? hasProjectedSession(requestedSessionId, profileId) : false;
+  const projectedSessionIsTrusted = requestedSessionId ? hasProjectedSession(requestedSessionId, profileId, projectionViewer) : false;
   if (hasPreviousResponseId && !projectedSessionIsTrusted) {
     return rbacJsonError(
       403,
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       'Cannot continue a session without a Deck-owned proof that it belongs to the selected agent.',
     );
   }
-  if (hasPreviousResponseId && !projectedResponseIdMatches(requestedSessionId, profileId, previousResponseId)) {
+  if (hasPreviousResponseId && !projectedResponseIdMatches(requestedSessionId, profileId, previousResponseId, projectionViewer)) {
     return rbacJsonError(
       403,
       'response_profile_unverified',

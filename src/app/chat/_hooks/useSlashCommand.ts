@@ -141,7 +141,7 @@ export function useSlashCommand({
         if (result.value !== undefined) {
           reasoningTouchedRef.current = true;
           setReasoningEffort(result.value);
-          setError(result.mode === 'reset' ? 'Reasoning reset to profile default' : `Reasoning set to ${result.value || 'profile default'}`);
+          setError(result.mode === 'reset' ? 'Reasoning reset to Agent default' : `Reasoning set to ${result.value || 'Agent default'}`);
           setInput('');
         } else {
           setError(result.error || 'This reasoning view command is recognized but not supported in HermesDeck yet.');

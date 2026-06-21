@@ -12,6 +12,10 @@ export type RbacCheck = { ok: true } | { ok: false; response: Response };
 
 export const PROFILE_ID_RE = /^[\w.-]{1,64}$/;
 
+// Compatibility note: persisted/auth API fields are still named
+// `assignedProfileIds`, but product semantics are assigned Agent runtime ids
+// (Hermes Agent profile ids), not Deck user profiles.
+
 export function rbacJsonError(status: 401 | 403 | 400, error: string, detail?: string): Response {
   return Response.json(
     { ok: false, error, ...(detail ? { detail } : {}) },
@@ -90,7 +94,7 @@ export function requireProfileAccess(
 ): RbacCheck | RbacGuard {
   const fallback = options?.fallback ?? 'default';
   const normalized = normalizeProfileId(profileId, fallback);
-  if (!normalized) return badRbacRequest('invalid_profile', 'Profile id is invalid.');
+  if (!normalized) return badRbacRequest('invalid_profile', 'Agent id is invalid.');
 
   const userGuard: RbacGuard = isRequestLike(reqOrUser)
     ? requireActiveUser(reqOrUser)
@@ -98,7 +102,7 @@ export function requireProfileAccess(
   if (!userGuard.ok) return userGuard;
 
   if (!hasProfileAccess(userGuard.user, normalized)) {
-    return forbidden('Profile is not assigned to this user.');
+    return forbidden('Agent is not assigned to this user.');
   }
   return { ok: true };
 }
@@ -128,12 +132,12 @@ export function profileScopeForUser(
   const requested = requestedProfile?.trim() || '';
   if (requested) {
     const normalized = normalizeProfileId(requested, requested);
-    if (!normalized) return { ok: false, response: rbacJsonError(400, 'invalid_profile', 'Profile id is invalid.') };
-    if (!hasProfileAccess(user, normalized)) return { ok: false, response: rbacJsonError(403, 'unauthorized', 'Profile is not assigned to this user.') };
+    if (!normalized) return { ok: false, response: rbacJsonError(400, 'invalid_profile', 'Agent id is invalid.') };
+    if (!hasProfileAccess(user, normalized)) return { ok: false, response: rbacJsonError(403, 'unauthorized', 'Agent is not assigned to this user.') };
     return { ok: true, profiles: [normalized], requested: normalized };
   }
   if (isSuperAdminRole(user.role)) return { ok: true, profiles: [] };
   const profiles = user.assignedProfileIds.filter((id) => PROFILE_ID_RE.test(id));
-  if (!profiles.length) return { ok: false, response: rbacJsonError(403, 'unauthorized', 'No profiles are assigned to this user.') };
+  if (!profiles.length) return { ok: false, response: rbacJsonError(403, 'unauthorized', 'No Agents are assigned to this user.') };
   return { ok: true, profiles };
 }

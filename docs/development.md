@@ -6,7 +6,7 @@
 
 - Node.js 22+。
 - npm dependencies：`npm install`。
-- Hermes Agent API Server：default profile 默认 `http://127.0.0.1:6117`，或用 env/profile `.env` 指定。
+- Hermes Agent API Server：default Agent 默认 `http://127.0.0.1:6117`，或用 backing profile `.env` 指定。
 - Python：仅用于少量 Deck-side helpers（如 config YAML validation）；不是 runtime data source。
 - tmux/node-pty：仅在 `HERMESDECK_LIVE_TERMINAL=1` 时需要。
 
@@ -42,13 +42,13 @@ npm run dev
 ## Code map
 
 - `src/app/api/deck/**/route.ts`：BFF endpoints。
-- `src/lib/server/hermes/core.ts`：Hermes API base/key/profile env 解析、fetch helper、redaction、cache helper。
-- `src/lib/server/hermes/profiles.ts`：API-backed profiles catalog，无本地枚举补齐。
-- `src/lib/server/hermes/models.ts`：per-profile `/v1/models` adapter，无本地模型清单补齐。
+- `src/lib/server/hermes/core.ts`：Hermes API base/key/Agent env 解析、fetch helper、redaction、cache helper。
+- `src/lib/server/hermes/profiles.ts`：API-backed Agent catalog，无本地枚举补齐。
+- `src/lib/server/hermes/models.ts`：per-Agent `/v1/models` adapter，无本地模型清单补齐。
 - `src/lib/server/hermes/chat-stream.ts`：SSE hub/upstream pump/keep-alive/text delta filtering；chat timeout clamp 是 `[1000, 2100000]` ms。
 - `src/lib/chat-timeouts.ts`：35 分钟 chat stream default/hard cap（Hermes active subagent 30 分钟 + 5 分钟余量），前端与服务端共享。
-- `src/lib/server/hermes/cron.ts`：cron profile routing proof。
-- `src/lib/server/auth.ts`、`rbac.ts`：Deck users/roles/capabilities/profile scope。
+- `src/lib/server/hermes/cron.ts`：cron Agent routing proof。
+- `src/lib/server/auth.ts`、`rbac.ts`：Deck users/roles/capabilities/Agent scope（代码中 `profile`/`profileId` 是 legacy Agent runtime id）。
 - `src/lib/server/deck-chat-projection.ts`：projection store lock/atomic write/prune。
 - `public/sw.js`：PWA cache policy。
 
@@ -57,8 +57,8 @@ npm run dev
 ### Auth/RBAC
 
 - `GET /api/deck/auth/session` 查看当前用户与 capabilities。
-- 普通用户访问 profile 前必须有 assignment。
-- admin/super_admin catalog outage 应显示上游不可用，而不是从本地目录补齐。
+- 普通用户访问 Agent 前必须有 assignment，且不得访问未分配 Agent/default。
+- admin/super_admin catalog outage 应显示上游不可用，而不是从本地目录补齐；不要把 catalog/health proof 缺失描述成用户无权限。
 
 ### Chat SSE
 
@@ -80,16 +80,16 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
   -H 'Cookie: hermesdeck_session=…'
 ```
 
-### Named-profile sessions
+### Named-Agent sessions
 
-- 未证明归属的 named-profile continuation 应返回 `session_profile_unverified` 或 `response_profile_unverified`。
-- 新 named-profile turn 如带未证明 session id，Deck 会改用 `deck_<uuid>` 并通过 `X-Hermes-Session-Id` 让 upstream/Deck projection 对齐。
-- 如果看到额外 `api` 话题，先查 projection proof、`X-Hermes-Session-Id` header 与 profile API base。
-- 刷新后仍应从 projection 看到 draft assistant/tool-call/tool-result rows；普通用户只能读/证明/继续/写入自己的 owner-scoped projection，admin/super_admin 可跨 owner 但仍受 profile auth 约束。不要逐条持久化 tool/function `arguments.delta`；只在 `arguments.done`/done item 等语义边界写 projection。
+- 未证明归属的 named-Agent continuation 应返回 `session_profile_unverified` 或 `response_profile_unverified`（legacy error name）。
+- 新 named-Agent turn 如带未证明 session id，Deck 会改用 `deck_<uuid>` 并通过 `X-Hermes-Session-Id` 让 upstream/Deck projection 对齐。
+- 如果看到额外 `api` 话题，先查 projection proof、`X-Hermes-Session-Id` header 与 Agent API base。
+- 刷新后仍应从 projection 看到 draft assistant/tool-call/tool-result rows；普通用户只能读/证明/继续/写入自己的 owner-scoped projection，admin/super_admin 可跨 owner 但仍受 Agent auth 约束。不要逐条持久化 tool/function `arguments.delta`；只在 `arguments.done`/done item 等语义边界写 projection。
 
 ### Cron
 
-`GET /api/deck/cron?profile=<id>` 必须能从 API 响应确认 profile routing。若返回 `profile_routing_unavailable`，升级/重启 Hermes API Server 或修正 profile API base；不要在 Deck 里添加本地 cron 枚举。
+`GET /api/deck/cron?profile=<id>` 必须能从 API 响应确认 Agent routing。若返回 `profile_routing_unavailable`，升级/重启 Hermes API Server 或修正 Agent API base；不要在 Deck 里添加本地 cron 枚举。cron/jobs 属于敏感 upstream data，无 proof 仍 fail closed。
 
 ### PWA
 
@@ -102,9 +102,10 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 更新文档时请同时检查：
 
 - 不出现把本地数据库、Hermes CLI、本地 profile/model 枚举描述为运行时数据路径的内容。
+- 不把 Deck user/account 与 Hermes Agent profile 混用；用户可见文案用 Agent/账号/用户，API 字段 `profile`/`profileId` 仅按 legacy/compat Agent runtime id 说明。
 - 端口叙述必须是：6117 可见入口，6118 内部 Next/proxy target。
 - PWA cache 必须强调不缓存受保护认证 HTML/API 响应。
-- Profiles/models/cron proof 必须 API-backed 且 fail-closed。
+- Agent catalog/models/cron proof 必须 API-backed 且 fail-closed。
 
 ## Pre-merge verification
 

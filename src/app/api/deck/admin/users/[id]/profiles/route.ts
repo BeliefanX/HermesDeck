@@ -33,7 +33,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
       {
         ok: false,
         error: 'profiles_fetch_failed',
-        detail: `Unable to validate profile assignments against Hermes Agent profiles: ${msg.slice(0, 180)}`,
+        detail: `Unable to validate Agent assignments against the Hermes Agent catalog: ${msg.slice(0, 180)}`,
       },
       { status: 502 },
     );

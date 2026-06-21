@@ -61,6 +61,9 @@ export type DeckUser = {
   passwordSalt: string;
   passwordHash: string;
   passwordVersion: number;
+  // Persistence compatibility: auth.json still stores assignedProfileIds.
+  // Semantically these are assigned Agent runtime ids (Hermes Agent profile ids),
+  // not Deck user/account profiles.
   assignedProfileIds: string[];
   preferences: { profiles: DeckUserProfilePreferences };
   createdAt: string;
@@ -81,6 +84,7 @@ export type SafeDeckUserContext = {
   email?: string;
   role: DeckRole;
   status: DeckUserStatus;
+  assignedAgentIds: string[];
   assignedProfileIds: string[];
   capabilities: {
     canUseApp: boolean;
@@ -271,7 +275,7 @@ function validateUser(raw: unknown, key: string): DeckUser {
     throw new AuthStoreError('Invalid v2 auth store: invalid password version.');
   }
   if (!Array.isArray(raw.assignedProfileIds) || raw.assignedProfileIds.some((id) => typeof id !== 'string')) {
-    throw new AuthStoreError('Invalid v2 auth store: invalid profile assignments.');
+    throw new AuthStoreError('Invalid v2 auth store: invalid Agent assignments.');
   }
   if (typeof raw.createdAt !== 'string' || typeof raw.updatedAt !== 'string') {
     throw new AuthStoreError('Invalid v2 auth store: missing user timestamps.');
@@ -583,6 +587,8 @@ export function toSafeUserContext(user: DeckUser): SafeDeckUserContext {
     email: user.email,
     role: user.role,
     status: user.status,
+    assignedAgentIds: [...user.assignedProfileIds],
+    // API/persistence compatibility alias; prefer assignedAgentIds in new code.
     assignedProfileIds: [...user.assignedProfileIds],
     capabilities: capabilitiesFor(user),
   };
@@ -717,19 +723,19 @@ export function replaceDeckUserProfileAssignments(
   const actor = getUser(rec, actorUserId);
   const target = getUser(rec, targetUserId);
   if (!actor || actor.status !== 'active' || (actor.role !== 'admin' && actor.role !== 'super_admin')) {
-    return { ok: false, code: 'forbidden', error: 'Only active admins can manage profile assignments.' };
+    return { ok: false, code: 'forbidden', error: 'Only active admins can manage Agent assignments.' };
   }
   if (!target) return { ok: false, code: 'not_found', error: 'User not found.' };
   const access = actorCanManageTarget(actor, target, 'assign');
   if (!access.ok) return { ok: false, code: 'forbidden', error: access.error };
   if (!Array.isArray(assignedProfileIds) || assignedProfileIds.some((id) => typeof id !== 'string')) {
-    return { ok: false, code: 'invalid', error: 'assignedProfileIds must be an array of profile ids.' };
+    return { ok: false, code: 'invalid', error: 'assignedProfileIds must be an array of Agent runtime ids.' };
   }
   const valid = new Set(validProfileIds);
   const normalized = [...new Set(assignedProfileIds.map((id) => id.trim()).filter(Boolean))];
   const invalid = normalized.filter((id) => !valid.has(id));
   if (invalid.length) {
-    return { ok: false, code: 'invalid_profile', error: `Invalid profile id(s): ${invalid.join(', ')}` };
+    return { ok: false, code: 'invalid_profile', error: `Invalid Agent id(s): ${invalid.join(', ')}` };
   }
   const next: DeckUser = {
     ...target,

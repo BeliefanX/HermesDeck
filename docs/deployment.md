@@ -92,17 +92,17 @@ server {
 - 必设 `HERMESDECK_PUBLIC_ORIGIN=https://...`，否则写路由可能因 same-origin 检查失败。
 - TLS 后设置 `HERMESDECK_FORCE_SECURE_COOKIE=1`。
 - 只有可信反代才启用 `HERMESDECK_TRUST_PROXY=1`。
-- 不要把 Deck 裸奔到公网；Deck 管理 Hermes profile/config、可选终端，并持有用户 session。
+- 不要把 Deck 裸奔到公网；Deck 管理 Agent 背后的 Hermes profile/config、可选终端，并持有用户 session。
 - Live Terminal 默认关。启用后仅 active admin/super_admin 可用，但本质上仍是宿主用户 shell。
-- admin/super_admin 依赖 API-backed catalog；API outage 时 fail-closed，不本地枚举 profiles/models。
+- admin/super_admin 依赖 API-backed Agent catalog；API outage 时 fail-closed，不本地枚举 profiles/models，也不把 catalog/health proof 缺失解释成用户无权限。
 
 ## Hermes API Server requirements
 
-- Default profile：`HERMES_API_BASE` 或 default `.env` 的 API base/port 可达。
-- Named profiles：各 profile `.env` 配置独立 API base/port/key；缺少 base 时 Deck 拒绝把请求发到 default profile。
-- Profiles catalog endpoint：`/v1/profiles` 或 `/api/profiles` 至少一个可用。
+- Default Agent（Hermes default profile）：`HERMES_API_BASE` 或 default `.env` 的 API base/port 可达。
+- Named Agents：各 backing profile `.env` 配置独立 API base/port/key；缺少 base 时 Deck 拒绝把请求发到 default Agent。
+- Agent catalog endpoint：`/v1/profiles` 或 `/api/profiles` 至少一个可用。
 - Models：`/v1/models` 可用且返回 selectable models。
-- Cron：`/api/jobs?include_disabled=true&profile=<id>` 必须返回 profile proof。
+- Cron：`/api/jobs?include_disabled=true&profile=<id>` 必须返回 Agent routing proof；无 proof 时这类敏感 upstream data fail closed。
 
 ## PWA and HTTPS
 

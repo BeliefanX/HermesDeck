@@ -94,7 +94,7 @@ export class AssignedProfilesUnavailableError extends Error {
   details: string[];
 
   constructor(details: string[]) {
-    super(details.length ? `No assigned Hermes profiles are routable: ${details.join('; ')}` : 'No valid Hermes profiles are assigned.');
+    super(details.length ? `No assigned Agents are routable: ${details.join('; ')}` : 'No valid Agents are assigned.');
     this.name = 'AssignedProfilesUnavailableError';
     this.details = details;
   }
@@ -147,13 +147,13 @@ export async function proveProfileRoutable(profileId: string): Promise<ProfileRo
       signal: AbortSignal.timeout(2500),
     });
     if (response.ok) {
-      if (profileId === 'default') return { ok: true };
+      // Deck assignment grants access to a configured Agent runtime API
+      // base/key. Older Hermes Agent /health payloads do not identify the
+      // runtime profile; absence of that identity is not a Deck-user
+      // permission failure. A mismatched explicit identity is still unsafe.
       const payload = await responseJsonOrNull(response);
       const routedProfileId = healthProfileIdentity(response, payload);
-      if (!routedProfileId) {
-        return { ok: false, detail: `${profileId}: /health did not prove routed profile identity` };
-      }
-      if (routedProfileId !== profileId) {
+      if (routedProfileId && routedProfileId !== profileId) {
         return { ok: false, detail: `${profileId}: /health proved routed profile '${routedProfileId}'` };
       }
       return { ok: true };

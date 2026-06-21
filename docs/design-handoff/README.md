@@ -1,6 +1,6 @@
 # HermesDeck Design Handoff
 
-HermesDeck is a Hermes Agent control deck for browser and installed PWA use: multi-session chat, profile-aware runs, configuration editing, capability/task panels, RBAC-admin settings, and terminal access. This handoff is a companion to the canonical design contract in [`../../design.md`](../../design.md); if details disagree, `design.md` and `src/app/globals.css` win.
+HermesDeck is a Hermes Agent control deck for browser and installed PWA use: multi-session chat, Agent-aware runs, configuration editing, capability/task panels, RBAC-admin settings, and terminal access. This handoff is a companion to the canonical design contract in [`../../design.md`](../../design.md); if details disagree, `design.md` and `src/app/globals.css` win.
 
 > **Vibe.** Hallmark / Tally-like modern-minimal workbench. Light-first paper surfaces, hairline structure, low-shadow popovers, small indigo accent footprint, and restrained dark terminal/code areas. No marketing gradients, decorative orbs, fake browser chrome, fabricated metrics, or oversized landing-page cards.
 
@@ -26,8 +26,9 @@ No Figma or external brand kit is authoritative for this repository.
 
 - **Visible entrypoint:** `http://<host>:6117` is canonical for users, PWA install, and reverse proxies. Project scripts run Next on `6118` and expose `6117 -> 6118` as the same-origin reverse proxy.
 - **API-only runtime:** Deck production data comes from Hermes Agent API Server through the Deck BFF (`/api/deck/*`). Do not describe local Hermes DB reads, Hermes CLI calls, or local profile/model catalog enumeration as runtime fallbacks.
+- **Terminology:** Deck users/accounts are login identities. Assigned Agents are runtime targets backed by Hermes Agent profiles. A Hermes Agent profile is not a Deck user profile; API fields named `profile`/`profileId` are legacy/compat Agent runtime ids.
 - **Deck-owned state:** Auth/session state and chat projection live under `~/.hermesdeck` or `HERMESDECK_DATA_DIR`; projection is UX/proof state, not a Hermes runtime source of truth.
-- **RBAC:** Access fails closed. Profile assignment and role checks must be proven before serving protected data or mutating state.
+- **RBAC:** Access fails closed. Agent assignment and role checks must be proven before serving protected data or mutating state; ordinary users must not access unassigned Agents/default.
 - **PWA:** Public offline shell and icons may be cached. Auth pages, API responses, chat HTML, and protected user data must not be persisted by the service worker.
 - **Terminal:** There are two terminal-related surfaces:
   - `terminalActions` are bounded diagnostic/action endpoints implemented with `execFile`/synthetic handlers.
@@ -77,7 +78,7 @@ Production tokens are OKLCH-based and live in `src/app/globals.css`.
 - **Languages:** The running app supports zh/en UI strings. Keep new chrome strings aligned with the existing i18n pattern rather than imposing an English-only rule.
 - **Tone:** Engineer-to-engineer, operational, and exact. Say what exists, what is disabled, and what is planned.
 - **Terminal wording:** When Live Terminal is enabled, describe it plainly as a real shell session exposed through the browser and protected by RBAC/feature gating. Do not imply free-form shell input is impossible.
-- **Architecture wording:** Use “Hermes Agent API Server”, “Deck BFF”, “Deck-owned projection”, “RBAC fail-closed”, “canonical 6117 entrypoint”, and “PWA protected-data cache boundary” consistently.
+- **Architecture wording:** Use “Hermes Agent API Server”, “Deck BFF”, “Deck-owned projection”, “Assigned Agents”, “RBAC fail-closed”, “canonical 6117 entrypoint”, and “PWA protected-data cache boundary” consistently.
 - **No fabricated examples:** Metrics, runs, costs, testimonials, and model/provider data must come from runtime/API data or be labeled as placeholder/demo content.
 
 ---

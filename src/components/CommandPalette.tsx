@@ -38,7 +38,7 @@ export function CommandPalette() {
       // page items
       pHome: '主页',           pHomeHint: '指挥台',
       pChat: '对话',           pChatHint: '新建会话',
-      pProfiles: '配置',       pProfilesHint: '模型、工具、认证',
+      pProfiles: 'Agents',       pProfilesHint: '模型、工具、认证',
       pConfig: 'Agent 配置',   pConfigHint: '配置文件 · SOUL · 记忆',
       pRuns: '运行',           pRunsHint: '运行历史',
       pCron: '定时任务',       pCronHint: 'Scheduled Tasks',
@@ -51,7 +51,7 @@ export function CommandPalette() {
       aNewChat: '新建对话',         aNewChatHint: '开启全新会话',
       aFailedRuns: '筛选失败运行',  aFailedRunsHint: '打开运行 · 状态=失败',
       // dynamic prefixes/suffixes
-      profilePrefix: '配置',
+      profilePrefix: 'Agent',
       activeDot: '使用中 · ',
       sessionsSuffix: '个会话',
       disabled: '已停用',
@@ -59,7 +59,7 @@ export function CommandPalette() {
     en: {
       paletteAria: 'Command palette',
       searchAria: 'Search command palette',
-      searchPlaceholder: 'Search sessions, profiles, tools, runs, pages…',
+      searchPlaceholder: 'Search sessions, Agents, tools, runs, pages…',
       loading: 'Loading…',
       noMatches: 'No matches',
       footerNav: '↑↓ navigate',
@@ -70,7 +70,7 @@ export function CommandPalette() {
       resultMany: 'results',
       pHome: 'Home',           pHomeHint: 'Command deck',
       pChat: 'Chat',           pChatHint: 'New conversation',
-      pProfiles: 'Profiles',   pProfilesHint: 'Models, tools, auth',
+      pProfiles: 'Agents',   pProfilesHint: 'Models, tools, auth',
       pConfig: 'Agent Config', pConfigHint: 'Config files · SOUL · memory',
       pRuns: 'Runs',           pRunsHint: 'Run history',
       pCron: 'Scheduled Tasks', pCronHint: 'Cron jobs',
@@ -81,7 +81,7 @@ export function CommandPalette() {
       pSettings: 'Settings',   pSettingsHint: 'Theme, prefs',
       aNewChat: 'New chat',         aNewChatHint: 'Start a fresh session',
       aFailedRuns: 'Filter failed runs', aFailedRunsHint: 'Open Runs · status=failed',
-      profilePrefix: 'Profile',
+      profilePrefix: 'Agent',
       activeDot: 'active · ',
       sessionsSuffix: 'sessions',
       disabled: 'disabled',
@@ -91,7 +91,7 @@ export function CommandPalette() {
   const PAGE_ITEMS: CommandItem[] = useMemo(() => [
     { id: 'p:home',    kind: 'page', title: t.pHome,     hint: t.pHomeHint,     href: '/',         search: 'home dashboard command deck',    icon: <Home size={14} /> },
     { id: 'p:chat',    kind: 'page', title: t.pChat,     hint: t.pChatHint,     href: '/chat',     search: 'chat new conversation message',  icon: <MessageSquare size={14} /> },
-    { id: 'p:profiles',kind: 'page', title: t.pProfiles, hint: t.pProfilesHint, href: '/profiles', search: 'profile model auth provider',    icon: <Bot size={14} /> },
+    { id: 'p:profiles',kind: 'page', title: t.pProfiles, hint: t.pProfilesHint, href: '/profiles', search: 'agent model auth provider',    icon: <Bot size={14} /> },
     { id: 'p:config',  kind: 'page', title: t.pConfig,   hint: t.pConfigHint,   href: '/config',   search: 'config soul user memory yaml files', icon: <FileCog size={14} /> },
     { id: 'p:runs',    kind: 'page', title: t.pRuns,     hint: t.pRunsHint,     href: '/runs',     search: 'runs execution history failed',  icon: <Radio size={14} /> },
     { id: 'p:cron',    kind: 'page', title: t.pCron,     hint: t.pCronHint,     href: '/cron',     search: 'cron scheduled tasks jobs schedule', icon: <CalendarClock size={14} /> },

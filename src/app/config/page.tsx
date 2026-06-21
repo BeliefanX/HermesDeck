@@ -43,7 +43,7 @@ export default function ConfigPage() {
 
   const t = useT({
     zh: {
-      intro: '预览并编辑当前 Profile 的 Hermes 配置文件。默认为只读预览，点击「编辑」进入编辑态；保存时会做格式与长度审查。切换顶栏的 Profile 即可查看其它 Profile 的配置。',
+      intro: '预览并编辑当前 Agent 的 Hermes 配置文件。默认为只读预览，点击「编辑」进入编辑态；保存时会做格式与长度审查。切换顶栏的 Agent 即可查看其它 Agent 的配置。',
       kicker: '配置文件',
       title: 'Agent 配置',
       home: 'Hermes 配置目录',
@@ -51,7 +51,7 @@ export default function ConfigPage() {
       retry: '重试',
     },
     en: {
-      intro: 'Preview and edit the active profile’s Hermes config files. Read-only by default — click Edit to make changes; saves are format- and length-checked. Switch the profile in the top bar to inspect another profile.',
+      intro: 'Preview and edit the active Agent’s Hermes config files. Read-only by default — click Edit to make changes; saves are format- and length-checked. Switch the Agent in the top bar to inspect another Agent.',
       kicker: 'CONFIG FILES',
       title: 'Agent Config',
       home: 'Hermes home',

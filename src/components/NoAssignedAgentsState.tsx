@@ -11,15 +11,15 @@ export function NoAssignedAgentsState({ compact = false }: NoAssignedAgentsState
   const t = useT({
     zh: {
       kicker: '未分配 Agent',
-      title: '你的账户还没有分配 Agent Profile。',
-      body: '请联系管理员分配 Agent Profile；在分配之前无法使用仪表盘指标、Profiles、会话或聊天。',
-      required: '需要 RBAC profile 分配',
+      title: '你的账号还没有分配 Agent。',
+      body: '请联系管理员分配 Agent；在分配之前无法使用仪表盘指标、Agents、会话或聊天。',
+      required: '需要 Deck Agent 授权',
     },
     en: {
       kicker: 'No assigned Agents',
-      title: 'No Agent profiles are assigned to your account.',
-      body: 'Contact an admin to request access to an Agent profile before using dashboard metrics, profiles, sessions, or chat.',
-      required: 'RBAC profile assignment required',
+      title: 'No Agents are assigned to your account.',
+      body: 'Contact an admin to request Agent access before using dashboard metrics, Agents, sessions, or chat.',
+      required: 'Deck Agent authorization required',
     },
   });
   return (

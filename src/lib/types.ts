@@ -19,6 +19,8 @@ export interface DeckAuthSession {
   email?: string;
   role?: DeckRole;
   status?: DeckUserStatus;
+  assignedAgentIds?: string[];
+  /** Compatibility alias for persisted/auth API payloads; prefer assignedAgentIds. */
   assignedProfileIds?: string[];
   capabilities?: DeckUserCapabilities;
   expiresAt?: number;
