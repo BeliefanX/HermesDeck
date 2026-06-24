@@ -88,6 +88,24 @@ type ChatStreamRequest = {
 - `GET /api/deck/stats?profile=<id>`：dashboard stats；default Agent 合并 API sessions 与 viewer-scoped projection，named Agents 使用 viewer-scoped projection stats。
 - `GET /api/deck/tokens?days=<n>&profile=<id>`：token/cost 聚合，timeout 较长。
 
+## Notifications
+
+Notification BFF routes are Deck-owned and user-scoped. They do not call Hermes Agent except when chat completion/failure is observed by the chat stream route.
+
+- `GET /api/deck/notifications/config`：requires active Deck session; returns `{ ok:true, config, preferences, subscriptionCount }`. `config.available` is true only when `HERMESDECK_VAPID_PUBLIC_KEY`, `HERMESDECK_VAPID_PRIVATE_KEY`, and a subject (`HERMESDECK_VAPID_SUBJECT` or `HERMESDECK_PUBLIC_ORIGIN`) are present.
+- `GET /api/deck/notifications/preferences`：returns the current user's notification preference booleans.
+- `PUT/PATCH /api/deck/notifications/preferences`：mutating/CSRF-guarded; accepts booleans for `chatCompleted`, `chatFailed`, `kanbanTaskCompleted`, `cronJobCompleted`; ignores unknown or non-boolean values.
+- `GET /api/deck/notifications/subscription`：returns only the current user's subscription count, never endpoint/key material.
+- `POST /api/deck/notifications/subscription`：mutating/CSRF-guarded; stores the browser Push API subscription for the current Deck user. Endpoint must be HTTPS; key sizes are capped; each user is capped at 16 subscriptions.
+- `DELETE /api/deck/notifications/subscription`：mutating/CSRF-guarded; removes the current user's subscription by endpoint.
+- `POST /api/deck/notifications/test`：mutating/CSRF-guarded; requires active user, available VAPID config, and access to the requested Agent runtime id before sending a low-sensitivity test chat-complete push.
+
+Delivery semantics:
+
+- Phase 1 chat notifications are Web Push. `/api/deck/chat/stream` dispatches non-blocking `chat_completed` / `chat_failed` notifications after final/error projection writes. Push errors and expired endpoints do not fail the chat stream; 404/410 subscriptions are pruned.
+- Phase 2 Kanban/Cron notifications are page-open browser notifications only. They use Settings preferences fetched through the config route, but delivery happens in the active page via `new Notification(...)`; there is no server watcher for closed-page Kanban/Cron delivery.
+- Push payloads contain title/body/tag and a same-origin app URL such as `/chat?...`; the Service Worker rejects cross-origin and `/api/*` click targets.
+
 ## Cron proof
 
 - `GET /api/deck/cron?profile=<id>`：按一个或多个用户可访问 Agents 调 Hermes API Server `/api/jobs?include_disabled=true&profile=<id>`。

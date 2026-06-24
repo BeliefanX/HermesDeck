@@ -50,6 +50,7 @@ npm run dev
 - `src/lib/server/hermes/cron.ts`：cron Agent routing proof。
 - `src/lib/server/auth.ts`、`rbac.ts`：Deck users/roles/capabilities/Agent scope（代码中 `profile`/`profileId` 是 legacy Agent runtime id）。
 - `src/lib/server/deck-chat-projection.ts`：projection store lock/atomic write/prune。
+- `src/lib/server/notifications.ts`、`src/lib/notification-events.ts`：Web Push chat dispatch、notification preferences/subscriptions store、page-open Kanban/Cron notification helpers。
 - `public/sw.js`：PWA cache policy。
 
 ## Debugging
@@ -94,8 +95,15 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 ### PWA
 
 - dev 模式 `PWARegister` 会 unregister SW；如果曾访问 production，手动在 DevTools Application 面板清理旧 SW/cache。
-- 生产 SW 版本见 `public/sw.js`，当前为 `hermesdeck-pwa-v41`。
+- 生产 SW 版本见 `public/sw.js`，当前为 `hermesdeck-pwa-v45`。
 - 验证：`npm run verify:pwa`。
+
+### Notifications
+
+- Web Push chat notifications require VAPID env (`HERMESDECK_VAPID_PUBLIC_KEY`, `HERMESDECK_VAPID_PRIVATE_KEY`, optional `HERMESDECK_VAPID_SUBJECT`) and HTTPS/localhost secure context.
+- Settings owns permission/subscription UX. `/api/deck/notifications/*` routes require Deck auth; writes are guarded by CSRF/same-origin.
+- Chat complete/failed is server-side Web Push and may fire after the chat tab closes. Kanban/Cron notifications are page-open only and use `new Notification(...)`; do not add docs implying closed-page Kanban/Cron support.
+- Focused test: `node --experimental-strip-types --test tests/notification-events.test.mjs`.
 
 ## Documentation rules
 

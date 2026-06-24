@@ -17,6 +17,7 @@ HermesDeck 是 Hermes Agent 的 Deck/BFF/UI 层。它在同一个 Next.js 进程
 - `src/lib/server/hermes/*`：BFF 到 Hermes Agent API Server 的适配层（profiles/models/chat/cron/runs 等）。
 - `src/lib/server/auth.ts` 与 `src/lib/server/rbac.ts`：Deck auth store、cookie session、角色能力、Agent assignment 与 fail-closed 检查。代码中的 `profile`/`profileId` 字段是 legacy/compat Agent runtime id。
 - `src/lib/server/deck-chat-projection.ts`：Deck-owned chat UX/proof projection。
+- `src/lib/server/notifications.ts` 与 `src/lib/notification-events.ts`：Deck-owned Web Push subscription/preferences store、chat notification dispatch、page-open Kanban/Cron notification parsing。
 - `public/sw.js`：PWA shell/runtime cache 策略。
 
 ## Runtime source of truth
@@ -72,15 +73,26 @@ Projection 是 UX/proof 状态，不是 Hermes runtime 数据源。它保存 Dec
 
 完整不变量见 [deck-chat-projection.md](deck-chat-projection.md)。
 
+## Notifications Phase 1/2
+
+Notifications are Deck-owned and scoped to the logged-in Deck user, not to Hermes Agent runtime persistence:
+
+- **Phase 1 chat Web Push**：Settings writes the user's Push API subscription into `notifications.v1.json` and preferences under the same Deck data dir as projection. `/api/deck/chat/stream` dispatches chat-complete/chat-failed push after projection final/error writes. Dispatch is non-blocking and sends only low-sensitivity payloads: title, short body, tag, and a same-origin non-API click URL.
+- **Phase 2 Kanban/Cron page-open notifications**：Kanban parses completion events/status transitions while the Kanban page is open; Cron compares the current 30-second polling response with the prior baseline while the Cron page is open. Both use the browser `Notification` API directly and honor the user's stored preferences.
+- **Not implemented**：closed-page/background Kanban and Cron notifications. Do not document an always-on watcher until there is a safe server-side event/watcher API with Agent/RBAC proof.
+
+VAPID config comes from environment only: `HERMESDECK_VAPID_PUBLIC_KEY`, `HERMESDECK_VAPID_PRIVATE_KEY`, and subject from `HERMESDECK_VAPID_SUBJECT` or `HERMESDECK_PUBLIC_ORIGIN`. Notification routes require Deck auth; subscription/preferences/test writes are CSRF/same-origin guarded, and test sends also require target Agent access.
+
 ## PWA/cache strategy
 
-`public/sw.js` 当前 cache version 为 `hermesdeck-pwa-v41`：
+`public/sw.js` 当前 cache version 为 `hermesdeck-pwa-v45`：
 
 - shell cache 只预缓存 `/offline`、manifest、icons。
 - `/api/*` 网络直通；只有网络异常时合成 `{ ok:false, offline:true, error:'offline' }` 的 503。
 - `/api/deck/cache-image` 不使用 SW cache，并清理旧命中，避免 admin artifact 泄露给普通用户。
 - navigation route 网络优先，离线返回 `/offline`；不缓存认证 HTML。
 - static style/script/image/font 使用 runtime cache，最多 40 条 LRU。
+- push/click handlers validate payload click URLs as same-origin and non-`/api/*`; they do not cache notification payloads.
 
 ## Config editing and terminal boundaries
 

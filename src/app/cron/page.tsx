@@ -1,12 +1,15 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, CalendarClock, Clock, PlayCircle, Search, Send, Wrench } from 'lucide-react';
 import { deckApi } from '@/lib/api';
-import type { DeckCronJob } from '@/lib/types';
+import type { DeckCronJob, DeckNotificationPreferences } from '@/lib/types';
 import { Page, Card, Chip, Kicker, Tag, type Tone } from '@/components/Brand';
 import { relTime, shortTitle, useNowTick } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import { useActiveProfile } from '@/lib/profile-context';
+import { cronCompletionBaseline, detectCronCompletionNotifications, notificationAllowed, showPageNotification, type CronJobBaseline } from '@/lib/notification-events';
+
+const CRON_POLL_MS = 30_000;
 
 function statusTone(status: DeckCronJob['status']): Tone {
   if (status === 'enabled') return 'green';
@@ -58,23 +61,59 @@ export default function ScheduledTasksPage() {
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<'all' | DeckCronJob['status']>('all');
+  const baselineRef = useRef<CronJobBaseline | null>(null);
+  const notificationPreferencesRef = useRef<DeckNotificationPreferences | null>(null);
   useNowTick();
+
+  useEffect(() => {
+    let cancelled = false;
+    deckApi.notificationConfig()
+      .then((state) => { if (!cancelled) notificationPreferencesRef.current = state.preferences; })
+      .catch(() => { if (!cancelled) notificationPreferencesRef.current = null; });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    baselineRef.current = null;
+  }, [activeProfile]);
+
+  const loadJobs = useCallback((signal?: AbortSignal, showLoading = false) => {
+    if (showLoading) setLoading(true);
+    setErr('');
+    return deckApi.cronJobs(activeProfile, signal)
+      .then((res) => {
+        const nextJobs = res.jobs || [];
+        if (signal?.aborted) return;
+        const previous = baselineRef.current;
+        if (previous && notificationAllowed(notificationPreferencesRef.current, 'cronJobCompleted')) {
+          detectCronCompletionNotifications(previous, nextJobs, activeProfile).forEach(showPageNotification);
+        }
+        baselineRef.current = cronCompletionBaseline(nextJobs);
+        setJobs(nextJobs);
+      })
+      .catch((e) => {
+        if (signal?.aborted) return;
+        if (e instanceof Error && (e.name === 'AbortError' || e.name === 'TimeoutError')) return;
+        setErr(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => { if (!signal?.aborted && showLoading) setLoading(false); });
+  }, [activeProfile]);
 
   useEffect(() => {
     if (!hydrated) return;
     const ac = new AbortController();
-    setLoading(true);
-    setErr('');
-    deckApi.cronJobs(activeProfile, ac.signal)
-      .then((res) => { if (!ac.signal.aborted) setJobs(res.jobs || []); })
-      .catch((e) => {
-        if (ac.signal.aborted) return;
-        if (e instanceof Error && (e.name === 'AbortError' || e.name === 'TimeoutError')) return;
-        setErr(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => { if (!ac.signal.aborted) setLoading(false); });
+    void loadJobs(ac.signal, true);
     return () => ac.abort();
-  }, [hydrated, activeProfile]);
+  }, [hydrated, loadJobs]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const timer = setInterval(() => {
+      const ac = new AbortController();
+      void loadJobs(ac.signal, false);
+    }, CRON_POLL_MS);
+    return () => clearInterval(timer);
+  }, [hydrated, loadJobs]);
 
   const counts = useMemo(() => ({
     total: jobs.length,

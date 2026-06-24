@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'hermesdeck-pwa-v44';
+const CACHE_VERSION = 'hermesdeck-pwa-v45';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -44,6 +44,51 @@ self.addEventListener('message', (event) => {
   if (event.data?.type === 'GET_VERSION') {
     event.ports?.[0]?.postMessage({ type: 'VERSION', version: CACHE_VERSION });
   }
+});
+
+function safeNotificationUrl(value) {
+  try {
+    const url = new URL(typeof value === 'string' && value ? value : '/', self.location.origin);
+    if (url.origin !== self.location.origin) return '/';
+    if (url.pathname.startsWith('/api/')) return '/';
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return '/';
+  }
+}
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch {}
+  const title = typeof data.title === 'string' && data.title.trim() ? data.title.trim() : 'HermesDeck';
+  const body = typeof data.body === 'string' ? data.body.slice(0, 180) : '';
+  const url = safeNotificationUrl(data.url);
+  const tag = typeof data.tag === 'string' ? data.tag.slice(0, 120) : undefined;
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    tag,
+    data: { url },
+    icon: '/icons/icon-192.png',
+    badge: '/icons/maskable-512.png',
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = safeNotificationUrl(event.notification?.data?.url);
+  event.waitUntil((async () => {
+    const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of allClients) {
+      try {
+        const clientUrl = new URL(client.url);
+        if (clientUrl.origin === self.location.origin && 'focus' in client) {
+          if ('navigate' in client) await client.navigate(target);
+          return client.focus();
+        }
+      } catch {}
+    }
+    return self.clients.openWindow(target);
+  })());
 });
 
 // LRU trim: oldest-inserted-first eviction. The Cache API has no natural

@@ -12,6 +12,7 @@ import {
   startProjectedTurn,
 } from '@/lib/server/deck-chat-projection';
 import { guardMutating, guardRequestBody, readLimitedJson } from '@/lib/server/csrf';
+import { dispatchChatNotification } from '@/lib/server/notifications';
 import { normalizeProfileId, rbacJsonError, requireActiveUser, requireProfileAccess } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
@@ -129,9 +130,22 @@ export async function POST(req: NextRequest) {
     },
     onDone({ sessionId, profileId: projectedProfileId, content, responseId, attachments: doneAttachments, model, reasoningEffort }) {
       finalizeProjectedTurn({ sessionId, profileId: projectedProfileId, viewer: projectionViewer, content, responseId, attachments: doneAttachments, model, reasoningEffort });
+      void dispatchChatNotification({
+        userId: auth.user.id,
+        profileId: projectedProfileId,
+        sessionId,
+        kind: 'chat_completed',
+      }).catch(() => {});
     },
     onError({ sessionId, profileId: projectedProfileId, error, detail }) {
       recordProjectedTurnError({ sessionId, profileId: projectedProfileId, viewer: projectionViewer, error, detail });
+      void dispatchChatNotification({
+        userId: auth.user.id,
+        profileId: projectedProfileId,
+        sessionId,
+        kind: 'chat_failed',
+        error: detail || error,
+      }).catch(() => {});
     },
   };
   try {

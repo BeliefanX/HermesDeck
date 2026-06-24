@@ -37,6 +37,9 @@ Local-only/LAN 开发也使用 `http://<host>:6117`。6118 仅是 Next 目标端
     <key>NODE_ENV</key><string>production</string>
     <key>HERMESDECK_PUBLIC_ORIGIN</key><string>https://deck.example.com</string>
     <key>HERMESDECK_FORCE_SECURE_COOKIE</key><string>1</string>
+    <key>HERMESDECK_VAPID_PUBLIC_KEY</key><string>...</string>
+    <key>HERMESDECK_VAPID_PRIVATE_KEY</key><string>...</string>
+    <key>HERMESDECK_VAPID_SUBJECT</key><string>mailto:ops@example.com</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -91,6 +94,7 @@ server {
 
 - 必设 `HERMESDECK_PUBLIC_ORIGIN=https://...`，否则写路由可能因 same-origin 检查失败。
 - TLS 后设置 `HERMESDECK_FORCE_SECURE_COOKIE=1`。
+- 如启用 Web Push chat notifications，设置 VAPID public/private key 与 subject；不要把 private key 放进客户端或仓库。
 - 只有可信反代才启用 `HERMESDECK_TRUST_PROXY=1`。
 - 不要把 Deck 裸奔到公网；Deck 管理 Agent 背后的 Hermes profile/config、可选终端，并持有用户 session。
 - Live Terminal 默认关。启用后仅 active admin/super_admin 可用，但本质上仍是宿主用户 shell。
@@ -108,12 +112,22 @@ server {
 
 PWA 安装要求安全上下文：HTTPS 或 `localhost`。LAN HTTP (`http://10.x.x.x:6117`) 通常不能安装，但可作为普通网页访问。
 
+Web Push 同样要求安全上下文和浏览器支持。Cloudflare Tunnel、Caddy、Nginx/TLS、Tailscale Funnel 等 HTTPS 入口适合 HermesDeck notifications；确保 `HERMESDECK_PUBLIC_ORIGIN` 与用户实际访问 origin 一致。iOS/iPadOS Safari 仅对安装到主屏幕的 PWA 提供 Web Push，普通 Safari tab 不能作为后台通知目标。
+
 Service Worker 策略：
 
 - shell cache 只存公开离线页和 icons。
 - 受保护 navigation HTML 不缓存；离线只返回 `/offline`。
 - API 不缓存；网络失败才合成 offline JSON。
 - static assets 使用最多 40 条 runtime LRU。
+- push notification clicks are constrained to same-origin non-API app URLs.
+
+Notification support matrix:
+
+- Chat complete / failed：Web Push，页面关闭后仍可送达已订阅设备。
+- Kanban task complete：只有 Kanban 页面打开且浏览器通知权限为 granted 时提示。
+- Cron job complete：只有 Cron 页面打开且该页 polling 观察到完成状态变化时提示。
+- Kanban/Cron closed-page background notifications：未实现；需要未来安全 watcher/event API。
 
 发布新版本后，`public/sw.js` 的 cache version 变化会清理旧 cache；不要依赖旧版本 cache 行为。
 
@@ -134,6 +148,7 @@ curl -fsS http://127.0.0.1:6117/api/deck/health
 npm run typecheck
 npm run lint
 npm run verify:pwa
+node --experimental-strip-types --test tests/notification-events.test.mjs
 npm run smoke
 ```
 

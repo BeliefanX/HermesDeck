@@ -260,6 +260,28 @@ export interface DeckModelPreferenceResponse {
   preference: DeckModelPreference | null;
 }
 
+export interface DeckNotificationPreferences {
+  chatCompleted: boolean;
+  chatFailed: boolean;
+  kanbanTaskCompleted: boolean;
+  cronJobCompleted: boolean;
+  updatedAt?: string;
+}
+
+export interface DeckNotificationConfig {
+  available: boolean;
+  publicKey: string | null;
+  subject: string | null;
+  reason?: string;
+}
+
+export interface DeckNotificationConfigResponse {
+  ok: true;
+  config: DeckNotificationConfig;
+  preferences: DeckNotificationPreferences;
+  subscriptionCount: number;
+}
+
 export interface TokenStats {
   totals: {
     input: number;

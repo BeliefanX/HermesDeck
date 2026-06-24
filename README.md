@@ -10,7 +10,8 @@ HermesDeck 是 Hermes Agent 的浏览器控制台：多会话聊天、Agent-awar
 - **Canonical visible entrypoint：`http://<host>:6117`**。项目脚本启动 Next 服务在 `6118`，同时启动 `6117 -> 6118` 的同源反向代理；用户、PWA、反向代理/launchd 对外应以 `6117` 为入口，`6118` 是内部目标。
 - **聊天流**：Deck BFF 调 Hermes API Server `/v1/responses`，用 SSE 向浏览器转发文本、raw run-event、attachment、done/error，并发送 keep-alive 注释保持长连接活性。前端发送 35 分钟 timeout（2,100,000ms），服务端夹在 `[1000, 2100000]`，匹配 Hermes active subagent 30 分钟上限 + 5 分钟收尾余量。
 - **Deck-owned chat projection**：`~/.hermesdeck/chat-projection.v1.json`（或 `HERMESDECK_DATA_DIR`）只保存 Deck UX/proof 状态，用 lock、atomic write、TTL/cap prune 维护；它不是 Hermes runtime 数据源。Projection 会持久化 draft/final assistant、tool-call、tool-result 行和 response/session aliases（不逐 delta 持久化 tool/function arguments），刷新后仍可显示 in-flight 状态。Projection proof/write 对普通用户按 `ownerUserId` 收紧，admin/super_admin 仍需先通过 Agent 授权；Deck 不返回可能串台的 unlabeled upstream session rows。
-- **安全 PWA cache**：Service Worker 只预缓存公开离线 shell 和图标；认证页面、API 响应、聊天 HTML 不被持久缓存。
+- **Notifications Phase 1/2**：Web Push（Phase 1）支持聊天完成/失败的后台通知；Kanban 任务完成与 Cron job 完成（Phase 2）只在对应页面打开时用浏览器 `Notification` API 提示。Kanban/Cron 关闭页面后的后台通知尚未实现，因为当前没有安全的 always-on watcher/event API。
+- **安全 PWA cache / push worker**：Service Worker 只预缓存公开离线 shell 和图标；认证页面、API 响应、聊天 HTML 不被持久缓存。Push payload 只包含低敏标题、短正文和同源非 API 点击 URL。
 
 ## 快速开始
 
@@ -32,6 +33,29 @@ npm start
 ```
 
 第一次启动如未发现 Deck auth store，会在终端打印一次性 `admin`/`super_admin` bootstrap 密码。登录后请在 Settings 中修改凭据并按需创建/审批用户。
+
+## 通知快速配置
+
+聊天后台通知需要 HTTPS（或 `localhost`）安全上下文、已注册 Service Worker，以及 VAPID key：
+
+```bash
+# 生成 VAPID key（任选一种方式）
+npx web-push generate-vapid-keys
+
+export HERMESDECK_PUBLIC_ORIGIN=https://deck.example.com
+export HERMESDECK_VAPID_PUBLIC_KEY=...
+export HERMESDECK_VAPID_PRIVATE_KEY=...
+export HERMESDECK_VAPID_SUBJECT=mailto:ops@example.com  # 可省略，默认取 PUBLIC_ORIGIN
+```
+
+部署后在 Settings → Notifications 启用通知、授权浏览器权限，并发送 test notification。Cloudflare Tunnel/Caddy/Nginx 等 HTTPS 反代适合承载 Web Push/PWA；普通 LAN HTTP 只能当网页访问，通常无法安装 PWA 或订阅 push。iOS/iPadOS Safari 只有安装到主屏幕的 PWA 才支持 Web Push，且权限仍需用户手动授予。
+
+支持矩阵：
+
+- Chat complete / failed：Web Push，可在页面关闭后送达订阅设备；由 `/api/deck/chat/stream` 完成 projection 写入后非阻塞派发。
+- Kanban task complete：页面打开并已授权通知时提示；依赖该 Kanban 页面正在接收事件。
+- Cron job complete：Cron 页面打开并已授权通知时提示；依赖页面 30 秒 polling diff。
+- Kanban/Cron 后台通知：暂不支持；不要把当前实现描述为 always-on watcher。
 
 ## 常用脚本
 

@@ -29,7 +29,7 @@ No Figma or external brand kit is authoritative for this repository.
 - **Terminology:** Deck users/accounts are login identities. Assigned Agents are runtime targets backed by Hermes Agent profiles. A Hermes Agent profile is not a Deck user profile; API fields named `profile`/`profileId` are legacy/compat Agent runtime ids.
 - **Deck-owned state:** Auth/session state and chat projection live under `~/.hermesdeck` or `HERMESDECK_DATA_DIR`; projection is UX/proof state, not a Hermes runtime source of truth.
 - **RBAC:** Access fails closed. Agent assignment and role checks must be proven before serving protected data or mutating state; ordinary users must not access unassigned Agents/default.
-- **PWA:** Public offline shell and icons may be cached. Auth pages, API responses, chat HTML, and protected user data must not be persisted by the service worker.
+- **PWA:** Public offline shell and icons may be cached. Auth pages, API responses, chat HTML, and protected user data must not be persisted by the service worker. Web Push is currently background-capable for chat complete/failed only; Kanban/Cron notifications are page-open browser notifications, not an always-on watcher.
 - **Terminal:** There are two terminal-related surfaces:
   - `terminalActions` are bounded diagnostic/action endpoints implemented with `execFile`/synthetic handlers.
   - **Live Terminal** is an opt-in real shell backed by tmux/node-pty and mounted by the Terminal page when `HERMESDECK_LIVE_TERMINAL=1`. Treat it as full shell access for trusted admin/super_admin operators, not as a bounded command runner.

@@ -1,14 +1,32 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { deckApi } from '@/lib/api';
-import type { DeckHealth } from '@/lib/types';
-import { Sun, Moon, Monitor, Trash2, ShieldCheck, Server, Database, RefreshCw, LogOut, KeyRound, UserRound } from 'lucide-react';
+import type { DeckHealth, DeckNotificationConfigResponse, DeckNotificationPreferences } from '@/lib/types';
+import { Sun, Moon, Monitor, Trash2, ShieldCheck, Server, Database, RefreshCw, LogOut, KeyRound, UserRound, Bell, BellOff, Send } from 'lucide-react';
 import { Page, Card, SectionHead, Chip, Btn, Tag, Kicker, Kbd, ListRow } from '@/components/Brand';
 import { AdminUsersPanel } from '@/components/AdminUsersPanel';
 import { localizeError, setLang, useLang, useT } from '@/lib/i18n';
 import { useDeckSession } from '@/lib/use-deck-session';
+import { useActiveProfile } from '@/lib/profile-context';
 
 type Theme = 'dark' | 'light';
+
+type NotificationPermissionState = NotificationPermission | 'unsupported' | 'unknown';
+
+function urlBase64ToApplicationServerKey(value: string): ArrayBuffer {
+  const padding = '='.repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+  return output.buffer.slice(0) as ArrayBuffer;
+}
+
+function notificationSupportState(): NotificationPermissionState {
+  if (typeof window === 'undefined') return 'unknown';
+  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported';
+  return Notification.permission;
+}
 
 export default function SettingsPage() {
   const [theme, setTheme] = useState<Theme>('dark');
@@ -29,6 +47,12 @@ export default function SettingsPage() {
   const [accountSaving, setAccountSaving] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [accountSuccess, setAccountSuccess] = useState<string | null>(null);
+  const [notificationState, setNotificationState] = useState<DeckNotificationConfigResponse | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>('unknown');
+  const [notificationBusy, setNotificationBusy] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
+  const [notificationError, setNotificationError] = useState<string | null>(null);
+  const { activeProfile, profiles, loading: profilesLoading } = useActiveProfile();
   const lang = useLang();
 
   const t = useT({
@@ -65,6 +89,25 @@ export default function SettingsPage() {
       clearCache: '清除 HermesDeck 缓存',
       cleared: '已清除',
       confirmClear: '确认清除 HermesDeck 本地缓存？将清除草稿、会话索引、response 链路与会话组织（置顶 / 文件夹 / 标签）；主题、语言与当前 Agent 会保留。此操作无法撤销。',
+      notifications: '通知',
+      notificationTitle: '浏览器通知',
+      notificationDesc: '聊天、Kanban 任务或定时任务完成后，HermesDeck 可通过 PWA Web Push / 页面打开时通知发送系统提醒。消息正文不会写入通知内容。',
+      notificationUnavailable: '服务器未配置 VAPID，通知暂不可用。',
+      notificationUnsupported: '此浏览器不支持 Service Worker Push 通知。',
+      permission: '权限',
+      subscribedDevices: '已订阅设备',
+      enableNotifications: '启用通知',
+      disableNotifications: '停用本设备',
+      sendTest: '发送测试',
+      notifyChatDone: '聊天完成',
+      notifyChatFailed: '聊天失败',
+      notifyKanbanDone: 'Kanban 任务完成',
+      notifyCronDone: '定时任务完成',
+      saved: '已保存',
+      testSent: '测试通知已发送',
+      subscriptionEnabled: '本设备已订阅',
+      subscriptionDisabled: '本设备已取消订阅',
+      noNotificationProfile: '没有可用的 Agent，无法发送测试通知。',
     },
     en: {
       intro: 'Basics: theme, connection info, local cache. Sensitive config is not exposed in the frontend; future versions will edit it via a guarded BFF.',
@@ -99,8 +142,37 @@ export default function SettingsPage() {
       clearCache: 'Clear HermesDeck cache',
       cleared: 'Cleared',
       confirmClear: 'Clear HermesDeck local cache? This removes drafts, the session index, response chains and session organization (pins, folders, tags). Your theme, language and active Agent are kept. This cannot be undone.',
+      notifications: 'NOTIFICATIONS',
+      notificationTitle: 'Browser notifications',
+      notificationDesc: 'HermesDeck can send PWA Web Push / page-open system notifications when chat replies, Kanban tasks or scheduled jobs complete. Message bodies are not included in notification text.',
+      notificationUnavailable: 'Server VAPID keys are not configured, so notifications are unavailable.',
+      notificationUnsupported: 'This browser does not support Service Worker Push notifications.',
+      permission: 'Permission',
+      subscribedDevices: 'Subscribed devices',
+      enableNotifications: 'Enable notifications',
+      disableNotifications: 'Disable this device',
+      sendTest: 'Send test',
+      notifyChatDone: 'Chat completed',
+      notifyChatFailed: 'Chat failed',
+      notifyKanbanDone: 'Kanban task completed',
+      notifyCronDone: 'Scheduled job completed',
+      saved: 'Saved',
+      testSent: 'Test notification sent',
+      subscriptionEnabled: 'This device is subscribed',
+      subscriptionDisabled: 'This device is unsubscribed',
+      noNotificationProfile: 'No available Agent, so a test notification cannot be sent.',
     },
   });
+
+  async function resolveTestNotificationProfileId(): Promise<string> {
+    if (activeProfile) return activeProfile;
+    const loadedProfile = profiles.find((p) => p.active)?.id || profiles[0]?.id;
+    if (loadedProfile) return loadedProfile;
+    const refreshed = await deckApi.profiles();
+    const refreshedProfile = refreshed.profiles?.find((p) => p.active)?.id || refreshed.profiles?.[0]?.id;
+    if (refreshedProfile) return refreshedProfile;
+    throw new Error(t.noNotificationProfile);
+  }
 
   const tAcc = useT({
     zh: {
@@ -145,12 +217,22 @@ export default function SettingsPage() {
     },
   });
 
+  const refreshNotifications = useCallback(async () => {
+    setNotificationPermission(notificationSupportState());
+    try {
+      setNotificationState(await deckApi.notificationConfig());
+    } catch (err) {
+      setNotificationError(localizeError(err instanceof Error ? err.message : 'Failed to load notifications.', lang));
+    }
+  }, [lang]);
+
   useEffect(() => {
     setTheme((document.documentElement.dataset.theme as Theme) || 'dark');
     setThemeMounted(true);
     refreshHealth();
+    void refreshNotifications();
     measureStorage();
-  }, []);
+  }, [refreshNotifications]);
 
   useEffect(() => {
     if (session?.authenticated && typeof session.username === 'string') {
@@ -222,6 +304,93 @@ export default function SettingsPage() {
   async function refreshHealth() {
     setRefreshing(true);
     try { setHealth(await deckApi.health()); } catch {} finally { setRefreshing(false); }
+  }
+
+  async function enableNotifications() {
+    setNotificationBusy(true);
+    setNotificationError(null);
+    setNotificationMessage(null);
+    try {
+      const state = notificationState || await deckApi.notificationConfig();
+      setNotificationState(state);
+      if (!state.config.available || !state.config.publicKey) {
+        setNotificationError(t.notificationUnavailable);
+        return;
+      }
+      if (notificationSupportState() === 'unsupported') {
+        setNotificationPermission('unsupported');
+        setNotificationError(t.notificationUnsupported);
+        return;
+      }
+      const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
+      setNotificationPermission(permission);
+      if (permission !== 'granted') return;
+      const registration = await navigator.serviceWorker.ready;
+      const existing = await registration.pushManager.getSubscription();
+      const subscription = existing || await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToApplicationServerKey(state.config.publicKey),
+      });
+      await deckApi.savePushSubscription(subscription.toJSON());
+      await refreshNotifications();
+      setNotificationMessage(t.subscriptionEnabled);
+    } catch (err) {
+      setNotificationError(localizeError(err instanceof Error ? err.message : 'Failed to enable notifications.', lang));
+    } finally {
+      setNotificationBusy(false);
+    }
+  }
+
+  async function disableNotifications() {
+    setNotificationBusy(true);
+    setNotificationError(null);
+    setNotificationMessage(null);
+    try {
+      if (notificationSupportState() === 'unsupported') return;
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        const endpoint = subscription.endpoint;
+        await subscription.unsubscribe().catch(() => false);
+        await deckApi.deletePushSubscription(endpoint);
+      }
+      await refreshNotifications();
+      setNotificationMessage(t.subscriptionDisabled);
+    } catch (err) {
+      setNotificationError(localizeError(err instanceof Error ? err.message : 'Failed to disable notifications.', lang));
+    } finally {
+      setNotificationBusy(false);
+    }
+  }
+
+  async function saveNotificationPreference(patch: Partial<DeckNotificationPreferences>) {
+    setNotificationBusy(true);
+    setNotificationError(null);
+    setNotificationMessage(null);
+    try {
+      const result = await deckApi.saveNotificationPreferences(patch);
+      setNotificationState((prev) => prev ? { ...prev, preferences: result.preferences } : prev);
+      setNotificationMessage(t.saved);
+    } catch (err) {
+      setNotificationError(localizeError(err instanceof Error ? err.message : 'Failed to save notifications.', lang));
+    } finally {
+      setNotificationBusy(false);
+    }
+  }
+
+  async function sendTestNotification() {
+    setNotificationBusy(true);
+    setNotificationError(null);
+    setNotificationMessage(null);
+    try {
+      const profileId = await resolveTestNotificationProfileId();
+      await deckApi.sendTestNotification(profileId);
+      setNotificationMessage(t.testSent);
+    } catch (err) {
+      setNotificationError(localizeError(err instanceof Error ? err.message : 'Failed to send test notification.', lang));
+    } finally {
+      setNotificationBusy(false);
+    }
   }
 
   function measureStorage() {
@@ -381,6 +550,64 @@ export default function SettingsPage() {
           <Chip active={lang === 'zh'} onClick={() => setLang('zh')}>{t.chinese}</Chip>
           <Chip active={lang === 'en'} onClick={() => setLang('en')}>{t.english}</Chip>
         </div>
+      </Card>
+
+      <Card>
+        <SectionHead kicker={t.notifications} title={t.notificationTitle} />
+        <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 14px', maxWidth: 720 }}>
+          {t.notificationDesc}
+        </p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+          <Tag icon={notificationPermission === 'granted' ? <Bell size={11} /> : <BellOff size={11} />}>
+            {t.permission}: {notificationPermission}
+          </Tag>
+          <Tag>{t.subscribedDevices}: {notificationState?.subscriptionCount ?? '—'}</Tag>
+          <Tag variant={notificationState?.config.available ? 'green' : 'yellow'}>
+            {notificationState?.config.available ? 'VAPID' : (notificationState ? t.notificationUnavailable : '—')}
+          </Tag>
+        </div>
+        {notificationPermission === 'unsupported' ? (
+          <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 12px' }}>{t.notificationUnsupported}</p>
+        ) : null}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+          <Btn icon={<Bell size={13} />} onClick={enableNotifications} disabled={notificationBusy || notificationPermission === 'unsupported'}>
+            {t.enableNotifications}
+          </Btn>
+          <Btn icon={<BellOff size={13} />} onClick={disableNotifications} disabled={notificationBusy || notificationPermission === 'unsupported'}>
+            {t.disableNotifications}
+          </Btn>
+          <Btn icon={<Send size={13} />} onClick={sendTestNotification} disabled={notificationBusy || !notificationState?.config.available || (profilesLoading && !activeProfile)}>
+            {t.sendTest}
+          </Btn>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <Chip
+            active={notificationState?.preferences.chatCompleted !== false}
+            onClick={() => saveNotificationPreference({ chatCompleted: !(notificationState?.preferences.chatCompleted !== false) })}
+          >
+            {t.notifyChatDone}
+          </Chip>
+          <Chip
+            active={notificationState?.preferences.chatFailed !== false}
+            onClick={() => saveNotificationPreference({ chatFailed: !(notificationState?.preferences.chatFailed !== false) })}
+          >
+            {t.notifyChatFailed}
+          </Chip>
+          <Chip
+            active={notificationState?.preferences.kanbanTaskCompleted !== false}
+            onClick={() => saveNotificationPreference({ kanbanTaskCompleted: !(notificationState?.preferences.kanbanTaskCompleted !== false) })}
+          >
+            {t.notifyKanbanDone}
+          </Chip>
+          <Chip
+            active={notificationState?.preferences.cronJobCompleted !== false}
+            onClick={() => saveNotificationPreference({ cronJobCompleted: !(notificationState?.preferences.cronJobCompleted !== false) })}
+          >
+            {t.notifyCronDone}
+          </Chip>
+        </div>
+        {notificationMessage ? <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--green)' }}>{notificationMessage}</div> : null}
+        {notificationError ? <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--red)' }}>{notificationError}</div> : null}
       </Card>
 
       <Card>

@@ -1,4 +1,4 @@
-import type { DeckAuthSession, DeckHealth, DeckProfile, DeckSession, DeckMessage, ToolSummary, TerminalAction, TerminalRunRequest, TerminalRunResult, DeckModelsResponse, DeckModelPreferenceResponse, TokenStats, DeckStats, DeckRun, DeckRunDetail, DeckCronJob, LiveTerminalSession, LiveTerminalListResponse, LiveTerminalWindow, LiveTerminalCreateRequest, LiveTerminalTmuxRequest, SkillContent, KanbanBoard, KanbanBoardSnapshot, KanbanTaskDetail, KanbanDiagnostic, KanbanStats, KanbanAssignee, KanbanTaskLog, KanbanTaskContext, KanbanMarkdownListResult, KanbanMarkdownFile, LcmDashboard } from './types';
+import type { DeckAuthSession, DeckHealth, DeckProfile, DeckSession, DeckMessage, ToolSummary, TerminalAction, TerminalRunRequest, TerminalRunResult, DeckModelsResponse, DeckModelPreferenceResponse, DeckNotificationConfigResponse, DeckNotificationPreferences, TokenStats, DeckStats, DeckRun, DeckRunDetail, DeckCronJob, LiveTerminalSession, LiveTerminalListResponse, LiveTerminalWindow, LiveTerminalCreateRequest, LiveTerminalTmuxRequest, SkillContent, KanbanBoard, KanbanBoardSnapshot, KanbanTaskDetail, KanbanDiagnostic, KanbanStats, KanbanAssignee, KanbanTaskLog, KanbanTaskContext, KanbanMarkdownListResult, KanbanMarkdownFile, LcmDashboard } from './types';
 import type { ConfigFileKey, DeckConfigBundle, SaveConfigResult } from './config-files';
 
 /**
@@ -165,6 +165,27 @@ export const deckApi = {
     request<DeckModelPreferenceResponse>('/api/deck/model-preferences', {
       method: 'PUT',
       body: JSON.stringify({ profileId, ...body }),
+    }),
+  notificationConfig: (signal?: AbortSignal) => request<DeckNotificationConfigResponse>('/api/deck/notifications/config', { signal }),
+  saveNotificationPreferences: (body: Partial<DeckNotificationPreferences>) =>
+    request<{ ok: true; preferences: DeckNotificationPreferences }>('/api/deck/notifications/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  savePushSubscription: (subscription: PushSubscriptionJSON) =>
+    request<{ ok: true; subscriptionCount: number }>('/api/deck/notifications/subscription', {
+      method: 'POST',
+      body: JSON.stringify(subscription),
+    }),
+  deletePushSubscription: (endpoint: string) =>
+    request<{ ok: true; subscriptionCount: number }>('/api/deck/notifications/subscription', {
+      method: 'DELETE',
+      body: JSON.stringify({ endpoint }),
+    }),
+  sendTestNotification: (profileId = 'default', sessionId?: string) =>
+    request<{ ok: true; sent: number; unavailable?: boolean }>('/api/deck/notifications/test', {
+      method: 'POST',
+      body: JSON.stringify({ profileId, sessionId }),
     }),
   // Token aggregation can be slow when state.db is large; bump the timeout.
   tokens: (days = 14, signal?: AbortSignal, profileId?: string) => {

@@ -7,12 +7,13 @@ import {
   Play, Plus, RotateCw, Save, Send, Terminal, Trash2, Unlink, User, X,
 } from 'lucide-react';
 import { deckApi, ApiError } from '@/lib/api';
-import type { KanbanBoard, KanbanMarkdownEntry, KanbanTask, KanbanTaskDetail, KanbanDiagnostic, KanbanStats, KanbanAssignee } from '@/lib/types';
+import type { DeckNotificationPreferences, KanbanBoard, KanbanMarkdownEntry, KanbanTask, KanbanTaskDetail, KanbanDiagnostic, KanbanStats, KanbanAssignee } from '@/lib/types';
 import { Page, Card, Btn, Tag, Kicker, type Tone } from '@/components/Brand';
 import { MessageContent } from '@/components/MessageContent';
 import { useActiveProfile } from '@/lib/profile-context';
 import { useT } from '@/lib/i18n';
 import { relTime } from '@/lib/format';
+import { notificationAllowed, parseKanbanCompletionNotification, showPageNotification } from '@/lib/notification-events';
 import {
   COLUMNS,
   DEFAULT_BOARD_LS_KEY,
@@ -330,10 +331,19 @@ export default function KanbanPage() {
   const lastEventIdRef = useRef<number>(0);
   const lastEventBoardRef = useRef<string>('');
   const selectedIdRef = useRef<string>('');
+  const notificationPreferencesRef = useRef<DeckNotificationPreferences | null>(null);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    deckApi.notificationConfig()
+      .then((state) => { if (!cancelled) notificationPreferencesRef.current = state.preferences; })
+      .catch(() => { if (!cancelled) notificationPreferencesRef.current = null; });
+    return () => { cancelled = true; };
+  }, []);
 
   const loadBoards = useCallback(async () => {
     try {
@@ -437,6 +447,10 @@ export default function KanbanPage() {
         }
         if (payload?.type === 'event') {
           lastEventIdRef.current = Math.max(lastEventIdRef.current, Number(payload.id) || 0);
+          const completion = parseKanbanCompletionNotification(payload, activeBoard);
+          if (completion && notificationAllowed(notificationPreferencesRef.current, 'kanbanTaskCompleted')) {
+            showPageNotification(completion);
+          }
           triggerRefresh();
         }
       } catch {/* ignore malformed lines */}

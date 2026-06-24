@@ -92,6 +92,14 @@ Optional tmux + node-pty shell, enabled only with `HERMESDECK_LIVE_TERMINAL=1`. 
 
 Service Worker cache for public offline-safe shell assets only: `/offline`, manifest and icons.
 
+## Web Push notification
+
+Browser Push API delivery through HermesDeck's Service Worker. Current background support is limited to chat complete/failed notifications and requires HTTPS/localhost, VAPID env, a logged-in Deck user subscription, and browser permission. Payloads are intentionally low-sensitivity and click through only to same-origin non-API app URLs.
+
+## Page-open notification
+
+Browser `Notification` created by an active page. Current Kanban task completion and Cron job completion notifications are page-open only: they work while the relevant page is loaded and has permission, but they do not run from a closed tab/PWA background watcher.
+
 ## Runtime cache
 
 Service Worker cache for static style/script/image/font assets, LRU capped. It must not store protected navigation HTML or API responses.
