@@ -1295,54 +1295,6 @@ p{line-height:1.6}
 .tl-empty{margin:auto;padding:24px;text-align:center;color:var(--muted);display:flex;flex-direction:column;gap:10px;align-items:center}
 
 /* ─────────────────────────────────────────────
-   Terminal
-   ───────────────────────────────────────────── */
-.terminal-page{display:flex;flex-direction:column;gap:16px}
-.terminal-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap}
-.terminal-hero p{max-width:840px;margin-bottom:0}
-.terminal-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px}
-.terminal-actions{padding:14px;align-self:start;max-height:calc(100dvh - var(--topbar-h) - 200px);overflow:auto}
-.terminal-group{display:grid;gap:4px;margin-top:12px}
-.terminal-group:first-child{margin-top:0}
-.terminal-group-title{
-  text-transform:uppercase;letter-spacing:.14em;font-size:10px;
-  color:var(--muted-2);padding:0 4px 4px;font-weight:500;
-}
-.terminal-main{display:grid;gap:14px;align-content:start}
-.terminal-control-grid{display:grid;grid-template-columns:1.3fr 1fr 160px;gap:10px}
-.terminal-control-grid label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted)}
-.terminal-preview{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.terminal-preview p{margin:4px 0 0}
-.terminal-preview code{
-  font-family:var(--font-mono);
-  color:var(--value-text);font-size:11.5px;
-  background:var(--bg-soft);padding:5px 9px;border-radius:6px;
-  box-shadow:0 1px 0 var(--highlight-top) inset;
-  white-space:nowrap;
-  font-variant-numeric:tabular-nums;
-}
-.terminal-toolbar{justify-content:flex-start;flex-wrap:wrap}
-.terminal-output-list{display:grid;gap:12px}
-.terminal-output{
-  border:1px solid var(--line);border-radius:var(--r-3);
-  background:var(--card-bg);padding:14px;
-  box-shadow:var(--shadow-card);
-}
-.terminal-output.failed{border-color:var(--status-red-border)}
-.terminal-output pre{
-  margin:10px 0 0;max-height:420px;overflow:auto;
-  border-radius:var(--r-2);
-  background:var(--terminal-bg);
-  border:1px solid var(--terminal-border);
-  padding:12px;
-  font-family:var(--font-mono);
-  font-size:11.5px;line-height:1.55;color:var(--terminal-text);
-  white-space:pre-wrap;word-break:break-word;
-  font-variant-numeric:tabular-nums;
-}
-.terminal-error,.terminal-stderr{color:var(--red)!important}
-
-/* ─────────────────────────────────────────────
    Misc / floating layers
    ───────────────────────────────────────────── */
 .offline-card{max-width:760px;margin:auto}
@@ -1531,11 +1483,6 @@ p{line-height:1.6}
   .chat-layout-wrap{flex:1;min-height:0;height:auto;--sessions-w:0px}
   .chat-layout>.chat-panel.thread.sessions-panel{display:none}
   .edge-toggle{display:none}
-  .terminal-layout{grid-template-columns:1fr}
-  .terminal-actions{max-height:none}
-  .terminal-control-grid{grid-template-columns:1fr 1fr}
-  .terminal-preview{display:block}
-  .terminal-preview code{display:block;margin-top:8px;white-space:pre-wrap;word-break:break-word}
 }
 
 /* ─────────────────────────────────────────────
@@ -1884,16 +1831,6 @@ p{line-height:1.6}
   /* Inputs in narrow contexts: reduce minWidth pressure */
   .input-group{min-width:0!important}
 
-  /* Terminal mobile */
-  .terminal-control-grid{grid-template-columns:1fr;gap:10px}
-  .terminal-actions{padding:10px}
-  .terminal-output{padding:14px}
-  .terminal-output pre{max-height:48dvh;font-size:11.5px}
-  .terminal-toolbar{gap:6px}
-  .terminal-toolbar .btn{flex:1;min-width:120px}
-
-  /* Profile cards / Tools list: tighter card edges */
-  .terminal-page{gap:14px}
 }
 
 /* ─────────────────────────────────────────────
@@ -1915,8 +1852,6 @@ p{line-height:1.6}
   .composer .btn.primary{min-width:48px;padding:0 11px;font-size:0;gap:0}
   .composer .btn.primary svg{margin:0}
   .mobile-nav a,.mobile-nav button{min-height:50px}
-  .terminal-output{padding:12px}
-  .terminal-output pre{font-size:11px}
   .hero-card h1{font-size:22px}
   .metric-card{min-height:104px}
   .metric{font-size:24px;margin:8px 0 3px}
@@ -2791,60 +2726,6 @@ p{line-height:1.6}
   .slash-label{font-size:12.5px}
   .slash-desc{display:none}
   .slash-pill{font-size:9px;padding:1px 5px}
-}
-
-/* ─────────────────────────────────────────────
-   Models page
-   ───────────────────────────────────────────── */
-.provider-card{position:relative;display:flex;flex-direction:column;gap:12px;min-width:0}
-.provider-card.is-default{
-  background:var(--nav-active-bg);
-  border-color:var(--accent-border);
-}
-.provider-stat-row{
-  display:flex;flex-wrap:wrap;gap:18px;
-  padding:10px 14px;
-  background:var(--surface-bg);
-  border:1px solid var(--hairline);
-  border-radius:var(--r-2);
-  min-width:0;
-}
-.provider-stat{min-width:0}
-.provider-stat .label{
-  font-size:9.5px;letter-spacing:.10em;text-transform:uppercase;
-  color:var(--muted);font-weight:600;margin-bottom:2px;
-}
-.provider-stat .value{
-  font-size:14.5px;font-weight:600;color:var(--strong-text);
-  font-variant-numeric:tabular-nums;letter-spacing:-.005em;
-}
-.model-row{
-  display:grid;
-  grid-template-columns:minmax(140px,1.4fr) minmax(60px,1fr) minmax(180px,auto);
-  gap:12px;align-items:center;
-  padding:9px 0;min-height:34px;
-}
-.model-row + .model-row{border-top:1px solid var(--hairline)}
-.model-row .bar-label{
-  font-weight:500;min-width:0;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
-.model-row .bar-label > span{min-width:0;overflow:hidden;text-overflow:ellipsis}
-.model-stats{display:flex;gap:12px;align-items:center;justify-content:flex-end;font-variant-numeric:tabular-nums;flex-wrap:nowrap;min-width:0}
-.model-stat{font-size:12px;color:var(--strong-text);font-weight:500;white-space:nowrap}
-.model-stat.dim{color:var(--muted);font-weight:400;font-size:11px}
-.model-default-card{
-  background:var(--nav-active-bg);
-  border-color:var(--accent-border);
-}
-@media (max-width:1100px){
-  .model-row{grid-template-columns:minmax(140px,1.6fr) minmax(60px,1fr);grid-template-rows:auto auto;gap:6px 12px}
-  .model-row .bar-label{grid-column:1;grid-row:1}
-  .model-row .bar-track{grid-column:2;grid-row:1}
-  .model-stats{grid-column:1 / -1;grid-row:2;justify-content:flex-start;gap:10px}
-}
-@media (max-width:680px){
-  .provider-stat-row{gap:14px;padding:10px 12px}
 }
 
 /* ─────────────────────────────────────────────

@@ -91,6 +91,10 @@ export interface DeckSession {
   messageCount?: number;
   pinned?: boolean;
   folderId?: string;
+  archived?: boolean;
+  archivedAt?: string;
+  customTitle?: string;
+  tags?: string[];
   /** Parent session id when this row was spawned by a parent agent (subagent). */
   parentSessionId?: string;
   /** Count of direct children (subagents) — populated by backend join. */
@@ -280,6 +284,13 @@ export interface DeckNotificationConfigResponse {
   config: DeckNotificationConfig;
   preferences: DeckNotificationPreferences;
   subscriptionCount: number;
+  subscriptions?: Array<{
+    id: string;
+    expirationTime?: number | null;
+    userAgent?: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
 }
 
 export interface TokenStats {
@@ -400,6 +411,7 @@ export interface LcmDashboard {
     dbBytes: number;
   };
   generatedAt: string;
+  unavailableReason?: string;
 }
 
 export interface TerminalAction {

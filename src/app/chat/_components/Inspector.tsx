@@ -34,8 +34,8 @@ export function ChatInspector({
       mcp: 'MCP',
       server: '服务器',
       footPrefix: '置顶 / 文件夹 / 标签 / 重命名都属于',
-      footBold: 'Deck 本地元数据',
-      footSuffix: '，不会同步到 Hermes。',
+      footBold: 'Deck 元数据',
+      footSuffix: '，由 HermesDeck 同步，不会写入 Hermes 历史。',
     },
     en: {
       kicker: 'SESSION INSPECTOR',
@@ -58,8 +58,8 @@ export function ChatInspector({
       mcp: 'MCP',
       server: 'server',
       footPrefix: 'Pin / folder / tags / rename are ',
-      footBold: 'local-only Deck metadata',
-      footSuffix: ' and never reach Hermes.',
+      footBold: 'Deck metadata',
+      footSuffix: ', synced by HermesDeck and not written into Hermes history.',
     },
   });
   const enabledToolsets = tools.filter((tt) => tt.kind === 'toolset' && tt.enabled !== false);

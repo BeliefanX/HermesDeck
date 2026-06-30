@@ -1,6 +1,6 @@
 # HermesDeck WebUI Kit
 
-Pixel-faithful recreation of the HermesDeck WebUI — the Hermes-native multi-session AI chat with profile/run awareness. All components are derived directly from `src/app/globals.css` and the live page components in `src/app/`.
+Partial/stale prototype of the HermesDeck WebUI. Treat it as design reference only; verify behavior and coverage against current `src/app/*` before reusing anything.
 
 ## Files
 
@@ -16,10 +16,10 @@ Pixel-faithful recreation of the HermesDeck WebUI — the Hermes-native multi-se
 - ✅ Dashboard (Command Deck)
 - ✅ Chat (sessions list + thread + timeline)
 - ✅ Terminal (Safe Ops)
-- ⏸️ Agents / Models / Runs / Tools / Settings — these pages exist in the codebase but are mostly empty/planned in the source; we reference their shells but don't recreate them.
+- ⚠️ Agents / Models / Runs / Tools / Settings — prototype coverage is partial and may lag current source. Check `src/app/*` for current product behavior.
 
 ## Caveats
 
-- This is a recreation; nothing is wired to a real backend. All data is hard-coded sample data.
-- Code-block syntax highlighting is faked with hand-rolled spans (the real product uses shiki/prism).
+- This is a partial recreation; nothing is wired to a real backend. All data is hard-coded sample data.
+- Code-block syntax highlighting is faked with hand-rolled spans; current product code uses `rehype-highlight` / `highlight.js`.
 - The `lucide` icon set is loaded as inline SVG (a curated subset — see `Primitives.jsx`'s `Icon` component).

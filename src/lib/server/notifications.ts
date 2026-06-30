@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
+import { isIP } from 'node:net';
 import webpush from 'web-push';
 
 const DATA_DIR = process.env.HERMESDECK_DATA_DIR || process.env.HERMESDECK_AUTH_DIR || join(homedir(), '.hermesdeck');
@@ -37,6 +38,14 @@ type StoredPushSubscription = {
   updatedAt: string;
 };
 
+type PublicPushSubscription = {
+  id: string;
+  expirationTime?: number | null;
+  userAgent?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type UserNotificationState = {
   preferences: DeckNotificationPreferences;
   subscriptions: StoredPushSubscription[];
@@ -58,8 +67,8 @@ export type NotificationDispatchKind = 'chat_completed' | 'chat_failed';
 
 export type NotificationDispatchInput = {
   userId: string;
-  profileId: string;
-  sessionId: string;
+  profileId?: string;
+  sessionId?: string;
   kind: NotificationDispatchKind;
   error?: string;
 };
@@ -119,6 +128,37 @@ function publicOrigin(): string {
   return env || '';
 }
 
+function publicSubscriptionId(endpoint: string): string {
+  return `sub_${createHash('sha256').update(endpoint).digest('base64url').slice(0, 32)}`;
+}
+
+function publicSubscription(sub: StoredPushSubscription): PublicPushSubscription {
+  return {
+    id: publicSubscriptionId(sub.endpoint),
+    expirationTime: sub.expirationTime,
+    userAgent: sub.userAgent,
+    createdAt: sub.createdAt,
+    updatedAt: sub.updatedAt,
+  };
+}
+
+export function isSupportedPushEndpoint(endpoint: unknown): boolean {
+  if (typeof endpoint !== 'string' || endpoint.length > MAX_ENDPOINT_LENGTH) return false;
+  let url: URL;
+  try { url = new URL(endpoint); } catch { return false; }
+  if (url.protocol !== 'https:') return false;
+  const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
+  const ipHost = hostname.replace(/^\[/, '').replace(/\]$/, '');
+  if (!hostname || isIP(ipHost)) return false;
+  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local') || hostname.endsWith('.internal')) return false;
+  return hostname === 'fcm.googleapis.com'
+    || hostname === 'fcmregistrations.googleapis.com'
+    || hostname === 'updates.push.services.mozilla.com'
+    || hostname === 'push.services.mozilla.com'
+    || hostname === 'web.push.apple.com'
+    || hostname.endsWith('.notify.windows.com');
+}
+
 export function getNotificationConfig(): DeckNotificationConfig {
   const publicKey = process.env.HERMESDECK_VAPID_PUBLIC_KEY?.trim() || '';
   const privateKey = process.env.HERMESDECK_VAPID_PRIVATE_KEY?.trim() || '';
@@ -145,14 +185,14 @@ function configureWebPush(): DeckNotificationConfig {
 
 function parseSubscription(input: PushSubscriptionInput): { ok: true; subscription: Omit<StoredPushSubscription, 'id' | 'createdAt' | 'updatedAt'> } | { ok: false; error: string } {
   const endpoint = typeof input.endpoint === 'string' ? input.endpoint.trim() : '';
-  if (!endpoint || endpoint.length > MAX_ENDPOINT_LENGTH || !/^https:\/\//i.test(endpoint)) {
-    return { ok: false, error: 'invalid_endpoint' };
+  if (!endpoint || !isSupportedPushEndpoint(endpoint)) {
+    return { ok: false, error: 'invalid_subscription' };
   }
   const keys = input.keys && typeof input.keys === 'object' ? input.keys as Record<string, unknown> : null;
   const p256dh = typeof keys?.p256dh === 'string' ? keys.p256dh.trim() : '';
   const auth = typeof keys?.auth === 'string' ? keys.auth.trim() : '';
   if (!p256dh || !auth || p256dh.length > MAX_KEY_LENGTH || auth.length > MAX_KEY_LENGTH) {
-    return { ok: false, error: 'invalid_keys' };
+    return { ok: false, error: 'invalid_subscription' };
   }
   const expirationTime = typeof input.expirationTime === 'number' && Number.isFinite(input.expirationTime)
     ? input.expirationTime
@@ -162,6 +202,21 @@ function parseSubscription(input: PushSubscriptionInput): { ok: true; subscripti
 
 export function getUserNotificationState(userId: string): UserNotificationState {
   return normalizedUserState(readStore(), userId);
+}
+
+export function getNotificationConfigForUser(userId: string): {
+  config: DeckNotificationConfig;
+  preferences: DeckNotificationPreferences;
+  subscriptionCount: number;
+  subscriptions: PublicPushSubscription[];
+} {
+  const state = getUserNotificationState(userId);
+  return {
+    config: getNotificationConfig(),
+    preferences: state.preferences,
+    subscriptionCount: state.subscriptions.length,
+    subscriptions: state.subscriptions.map(publicSubscription),
+  };
 }
 
 export function saveUserNotificationPreferences(userId: string, patch: Partial<Record<NotificationPreferenceKey, unknown>>): DeckNotificationPreferences {
@@ -180,7 +235,7 @@ export function saveUserNotificationPreferences(userId: string, patch: Partial<R
   return preferences;
 }
 
-export function upsertPushSubscription(userId: string, input: PushSubscriptionInput, userAgent?: string | null): { ok: true; subscriptionCount: number } | { ok: false; error: string } {
+export function savePushSubscription(userId: string, input: PushSubscriptionInput, userAgent?: string | null): { ok: true; subscriptionCount: number; subscription: PublicPushSubscription } | { ok: false; error: string } {
   const parsed = parseSubscription(input);
   if (!parsed.ok) return parsed;
   const store = readStore();
@@ -188,22 +243,29 @@ export function upsertPushSubscription(userId: string, input: PushSubscriptionIn
   const now = nowIso();
   const existingIndex = state.subscriptions.findIndex((sub) => sub.endpoint === parsed.subscription.endpoint);
   const safeUserAgent = typeof userAgent === 'string' ? userAgent.slice(0, 240) : undefined;
+  let saved: StoredPushSubscription;
   if (existingIndex >= 0) {
     const existing = state.subscriptions[existingIndex]!;
-    state.subscriptions[existingIndex] = { ...existing, ...parsed.subscription, ...(safeUserAgent ? { userAgent: safeUserAgent } : {}), updatedAt: now };
+    saved = { ...existing, ...parsed.subscription, id: existing.id || publicSubscriptionId(parsed.subscription.endpoint), ...(safeUserAgent ? { userAgent: safeUserAgent } : {}), updatedAt: now };
+    state.subscriptions[existingIndex] = saved;
   } else {
-    state.subscriptions.unshift({
-      id: `push_${randomUUID()}`,
+    saved = {
+      id: publicSubscriptionId(parsed.subscription.endpoint),
       ...parsed.subscription,
       ...(safeUserAgent ? { userAgent: safeUserAgent } : {}),
       createdAt: now,
       updatedAt: now,
-    });
+    };
+    state.subscriptions.unshift(saved);
   }
   state.subscriptions = state.subscriptions.slice(0, MAX_SUBSCRIPTIONS_PER_USER);
   store.users[userId] = state;
   writeStore(store);
-  return { ok: true, subscriptionCount: state.subscriptions.length };
+  return { ok: true, subscriptionCount: state.subscriptions.length, subscription: publicSubscription(saved) };
+}
+
+export function upsertPushSubscription(userId: string, input: PushSubscriptionInput, userAgent?: string | null): { ok: true; subscriptionCount: number; subscription: PublicPushSubscription } | { ok: false; error: string } {
+  return savePushSubscription(userId, input, userAgent);
 }
 
 export function removePushSubscription(userId: string, endpoint: unknown): { ok: true; subscriptionCount: number } | { ok: false; error: string } {
@@ -228,24 +290,29 @@ function removeExpiredSubscriptions(userId: string, endpoints: Set<string>): voi
 }
 
 function notificationUrl(input: NotificationDispatchInput): string {
-  const params = new URLSearchParams({ session: input.sessionId, profile: input.profileId });
+  if (!input.profileId) return '/chat';
+  const params = new URLSearchParams({ profile: input.profileId });
+  if (input.sessionId) params.set('session', input.sessionId);
   return `/chat?${params.toString()}`;
 }
 
 function notificationPayload(input: NotificationDispatchInput): string {
+  const profileLabel = input.profileId || 'HermesDeck';
+  const tagProfile = input.profileId || 'test';
+  const tagSession = input.sessionId || 'test';
   if (input.kind === 'chat_failed') {
     return JSON.stringify({
       title: 'HermesDeck chat failed',
-      body: `Agent ${input.profileId} hit an error. Open the chat for details.`,
+      body: `Agent ${profileLabel} hit an error. Open the chat for details.`,
       url: notificationUrl(input),
-      tag: `chat:${input.profileId}:${input.sessionId}:failed`,
+      tag: `chat:${tagProfile}:${tagSession}:failed`,
     });
   }
   return JSON.stringify({
     title: 'HermesDeck chat complete',
-    body: `Agent ${input.profileId} finished a reply.`,
+    body: `Agent ${profileLabel} finished a reply.`,
     url: notificationUrl(input),
-    tag: `chat:${input.profileId}:${input.sessionId}:complete`,
+    tag: `chat:${tagProfile}:${tagSession}:complete`,
   });
 }
 

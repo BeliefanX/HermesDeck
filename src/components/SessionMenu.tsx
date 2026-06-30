@@ -15,7 +15,7 @@ export interface SessionMenuActions {
   onToggleArchive: () => void;
   /** Permanently remove the session + messages from Hermes' state.db. */
   onDelete?: () => void;
-  /** Drop only Deck-local metadata (pin/folder/tags/title) without touching Hermes. */
+  /** Drop only Deck metadata (pin/folder/tags/title) without touching Hermes. */
   onRemoveDeckMeta?: () => void;
 }
 
@@ -25,7 +25,7 @@ interface Props {
   folderId?: string;
   folders: Folder[];
   canDelete: boolean;
-  /** True when the session has any deck-local metadata that could be cleared. */
+  /** True when the session has any Deck metadata that could be cleared. */
   hasDeckMeta?: boolean;
   actions: SessionMenuActions;
   onClose: () => void;
@@ -39,11 +39,10 @@ const PAD = 8;
 export function SessionMenu({ pinned, archived, folderId, folders, canDelete, hasDeckMeta, actions, onClose, anchor }: Props) {
   const t = useT({
     zh: {
-      sectionLabel: '仅限 Deck 元数据',
-      pin: '置顶（本地）',
-      unpin: '取消置顶（本地）',
-      rename: '重命名（本地）',
-      editTags: '编辑标签（本地）',
+      pin: '置顶',
+      unpin: '取消置顶',
+      rename: '重命名',
+      editTags: '编辑标签',
       moveToNewFolder: '移动到新文件夹…',
       moveToPrefix: '移动到',
       current: '当前',
@@ -54,18 +53,17 @@ export function SessionMenu({ pinned, archived, folderId, folders, canDelete, ha
       deleteFromHermes: '从 Hermes 历史中删除…',
     },
     en: {
-      sectionLabel: 'Deck-only metadata',
-      pin: 'Pin (local)',
-      unpin: 'Unpin (local)',
-      rename: 'Rename (local)',
-      editTags: 'Edit tags (local)',
+      pin: 'Pin',
+      unpin: 'Unpin',
+      rename: 'Rename',
+      editTags: 'Edit tags',
       moveToNewFolder: 'Move to new folder…',
       moveToPrefix: 'Move to',
       current: 'current',
       removeFromFolder: 'Remove from folder',
       archive: 'Archive',
       unarchive: 'Unarchive',
-      removeDeckMeta: 'Remove Deck metadata only',
+      removeDeckMeta: 'Remove Deck metadata',
       deleteFromHermes: 'Delete from Hermes history…',
     },
   });
@@ -142,15 +140,43 @@ export function SessionMenu({ pinned, archived, folderId, folders, canDelete, ha
     visibility: pos ? 'visible' : 'hidden',
   };
 
-  // Menu items: use onPointerDown so the action fires even if any parent click
-  // handler tries to interfere. Stop propagation so it doesn't bubble to the
-  // session-item's onClick (openSession).
+  const runPointerAction = (e: React.PointerEvent<HTMLButtonElement>, run: () => void) => {
+    // Fire before the browser synthesizes a click. The menu is rendered inside
+    // the clickable session row, so closing/unmounting it on click can let the
+    // synthetic click continue to the row and open the chat instead.
+    if (typeof e.button === 'number' && e.button !== 0) {
+      e.stopPropagation();
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    run();
+  };
+
+  const stopClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const runKeyboardAction = (e: React.KeyboardEvent<HTMLButtonElement>, run: () => void) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      run();
+    }
+  };
+
+  // Menu items: run pointer actions on pointerdown and suppress the later click
+  // so events never bubble to the session-item's onClick (openSession). Keyboard
+  // activation stays explicit for accessibility.
   const item = (icon: React.ReactNode, label: string, run: () => void, opts?: { danger?: boolean }) => (
     <button
       type="button"
+      role="menuitem"
       className={`session-menu-item ${opts?.danger ? 'danger' : ''}`}
-      onPointerDown={(e) => { e.stopPropagation(); }}
-      onClick={(e) => { e.stopPropagation(); run(); }}
+      onPointerDown={(e) => runPointerAction(e, run)}
+      onClick={stopClick}
+      onKeyDown={(e) => runKeyboardAction(e, run)}
     >
       <span className="session-menu-icon">{icon}</span>
       <span>{label}</span>
@@ -166,7 +192,6 @@ export function SessionMenu({ pinned, archived, folderId, folders, canDelete, ha
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="session-menu-section-label">{t.sectionLabel}</div>
       {item(pinned ? <PinOff size={13} /> : <Pin size={13} />, pinned ? t.unpin : t.pin, actions.onTogglePin)}
       {item(<Pencil size={13} />, t.rename, actions.onRename)}
       {item(<TagIcon size={13} />, t.editTags, actions.onEditTags)}
@@ -178,9 +203,11 @@ export function SessionMenu({ pinned, archived, folderId, folders, canDelete, ha
         <button
           key={f.id}
           type="button"
+          role="menuitem"
           className={`session-menu-item ${folderId === f.id ? 'active' : ''}`}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); actions.onMoveToFolder(f.id); }}
+          onPointerDown={(e) => runPointerAction(e, () => actions.onMoveToFolder(f.id))}
+          onClick={stopClick}
+          onKeyDown={(e) => runKeyboardAction(e, () => actions.onMoveToFolder(f.id))}
         >
           <span className="session-menu-icon"><FolderInput size={13} /></span>
           <span>{t.moveToPrefix} “{f.name}”</span>

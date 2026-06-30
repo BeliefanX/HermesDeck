@@ -1,8 +1,8 @@
 /**
- * Deck-local metadata for sessions — pinned, foldered, archived, tagged,
- * renamed. Keyed by Hermes session id (or local: id). Persisted to
- * localStorage; never sent to Hermes; pin/folder/archive state stays Deck-local
- * metadata keyed by Hermes session id.
+ * Deck-owned metadata for sessions — pinned, foldered, archived, tagged,
+ * renamed. Keyed by Hermes session id (or local: id). The browser keeps a
+ * local cache/legacy import source, while the authoritative session-list
+ * metadata is persisted by HermesDeck's server-side BFF.
  */
 
 /**
@@ -109,6 +109,46 @@ export function setMeta(store: MetaStore, sessionId: string, patch: Partial<Sess
   if (isEmpty) delete byId[sessionId];
   else byId[sessionId] = merged;
   return { ...store, byId };
+}
+
+function hasServerBackedMeta(meta: SessionMeta): boolean {
+  return !!(meta.pinned || meta.folderId || meta.archived || meta.customTitle || (meta.tags && meta.tags.length));
+}
+
+/**
+ * Return only server-synchronized session-list organization metadata.
+ *
+ * `goal` intentionally stays browser-local because it changes outgoing prompt
+ * behavior. Server-side metadata writes must therefore never upload a whole
+ * local store with `goal` fields included; otherwise server sanitization can
+ * appear to erase the user's local goal on the next hydration.
+ */
+export function serverBackedMetaStore(store: MetaStore): MetaStore {
+  const byId: Record<string, SessionMeta> = {};
+  for (const [id, meta] of Object.entries(store.byId || {})) {
+    const { goal: _goal, ...serverMeta } = meta;
+    void _goal;
+    if (hasServerBackedMeta(serverMeta)) byId[id] = serverMeta;
+  }
+  return {
+    version: 1,
+    byId,
+    folders: Array.isArray(store.folders) ? store.folders : [],
+  };
+}
+
+/** Overlay browser-local goals onto server-hydrated organization metadata. */
+export function mergeServerMetaPreservingLocalGoals(serverStore: MetaStore, localStore: MetaStore): MetaStore {
+  const byId: Record<string, SessionMeta> = { ...(serverStore.byId || {}) };
+  for (const [id, localMeta] of Object.entries(localStore.byId || {})) {
+    if (!localMeta.goal) continue;
+    byId[id] = { ...(byId[id] || {}), goal: localMeta.goal };
+  }
+  return {
+    version: 1,
+    byId,
+    folders: Array.isArray(serverStore.folders) ? serverStore.folders : [],
+  };
 }
 
 export function clearMeta(store: MetaStore, sessionId: string): MetaStore {

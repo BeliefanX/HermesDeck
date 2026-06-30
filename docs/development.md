@@ -95,7 +95,7 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 ### PWA
 
 - dev 模式 `PWARegister` 会 unregister SW；如果曾访问 production，手动在 DevTools Application 面板清理旧 SW/cache。
-- 生产 SW 版本见 `public/sw.js`，当前为 `hermesdeck-pwa-v45`。
+- 生产 SW 版本以 `public/sw.js` 的 `CACHE_VERSION` 为准，当前为 `hermesdeck-pwa-v47`。
 - 验证：`npm run verify:pwa`。
 
 ### Notifications
@@ -103,7 +103,7 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 - Web Push chat notifications require VAPID env (`HERMESDECK_VAPID_PUBLIC_KEY`, `HERMESDECK_VAPID_PRIVATE_KEY`, optional `HERMESDECK_VAPID_SUBJECT`) and HTTPS/localhost secure context.
 - Settings owns permission/subscription UX. `/api/deck/notifications/*` routes require Deck auth; writes are guarded by CSRF/same-origin.
 - Chat complete/failed is server-side Web Push and may fire after the chat tab closes. Kanban/Cron notifications are page-open only and use `new Notification(...)`; do not add docs implying closed-page Kanban/Cron support.
-- Focused test: `node --experimental-strip-types --test tests/notification-events.test.mjs`.
+- Focused tests: `node --experimental-strip-types --test tests/notifications.test.mjs tests/notification-events.test.mjs`.
 
 ## Documentation rules
 

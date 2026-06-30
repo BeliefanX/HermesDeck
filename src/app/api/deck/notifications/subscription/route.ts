@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
   const result = upsertPushSubscription(auth.user.id, parsed.value, req.headers.get('user-agent'));
   if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
-  return NextResponse.json({ ok: true, subscriptionCount: result.subscriptionCount });
+  return NextResponse.json({ ok: true, subscriptionCount: result.subscriptionCount, subscription: result.subscription });
 }
 
 export async function DELETE(req: NextRequest) {

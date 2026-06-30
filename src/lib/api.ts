@@ -1,4 +1,5 @@
 import type { DeckAuthSession, DeckHealth, DeckProfile, DeckSession, DeckMessage, ToolSummary, TerminalAction, TerminalRunRequest, TerminalRunResult, DeckModelsResponse, DeckModelPreferenceResponse, DeckNotificationConfigResponse, DeckNotificationPreferences, TokenStats, DeckStats, DeckRun, DeckRunDetail, DeckCronJob, LiveTerminalSession, LiveTerminalListResponse, LiveTerminalWindow, LiveTerminalCreateRequest, LiveTerminalTmuxRequest, SkillContent, KanbanBoard, KanbanBoardSnapshot, KanbanTaskDetail, KanbanDiagnostic, KanbanStats, KanbanAssignee, KanbanTaskLog, KanbanTaskContext, KanbanMarkdownListResult, KanbanMarkdownFile, LcmDashboard } from './types';
+import type { MetaStore } from './session-meta';
 import type { ConfigFileKey, DeckConfigBundle, SaveConfigResult } from './config-files';
 
 /**
@@ -133,7 +134,15 @@ export const deckApi = {
   },
   profiles: (signal?: AbortSignal) => request<{ profiles: DeckProfile[]; error?: string; detail?: string }>('/api/deck/profiles', { signal }),
   sessions: (profileId = 'default', signal?: AbortSignal) =>
-    request<{ sessions: DeckSession[] }>(`/api/deck/sessions?profile=${encodeURIComponent(profileId)}`, { signal }),
+    request<{ sessions: DeckSession[]; metaStore?: MetaStore }>(`/api/deck/sessions?profile=${encodeURIComponent(profileId)}`, { signal }),
+  sessionMeta: (profileId = 'default', signal?: AbortSignal) =>
+    request<{ ok: true; profileId: string; metaStore: MetaStore }>(`/api/deck/session-meta?profile=${encodeURIComponent(profileId)}`, { signal }),
+  saveSessionMeta: (profileId: string, metaStore: MetaStore) =>
+    request<{ ok: true; profileId: string; metaStore: MetaStore }>('/api/deck/session-meta', {
+      method: 'PUT',
+      body: JSON.stringify({ profileId, metaStore }),
+      timeoutMs: 15_000,
+    }),
   messages: (sessionId: string, profileId = 'default', signal?: AbortSignal) =>
     request<{ messages: DeckMessage[] }>(`/api/deck/sessions/${encodeURIComponent(sessionId)}/messages?profile=${encodeURIComponent(profileId)}`, { signal }),
   deleteSession: (sessionId: string, profileId = 'default') =>
@@ -173,19 +182,20 @@ export const deckApi = {
       body: JSON.stringify(body),
     }),
   savePushSubscription: (subscription: PushSubscriptionJSON) =>
-    request<{ ok: true; subscriptionCount: number }>('/api/deck/notifications/subscription', {
+    request<{ ok: true; subscriptionCount: number; subscription?: { id: string } }>('/api/deck/notifications/subscription', {
       method: 'POST',
       body: JSON.stringify(subscription),
     }),
   deletePushSubscription: (endpoint: string) =>
-    request<{ ok: true; subscriptionCount: number }>('/api/deck/notifications/subscription', {
+    request<{ ok: true; subscriptionCount: number }>(`/api/deck/notifications/subscription`, {
       method: 'DELETE',
       body: JSON.stringify({ endpoint }),
     }),
-  sendTestNotification: (profileId = 'default', sessionId?: string) =>
+  sendTestNotification: (profileId?: string, sessionId?: string) =>
     request<{ ok: true; sent: number; unavailable?: boolean }>('/api/deck/notifications/test', {
       method: 'POST',
-      body: JSON.stringify({ profileId, sessionId }),
+      body: JSON.stringify({ ...(profileId ? { profileId } : {}), ...(sessionId ? { sessionId } : {}) }),
+      timeoutMs: 30_000,
     }),
   // Token aggregation can be slow when state.db is large; bump the timeout.
   tokens: (days = 14, signal?: AbortSignal, profileId?: string) => {

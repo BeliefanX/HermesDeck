@@ -5,6 +5,7 @@ import type { DeckHealth, DeckNotificationConfigResponse, DeckNotificationPrefer
 import { Sun, Moon, Monitor, Trash2, ShieldCheck, Server, Database, RefreshCw, LogOut, KeyRound, UserRound, Bell, BellOff, Send } from 'lucide-react';
 import { Page, Card, SectionHead, Chip, Btn, Tag, Kicker, Kbd, ListRow } from '@/components/Brand';
 import { AdminUsersPanel } from '@/components/AdminUsersPanel';
+
 import { localizeError, setLang, useLang, useT } from '@/lib/i18n';
 import { useDeckSession } from '@/lib/use-deck-session';
 import { useActiveProfile } from '@/lib/profile-context';
@@ -84,11 +85,11 @@ export default function SettingsPage() {
       authLabel: '认证：',
       localCache: '本地缓存',
       browserState: '浏览器存储状态',
-      cacheDesc: 'HermesDeck 在浏览器中保存草稿、会话索引和 response_id 链路，离线浏览与多 Agent 切换都更顺滑。',
+      cacheDesc: 'HermesDeck 在浏览器中保存草稿、会话索引和 response_id 链路缓存；置顶 / 文件夹 / 标签等会话组织由服务器同步。',
       onDevice: '仅本机',
       clearCache: '清除 HermesDeck 缓存',
       cleared: '已清除',
-      confirmClear: '确认清除 HermesDeck 本地缓存？将清除草稿、会话索引、response 链路与会话组织（置顶 / 文件夹 / 标签）；主题、语言与当前 Agent 会保留。此操作无法撤销。',
+      confirmClear: '确认清除 HermesDeck 本地缓存？将清除草稿、会话索引和 response 链路缓存；服务器同步的置顶 / 文件夹 / 标签会保留。主题、语言与当前 Agent 会保留。此操作无法撤销。',
       notifications: '通知',
       notificationTitle: '浏览器通知',
       notificationDesc: '聊天、Kanban 任务或定时任务完成后，HermesDeck 可通过 PWA Web Push / 页面打开时通知发送系统提醒。消息正文不会写入通知内容。',
@@ -137,11 +138,11 @@ export default function SettingsPage() {
       authLabel: 'Auth:',
       localCache: 'LOCAL CACHE',
       browserState: 'Browser-stored state',
-      cacheDesc: 'HermesDeck keeps drafts, the session index and response_id chains in the browser, so offline browsing and multi-Agent switching feel snappy.',
+      cacheDesc: 'HermesDeck keeps drafts, the session index and response_id chain caches in the browser; pins, folders, tags and other session organization sync through the server.',
       onDevice: 'on-device only',
       clearCache: 'Clear HermesDeck cache',
       cleared: 'Cleared',
-      confirmClear: 'Clear HermesDeck local cache? This removes drafts, the session index, response chains and session organization (pins, folders, tags). Your theme, language and active Agent are kept. This cannot be undone.',
+      confirmClear: 'Clear HermesDeck local cache? This removes drafts, the session index and response chain caches; server-synced pins, folders and tags are kept. Your theme, language and active Agent are kept. This cannot be undone.',
       notifications: 'NOTIFICATIONS',
       notificationTitle: 'Browser notifications',
       notificationDesc: 'HermesDeck can send PWA Web Push / page-open system notifications when chat replies, Kanban tasks or scheduled jobs complete. Message bodies are not included in notification text.',

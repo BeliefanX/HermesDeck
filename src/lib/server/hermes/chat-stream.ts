@@ -30,11 +30,15 @@ export interface ChatStreamBody {
   model?: unknown;
   reasoningEffort?: unknown;
   previousResponseId?: unknown;
+  conversationHistory?: unknown;
+  conversation_history?: unknown;
   sessionId?: unknown;
   attachments?: unknown;
   timeoutMs?: unknown;
   /** Server-computed: only true when Deck has proven this session id belongs to the requested profile. */
   __trustedSessionIdForProfile?: unknown;
+  /** Server-computed: bounded Deck projection history for the proven owner/profile/session only. */
+  __trustedConversationHistoryForProfile?: unknown;
 }
 
 export interface ChatStreamProjectionHooks {
@@ -50,10 +54,14 @@ function runProjectionHook(fn: (() => void) | undefined): void {
   fn();
 }
 
-// Hermes /v1/responses currently rejects request bodies > 1MB. We pre-check
+// Hermes /v1/responses currently rejects request bodies > 10MB. We pre-check
 // here so the user sees a useful error rather than the upstream's truncated
 // 413 with the full URL in the message.
-const HERMES_REQUEST_BODY_BYTE_LIMIT = 1_000_000;
+export const HERMES_REQUEST_BODY_BYTE_LIMIT = 10_000_000;
+
+export function hermesRequestBodyByteSize(json: string): number {
+  return new TextEncoder().encode(json).byteLength;
+}
 
 // Server emits a heartbeat every 15s while the stream is running so:
 //   - upstream proxies (nginx, Cloudflare) don't drop an "idle" connection
@@ -79,6 +87,33 @@ function firstString(...values: unknown[]): string | undefined {
 function normalizeObservedReasoning(value: unknown): string | undefined {
   const raw = firstString(value)?.toLowerCase();
   return raw && raw !== 'auto' ? raw : undefined;
+}
+
+function isResponsesApiResponseId(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().startsWith('resp_');
+}
+
+function responsesApiResponseId(value: unknown): string | undefined {
+  return isResponsesApiResponseId(value) ? value.trim() : undefined;
+}
+
+function conversationHistoryValue(value: unknown): Array<{ role: 'user' | 'assistant'; content: string }> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const rows: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  let totalChars = 0;
+  for (const item of value.slice(-20)) {
+    const row = safeRecord(item);
+    const rawRole = row?.role;
+    const role: 'user' | 'assistant' | undefined = rawRole === 'user' || rawRole === 'assistant' ? rawRole : undefined;
+    const content = typeof row?.content === 'string' ? row.content.trim().slice(0, 1_000) : '';
+    if (!role || !content) continue;
+    const remaining = 6_000 - totalChars;
+    if (remaining <= 0) break;
+    const bounded = content.length > remaining ? content.slice(0, remaining) : content;
+    rows.push({ role, content: bounded });
+    totalChars += bounded.length;
+  }
+  return rows.length ? rows : undefined;
 }
 
 /** Extract the effective runtime model/reasoning when Hermes exposes it in
@@ -229,7 +264,10 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
   const profile = PROFILE_ID_RE.test(rawProfile) ? rawProfile : 'default';
   const model = typeof body?.model === 'string' ? body.model : undefined;
   const reasoningEffort = typeof body?.reasoningEffort === 'string' ? body.reasoningEffort : undefined;
-  const previousResponseId = typeof body?.previousResponseId === 'string' ? body.previousResponseId : undefined;
+  const previousResponseId = responsesApiResponseId(body?.previousResponseId);
+  const conversationHistory = previousResponseId
+    ? undefined
+    : conversationHistoryValue(body?.__trustedConversationHistoryForProfile);
   // Only a Deck-trusted session id may be forwarded to Hermes or treated as a
   // continuation handle. For named profiles, the route replaces unproven
   // client-provided ids with a server-generated Deck id before setting this
@@ -279,25 +317,27 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
     if (model) apiBody.model = model;
     if (reasoningEffort && reasoningEffort !== 'auto') apiBody.reasoning = { effort: reasoningEffort };
     if (previousResponseId) apiBody.previous_response_id = previousResponseId;
+    else if (conversationHistory) apiBody.conversation_history = conversationHistory;
     apiBody.metadata = {
       ...((apiBody.metadata && typeof apiBody.metadata === 'object') ? apiBody.metadata as Record<string, unknown> : {}),
       profileId: profile,
       source: 'hermesdeck',
     };
     const apiBodyJson = JSON.stringify(apiBody);
-    if (apiBodyJson.length > HERMES_REQUEST_BODY_BYTE_LIMIT) {
+    const apiBodyBytes = hermesRequestBodyByteSize(apiBodyJson);
+    if (apiBodyBytes > HERMES_REQUEST_BODY_BYTE_LIMIT) {
       runProjectionHook(() => hooks?.onError?.({
         sessionId: stream.sessionId,
         profileId: profile,
         error: 'payload_too_large',
-        detail: 'Total request size exceeds the upstream 1MB cap — shrink any image attachments and retry.',
+        detail: 'Total request size exceeds the upstream 10MB cap — shrink any image attachments and retry.',
       }));
       emitToHub(stream, 'error', {
         error: 'payload_too_large',
         backend: 'hermes-api-server',
-        byteSize: apiBodyJson.length,
+        byteSize: apiBodyBytes,
         limit: HERMES_REQUEST_BODY_BYTE_LIMIT,
-        hint: 'Total request size exceeds the upstream 1MB cap — shrink any image attachments and retry.',
+        hint: 'Total request size exceeds the upstream 10MB cap — shrink any image attachments and retry.',
       });
       markStreamDone(stream);
       return;
@@ -383,8 +423,9 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
       try {
         const obj = JSON.parse(raw);
         const type = String(obj.type || obj.event || '');
-        const candidateResponseId = obj?.response?.id || obj?.item?.id || (type.startsWith('response.') ? obj.id : undefined);
-        if (candidateResponseId && !responseId) responseId = String(candidateResponseId);
+        const candidateResponseId = responsesApiResponseId(obj?.response?.id)
+          || (type.startsWith('response.') ? responsesApiResponseId(obj.id) : undefined);
+        if (candidateResponseId && !responseId) responseId = candidateResponseId;
         const observed = extractRuntimeSettingsFromEvent(obj);
         if (observed.model) observedModel = observed.model;
         if (observed.reasoningEffort) observedReasoningEffort = observed.reasoningEffort;

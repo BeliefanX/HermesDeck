@@ -8,10 +8,10 @@ export const SMART_PASTE_THRESHOLD = 1500;           // chars; above this, paste
 // client cap so the user gets a friendlier client-side error first.
 export const MAX_ATTACHMENT_BYTES = 22 * 1024 * 1024;
 
-// The Hermes API Server caps the entire request body at 1 MB
+// The Hermes API Server caps the entire request body at 10 MB
 // (`MAX_REQUEST_BYTES` in api_server.py). The body is JSON, so the data URL
 // must be considerably smaller — we leave headroom for prompt text, history,
-// and JSON overhead. Open-WebUI uses ~768KB after resize for the same reason.
+// and JSON overhead, and keep single images light for chat latency.
 const TARGET_IMAGE_BYTES = 700 * 1024;
 // Anthropic's recommended max long edge for vision is ~1568px; smaller
 // dimensions mean fewer tokens AND smaller payloads.
@@ -104,7 +104,7 @@ function approxDataUrlBytes(dataUrl: string): number {
 }
 
 /**
- * Compress an image so it fits the Hermes API Server's 1 MB body budget.
+ * Compress an image so it fits comfortably within the Hermes API Server's 10 MB body budget.
  * Strategy: scale long edge down (max 1568px), JPEG-encode, then iteratively
  * lower quality until the data URL is below the target. PNGs with likely
  * transparency are kept as PNG when they already fit, otherwise re-encoded
@@ -224,10 +224,10 @@ export async function ingestFile(file: File): Promise<AttachmentItem> {
       return { ...base, kind: 'image', status: 'error', error: `Image exceeds ${formatLimit(MAX_IMAGE_SIZE)} limit` };
     }
     try {
-      // Hermes API Server caps request bodies at 1 MB, so we compress the
-      // image client-side before it ever leaves the browser. If compression
-      // still can't fit it, fail loudly here rather than letting the server
-      // 413 silently while the agent gets nothing.
+      // Hermes API Server caps request bodies at 10 MB, so we compress images
+      // client-side before they ever leave the browser. If compression still
+      // can't hit Deck's conservative per-image target, fail loudly here rather
+      // than letting the server 413 silently while the agent gets nothing.
       const compressed = await compressImageForUpload(file);
       if (compressed.bytes > TARGET_IMAGE_BYTES * 1.5) {
         return {

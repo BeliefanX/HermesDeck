@@ -9,6 +9,7 @@ import {
   renameFolder,
   setMeta,
   saveMetaStore,
+  serverBackedMetaStore,
 } from '@/lib/session-meta';
 import type { DeckMessage } from '@/lib/types';
 import { deckApi } from '@/lib/api';
@@ -16,8 +17,8 @@ import type { ChatT } from '../_lib/i18n';
 import type { LocalSession } from '../_lib/storage';
 
 /**
- * Bundles all "Deck-local session metadata" actions: pin / archive / folder /
- * tags / rename / delete. Also owns the metaStore setter (with persistence).
+ * Bundles all Deck-owned session metadata actions: pin / archive / folder /
+ * tags / rename / delete. Also owns the metaStore setter (with server persistence).
  *
  * Returns the persistent metaStore setter, the small `updateMeta` helper, and
  * each domain action — all stable references so the component can pass them
@@ -40,21 +41,30 @@ export function useSessionMetaActions({
   setError: React.Dispatch<React.SetStateAction<string>>;
   clearTimeline: () => void;
 }) {
+  const persistServerMeta = useCallback((store: MetaStore) => {
+    deckApi.saveSessionMeta(profile, serverBackedMetaStore(store)).catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Session metadata failed to save: ${msg}`);
+    });
+  }, [profile, setError]);
+
   const updateMeta = useCallback((sessionId: string, patch: Partial<ReturnType<typeof getMeta>>) => {
     setMetaStoreRaw((cur) => {
       const next = setMeta(cur, sessionId, patch);
       saveMetaStore(next);
+      if (Object.keys(patch).some((key) => key !== 'goal')) persistServerMeta(next);
       return next;
     });
-  }, [setMetaStoreRaw]);
+  }, [persistServerMeta, setMetaStoreRaw]);
 
   const setMetaStore = useCallback((updater: (cur: MetaStore) => MetaStore) => {
     setMetaStoreRaw((cur) => {
       const next = updater(cur);
       saveMetaStore(next);
+      persistServerMeta(next);
       return next;
     });
-  }, [setMetaStoreRaw]);
+  }, [persistServerMeta, setMetaStoreRaw]);
 
   const performRemoveDeckMeta = useCallback((id: string) => {
     if (!id) return;

@@ -24,7 +24,7 @@ HermesDeck 是 Hermes Agent 的 Deck/BFF/UI 层。它在同一个 Next.js 进程
 
 Deck 运行时数据来自 Hermes Agent API Server：
 
-- Agents：`/v1/profiles`、`/api/profiles`，选择返回内容最完整的 API-backed Agent catalog。
+- Agents：`/v1/profiles`、`/api/profiles`，选择返回内容最完整的 API-backed Agent catalog。admin/super_admin 只有在两个 strict catalog endpoints 都返回 404 时，才可使用 bounded local catalog fallback：仅枚举 `default` 和 immediate local profile dirs，且每个 candidate 必须通过对应 `/health` routing/key proof。普通用户不使用本地枚举。
 - models：按 Agent 调 `/v1/models`，不从本地文件合成模型清单。
 - chat：按 Agent 调 `/v1/responses`，必要时传 `X-Hermes-Session-Id`。
 - cron：按 Agent 调 `/api/jobs?include_disabled=true&profile=<id>`，必须从响应或 job rows 得到 routing proof。
@@ -45,8 +45,8 @@ Fail-closed 规则：
 - 未登录、inactive、cookie 无效：401/403。
 - 非 admin 缺少 Agent assignment：403。
 - Agent runtime id（legacy `profile`/`profileId`）无效：400。
-- admin/super_admin 需要 catalog 时，如果 Hermes API Server catalog outage，返回错误/空降级提示，不枚举本地 profile 目录补齐；catalog/health proof 缺失不是用户无权限证明。
-- cron/jobs 等敏感 upstream data 的 Agent routing 未被 API 响应证明时返回 `profile_routing_unavailable`，不展示可能属于其他 Agent 的 jobs。
+- admin/super_admin 需要 catalog 时，先走 API catalog；只有 `/v1/profiles` 与 `/api/profiles` 都是 404，才使用 admin-only bounded local profile-dir fallback，并逐个 `/health` 证明。普通用户无本地 runtime data fallback。
+- sessions/stats/cron/jobs 等敏感 upstream data 的 Agent routing 未被 API 响应证明时返回 `profile_routing_unavailable`，不展示可能属于其他 Agent 的 rows。
 
 ## Chat/SSE 数据流
 
@@ -85,7 +85,7 @@ VAPID config comes from environment only: `HERMESDECK_VAPID_PUBLIC_KEY`, `HERMES
 
 ## PWA/cache strategy
 
-`public/sw.js` 当前 cache version 为 `hermesdeck-pwa-v45`：
+`public/sw.js` 是 cache version 的来源；当前为 `hermesdeck-pwa-v47`：
 
 - shell cache 只预缓存 `/offline`、manifest、icons。
 - `/api/*` 网络直通；只有网络异常时合成 `{ ok:false, offline:true, error:'offline' }` 的 503。

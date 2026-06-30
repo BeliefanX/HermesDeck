@@ -3,17 +3,17 @@ import { NextRequest } from 'next/server';
 import { ActiveStreamAuthorizationError, createChatStream, proveProfileRoutable, SessionProfileRoutingError, type ChatStreamProjectionHooks } from '@/lib/server/hermes';
 import { getDeckModelPreference } from '@/lib/server/auth';
 import {
+  clearProjectedResponseChain,
   finalizeProjectedTurn,
-  hasProjectedSession,
-  projectedResponseIdMatches,
+  getProjectedContinuation,
   reconcileProjectedSessionId,
   recordProjectedRunEvent,
   recordProjectedTurnError,
   startProjectedTurn,
 } from '@/lib/server/deck-chat-projection';
 import { guardMutating, guardRequestBody, readLimitedJson } from '@/lib/server/csrf';
-import { dispatchChatNotification } from '@/lib/server/notifications';
 import { normalizeProfileId, rbacJsonError, requireActiveUser, requireProfileAccess } from '@/lib/server/rbac';
+import { dispatchChatNotification } from '@/lib/server/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,8 +21,12 @@ export const dynamic = 'force-dynamic';
 // the user message + (small) attachment metadata; the actual image bytes are
 // already in `attachments[].dataUrl`, so 8MB leaves plenty of headroom while
 // blocking obvious attacker inputs. The upstream Hermes /v1/responses cap is
-// 1MB and is enforced by createChatStream.
+// 10MB and is enforced by createChatStream.
 const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
+
+function isPreviousResponseNotFound(detail?: string): boolean {
+  return /previous response not found/i.test(detail || '');
+}
 
 export async function POST(req: NextRequest) {
   const guard = guardMutating(req);
@@ -66,9 +70,13 @@ export async function POST(req: NextRequest) {
     ? bodyRecord.sessionId.trim()
     : '';
   const hasPreviousResponseId = typeof bodyRecord.previousResponseId === 'string' && bodyRecord.previousResponseId.trim().length > 0;
-  const previousResponseId = hasPreviousResponseId ? (bodyRecord.previousResponseId as string).trim() : '';
   const projectionViewer = { userId: auth.user.id, role: auth.user.role };
-  const projectedSessionIsTrusted = requestedSessionId ? hasProjectedSession(requestedSessionId, profileId, projectionViewer) : false;
+  const projectedContinuation = requestedSessionId ? getProjectedContinuation(requestedSessionId, profileId, projectionViewer) : null;
+  const projectedSessionIsTrusted = !!projectedContinuation;
+  const canonicalPreviousResponseId = projectedContinuation?.responseId || '';
+  const fallbackConversationHistory = !canonicalPreviousResponseId
+    ? projectedContinuation?.conversationHistory
+    : undefined;
   if (hasPreviousResponseId && !projectedSessionIsTrusted) {
     return rbacJsonError(
       403,
@@ -76,7 +84,7 @@ export async function POST(req: NextRequest) {
       'Cannot continue a session without a Deck-owned proof that it belongs to the selected agent.',
     );
   }
-  if (hasPreviousResponseId && !projectedResponseIdMatches(requestedSessionId, profileId, previousResponseId, projectionViewer)) {
+  if (hasPreviousResponseId && !canonicalPreviousResponseId && !projectedContinuation?.responseChainStale) {
     return rbacJsonError(
       403,
       'response_profile_unverified',
@@ -86,7 +94,7 @@ export async function POST(req: NextRequest) {
   const generatedDeckSessionId = requestedSessionId && !projectedSessionIsTrusted
     ? `deck_${randomUUID()}`
     : '';
-  const sessionIdForStream = generatedDeckSessionId || requestedSessionId;
+  const sessionIdForStream = projectedContinuation?.sessionId || generatedDeckSessionId || requestedSessionId;
   // Never forward a user/client-provided unproven session id to Hermes Agent,
   // including default profile tabs restored from stale browser state. If we had
   // to replace it above, the replacement is a
@@ -100,7 +108,14 @@ export async function POST(req: NextRequest) {
   const effectiveBody = {
     ...bodyRecord,
     profileId,
+    // The browser request body is untrusted at this boundary. Strip both public
+    // history spellings after the spread so only Deck's owner/profile-proven
+    // projection fallback can reach the stream layer via the private field.
+    conversationHistory: undefined,
+    conversation_history: undefined,
     ...(sessionIdForStream ? { sessionId: sessionIdForStream } : {}),
+    ...(canonicalPreviousResponseId ? { previousResponseId: canonicalPreviousResponseId } : { previousResponseId: undefined }),
+    ...(fallbackConversationHistory?.length ? { __trustedConversationHistoryForProfile: fallbackConversationHistory } : { __trustedConversationHistoryForProfile: undefined }),
     __trustedSessionIdForProfile: trustedSessionIdForProfile,
     ...(!hasExplicitModel && preference?.modelId ? { model: preference.modelId } : {}),
   };
@@ -130,22 +145,19 @@ export async function POST(req: NextRequest) {
     },
     onDone({ sessionId, profileId: projectedProfileId, content, responseId, attachments: doneAttachments, model, reasoningEffort }) {
       finalizeProjectedTurn({ sessionId, profileId: projectedProfileId, viewer: projectionViewer, content, responseId, attachments: doneAttachments, model, reasoningEffort });
-      void dispatchChatNotification({
-        userId: auth.user.id,
-        profileId: projectedProfileId,
-        sessionId,
-        kind: 'chat_completed',
-      }).catch(() => {});
+      void dispatchChatNotification({ kind: 'chat_completed', userId: auth.user.id, profileId: projectedProfileId, sessionId }).catch(() => {});
     },
     onError({ sessionId, profileId: projectedProfileId, error, detail }) {
+      if (canonicalPreviousResponseId && isPreviousResponseNotFound(detail)) {
+        clearProjectedResponseChain({
+          sessionId,
+          profileId: projectedProfileId,
+          viewer: projectionViewer,
+          staleResponseId: canonicalPreviousResponseId,
+        });
+      }
       recordProjectedTurnError({ sessionId, profileId: projectedProfileId, viewer: projectionViewer, error, detail });
-      void dispatchChatNotification({
-        userId: auth.user.id,
-        profileId: projectedProfileId,
-        sessionId,
-        kind: 'chat_failed',
-        error: detail || error,
-      }).catch(() => {});
+      void dispatchChatNotification({ kind: 'chat_failed', userId: auth.user.id, profileId: projectedProfileId, sessionId, error: detail || error }).catch(() => {});
     },
   };
   try {

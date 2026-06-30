@@ -35,12 +35,12 @@
 - `GET/PATCH/DELETE /api/deck/admin/users/[id]`：用户状态、角色、删除等；`super_admin` 不可修改/删除，只有 `super_admin` 能授予/改变角色。
 - `GET/PUT /api/deck/admin/users/[id]/profiles`：管理用户 Agent assignment；路径名保留 `profiles` 仅为 API 兼容。
 
-RBAC：`super_admin` 可访问全部 API-backed Agents；`admin` 和普通 `user` 只能访问分配给自己的 Agents（`admin` 另外拥有用户管理权限）。每条 Agent-scoped route 都必须在服务端授权；普通用户不得访问未分配 Agent/default。catalog outage 是上游可用性问题，不通过本地枚举补齐，也不把缺失 catalog/health identity proof 描述成用户无权限。
+RBAC：`super_admin` 可访问全部 API-backed Agents；`admin` 和普通 `user` 只能访问分配给自己的 Agents（`admin` 另外拥有用户管理权限）。每条 Agent-scoped route 都必须在服务端授权；普通用户不得访问未分配 Agent/default，也没有本地 runtime data fallback。admin/super_admin catalog fallback 仅在两个 strict API catalog endpoints 都返回 404 时枚举 bounded immediate local profile dirs，并且每个 candidate 必须 `/health` 证明。
 
 ## Health and Agent catalog
 
 - `GET /api/deck/health`：Deck 与 Hermes API Server 健康状态、版本/uptime 等。
-- `GET /api/deck/profiles`：从 Hermes API Server profile endpoints 获取 API-backed Agent catalog，并按当前用户过滤。失败时返回错误，不扫描本地 profiles 目录。
+- `GET /api/deck/profiles`：从 Hermes API Server profile endpoints 获取 API-backed Agent catalog，并按当前用户过滤；admin/super_admin 仅在 strict catalog 双 404 时使用 bounded `/health`-proven local catalog fallback。普通用户不扫描本地 profiles 目录。
 - `GET /api/deck/models?profile=<id>`：按 Agent runtime id 调 Hermes API Server `/v1/models`。无 selectable model 或 API 不可达时返回错误/空 UI 状态；不从本地文件合成模型清单。
 - `GET /api/deck/model-preferences?profileId=<id>`、`PUT /api/deck/model-preferences`：Deck 用户级 Agent 模型偏好；只影响 Deck 下次发起的 chat request override。
 
@@ -81,29 +81,29 @@ type ChatStreamRequest = {
 
 ## Sessions, messages, runs, stats
 
-- `GET /api/deck/sessions?profile=<id>`：返回 Agent-scoped sessions；融合 Deck projection 中的 in-flight/proof 状态。普通用户只能看到 owner 为自己 Deck user id 的 projected rows；admin/super_admin 可跨 owner 查看，但仍受 Agent auth/catalog 约束。Deck 不返回可能串台的 unlabeled upstream session rows。
+- `GET /api/deck/sessions?profile=<id>`：先成功取得 Agent-scoped API sessions，再融合 Deck projection 中的 in-flight/proof 状态。普通用户只能看到 owner 为自己 Deck user id 的 projected rows；admin/super_admin 可跨 owner 查看，但仍受 Agent auth/catalog 约束。routing errors fail closed as `profile_routing_unavailable`/502；Deck 不返回可能串台的 unlabeled upstream session rows。
 - `GET /api/deck/sessions/[id]/messages?profile=<id>`：返回 session messages；projection 可返回刷新后仍存在的 draft assistant、tool-call、tool-result rows。普通用户读取他人 projection 会 403。
 - `DELETE /api/deck/sessions/[id]?profile=<id>`：删除/移除该 session 的 Deck 与 upstream 可删除状态；必须有 Agent 权限。
 - `GET /api/deck/runs?profile=<id>`、`GET /api/deck/runs/[id]`：运行列表与详情。
-- `GET /api/deck/stats?profile=<id>`：dashboard stats；default Agent 合并 API sessions 与 viewer-scoped projection，named Agents 使用 viewer-scoped projection stats。
+- `GET /api/deck/stats?profile=<id>`：dashboard stats；成功取得 API sessions 后合并 viewer-scoped projection。routing errors fail closed as `profile_routing_unavailable`/502。
 - `GET /api/deck/tokens?days=<n>&profile=<id>`：token/cost 聚合，timeout 较长。
 
 ## Notifications
 
 Notification BFF routes are Deck-owned and user-scoped. They do not call Hermes Agent except when chat completion/failure is observed by the chat stream route.
 
-- `GET /api/deck/notifications/config`：requires active Deck session; returns `{ ok:true, config, preferences, subscriptionCount }`. `config.available` is true only when `HERMESDECK_VAPID_PUBLIC_KEY`, `HERMESDECK_VAPID_PRIVATE_KEY`, and a subject (`HERMESDECK_VAPID_SUBJECT` or `HERMESDECK_PUBLIC_ORIGIN`) are present.
+- `GET /api/deck/notifications/config`：requires active Deck session; returns `{ ok:true, config, preferences, subscriptionCount, subscriptions }`. `subscriptions` contains non-reversible public ids only (no endpoint/key material). `config.available` is true only when `HERMESDECK_VAPID_PUBLIC_KEY`, `HERMESDECK_VAPID_PRIVATE_KEY`, and a subject (`HERMESDECK_VAPID_SUBJECT` or `HERMESDECK_PUBLIC_ORIGIN`) are present.
 - `GET /api/deck/notifications/preferences`：returns the current user's notification preference booleans.
 - `PUT/PATCH /api/deck/notifications/preferences`：mutating/CSRF-guarded; accepts booleans for `chatCompleted`, `chatFailed`, `kanbanTaskCompleted`, `cronJobCompleted`; ignores unknown or non-boolean values.
 - `GET /api/deck/notifications/subscription`：returns only the current user's subscription count, never endpoint/key material.
-- `POST /api/deck/notifications/subscription`：mutating/CSRF-guarded; stores the browser Push API subscription for the current Deck user. Endpoint must be HTTPS; key sizes are capped; each user is capped at 16 subscriptions.
+- `POST /api/deck/notifications/subscription`：mutating/CSRF-guarded; stores the browser Push API subscription for the current Deck user. Endpoint must use a supported browser push provider; key sizes are capped; each user is capped at 16 subscriptions.
 - `DELETE /api/deck/notifications/subscription`：mutating/CSRF-guarded; removes the current user's subscription by endpoint.
 - `POST /api/deck/notifications/test`：mutating/CSRF-guarded; requires active user, available VAPID config, and access to the requested Agent runtime id before sending a low-sensitivity test chat-complete push.
 
 Delivery semantics:
 
-- Phase 1 chat notifications are Web Push. `/api/deck/chat/stream` dispatches non-blocking `chat_completed` / `chat_failed` notifications after final/error projection writes. Push errors and expired endpoints do not fail the chat stream; 404/410 subscriptions are pruned.
-- Phase 2 Kanban/Cron notifications are page-open browser notifications only. They use Settings preferences fetched through the config route, but delivery happens in the active page via `new Notification(...)`; there is no server watcher for closed-page Kanban/Cron delivery.
+- Chat complete/failed notifications are background-capable Web Push. `/api/deck/chat/stream` dispatches non-blocking `chat_completed` / `chat_failed` notifications after final/error projection writes. Push errors and expired endpoints do not fail the chat stream; 404/410 subscriptions are pruned.
+- Kanban/Cron completion notifications are page-open browser notifications only. They use Settings preferences fetched through the config route, but delivery happens in the active page via `new Notification(...)`; there is no server watcher for closed-page Kanban/Cron delivery.
 - Push payloads contain title/body/tag and a same-origin app URL such as `/chat?...`; the Service Worker rejects cross-origin and `/api/*` click targets.
 
 ## Cron proof

@@ -85,12 +85,23 @@ function renderSessionItem({
           {showPinIcon && <Pin size={11} className="pin-mark" aria-label={t.pinnedAria} />}
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortTitle(title, 36)}</span>
         </div>
-        <div className="session-actions">
+        <div
+          className="session-actions"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+          }}
+        >
           <button
             type="button"
             className="session-kebab"
             aria-label={t.sessionActions}
             title={t.sessionActions}
+            onPointerDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+            }}
             onClick={(e) => {
               e.stopPropagation();
               if (isMenuOpen) {

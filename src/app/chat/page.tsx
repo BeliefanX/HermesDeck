@@ -7,7 +7,7 @@ import { useActiveProfile } from '@/lib/profile-context';
 import type { TimelineItem } from '@/lib/timeline';
 import { shortTitle } from '@/lib/format';
 import { type AttachmentItem } from '@/lib/attachments';
-import { type MetaStore, emptyStore, gcMetaStore, saveMetaStore } from '@/lib/session-meta';
+import { type MetaStore, emptyStore, gcMetaStore, loadMetaStore, mergeServerMetaPreservingLocalGoals, saveMetaStore, serverBackedMetaStore } from '@/lib/session-meta';
 import { useChatT } from './_lib/i18n';
 import { type LocalSession, mergeSessions } from './_lib/storage';
 import type { TurnUsage } from './_lib/context-window';
@@ -114,14 +114,15 @@ function ChatPageInner() {
   const onPreviewImage = useCallback((src: string, name?: string) => setPreviewImage({ src, name }), []);
   const { dragActive, pasteHint, addFiles, removeAttachment, flashPasteHint } = useDragDropPaste(setAttachments);
 
-  // Session organization — folders, pin, tags, archive, custom titles. All of
-  // it is local-only metadata keyed by Hermes session id.
+  // Session organization — folders, pin, tags, archive, custom titles. Server
+  // metadata is profile/user scoped; localStorage is only a cache/legacy import.
   const [metaStore, setMetaStoreRaw] = useState<MetaStore>(emptyStore());
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [openMenu, setOpenMenu] = useState<string>(''); // sessionId of open kebab menu
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
+  const legacyMetaImportRef = useRef<Record<string, boolean>>({});
 
   // Source filter — null means "no filter applied", an array means
   // "only sessions whose source is in this list". Persisted to localStorage.
@@ -178,8 +179,35 @@ function ChatPageInner() {
       .then((r) => {
         if (!alive) return;
         setSessions((prev) => mergeSessions(prev, r.sessions, profile));
-        // GC localStorage meta entries for sessions the server no longer
-        // returns — otherwise they accumulate forever on this device.
+        const serverMeta = r.metaStore;
+        if (serverMeta) {
+          const serverHasMeta = Object.keys(serverMeta.byId || {}).length > 0 || (serverMeta.folders || []).length > 0;
+          const importKey = `${profile}`;
+          if (!serverHasMeta && !legacyMetaImportRef.current[importKey]) {
+            legacyMetaImportRef.current[importKey] = true;
+            const legacy = loadMetaStore();
+            const legacyGc = gcMetaStore(legacy, r.sessions.map((s) => s.id));
+            const legacyHasMeta = Object.keys(legacyGc.byId || {}).length > 0 || (legacyGc.folders || []).length > 0;
+            if (legacyHasMeta) {
+              setMetaStoreRaw(legacyGc);
+              saveMetaStore(legacyGc);
+              deckApi.saveSessionMeta(profile, serverBackedMetaStore(legacyGc)).catch((err) => {
+                if (alive) setError(`Session metadata import failed: ${apiErrorDetail(err)}`);
+              });
+              return;
+            }
+          }
+          const serverNext = gcMetaStore(serverMeta, r.sessions.map((s) => s.id));
+          setMetaStoreRaw((cur) => {
+            const local = Object.keys(cur.byId || {}).length > 0 || (cur.folders || []).length > 0 ? cur : loadMetaStore();
+            const next = mergeServerMetaPreservingLocalGoals(serverNext, local);
+            saveMetaStore(next);
+            return next;
+          });
+          return;
+        }
+        // Legacy fallback for older BFF responses: GC local cache entries for
+        // sessions the server no longer returns.
         setMetaStoreRaw((cur) => {
           const next = gcMetaStore(cur, r.sessions.map((s) => s.id));
           saveMetaStore(next);
@@ -197,7 +225,7 @@ function ChatPageInner() {
   const hasActiveServerDraft = activeMessages.some((m) => (
     m.role === 'assistant' && m.metadata?.projectionStatus === 'draft'
   ));
-  const activeSession = sessions.find((s) => s.id === active);
+  const activeSession = useMemo(() => sessions.find((s) => s.id === active), [sessions, active]);
 
   useEffect(() => {
     if (!hydrated || !profile || !active) return;
@@ -261,8 +289,8 @@ function ChatPageInner() {
   });
 
   const activeTitle = useMemo(
-    () => shortTitle(sessions.find((s) => s.id === active)?.title, 60),
-    [sessions, active],
+    () => shortTitle(activeSession?.title, 60),
+    [activeSession],
   );
 
   const {

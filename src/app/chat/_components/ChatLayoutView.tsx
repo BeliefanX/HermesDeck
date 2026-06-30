@@ -4,12 +4,13 @@ import {
   FolderPlus, Upload, Wrench, X,
 } from 'lucide-react';
 import type { DeckMessage, DeckSession, ToolSummary } from '@/lib/types';
+import { STREAM_RECONNECTING_MESSAGE } from '@/lib/chat-stream-resilience';
 import { Btn } from '@/components/Brand';
 import { AttachmentLightbox } from '@/components/AttachmentLightbox';
 import {
   type AttachmentItem,
 } from '@/lib/attachments';
-import { type SlashCommand } from '@/lib/prompts';
+import { type SlashCommand } from '@/lib/slash-commands';
 import type { TurnUsage } from '../_lib/context-window';
 import type { ChatT } from '../_lib/i18n';
 import { TabBtn, iconBtnStyle } from './InlineParts';
@@ -121,6 +122,7 @@ export function ChatLayoutView(p: ChatLayoutViewProps) {
   });
   const isDesktop = sessionsPanel.isDesktop;
   const dragging = sessionsPanel.dragging || contextPanel.dragging;
+  const isRecoveringStream = p.error === STREAM_RECONNECTING_MESSAGE;
   // Inline overrides only apply at desktop width where the resizers are live.
   // On tablet/mobile the @media-query widths must win, and when a panel is
   // collapsed the .no-sessions / .no-timeline rule's 0 must win.
@@ -308,15 +310,17 @@ export function ChatLayoutView(p: ChatLayoutViewProps) {
                   gap: 10,
                   alignItems: 'flex-start',
                   padding: 12,
-                  background: 'var(--status-red-bg)',
-                  border: '1px solid var(--status-red-border)',
+                  background: isRecoveringStream ? 'var(--surface-bg)' : 'var(--status-red-bg)',
+                  border: `1px solid ${isRecoveringStream ? 'var(--accent-border)' : 'var(--status-red-border)'}`,
                   borderRadius: 10,
                   marginBottom: 14,
                 }}
               >
-                <AlertTriangle size={16} color="var(--red)" style={{ flexShrink: 0, marginTop: 2 }} />
+                <AlertTriangle size={16} color={isRecoveringStream ? 'var(--accent)' : 'var(--red)'} style={{ flexShrink: 0, marginTop: 2 }} />
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--red)' }}>{p.t.requestFailed}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: isRecoveringStream ? 'var(--accent)' : 'var(--red)' }}>
+                    {isRecoveringStream ? '正在恢复连接' : p.t.requestFailed}
+                  </div>
                   <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>{p.error}</div>
                 </div>
                 <button

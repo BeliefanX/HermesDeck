@@ -1,11 +1,11 @@
 // Read & write the Hermes per-profile configuration files for the deck's
 // /config page: config.yaml, SOUL.md, memories/USER.md, memories/MEMORY.md.
 //
-// Every file lives under `~/.hermes` — directly for the `default` profile,
-// or under `~/.hermes/profiles/<id>` for a named profile. All filesystem ops
-// are rooted at `~/.hermes`: the relative path is built only from a validated
-// profile id plus a fixed filename, then realpath-resolved and re-checked so a
-// symlink can't escape the Hermes home.
+// Every file lives under the resolved Hermes root — directly for the `default`
+// profile, or under `<root>/profiles/<id>` for a named profile. All filesystem
+// ops are rooted there: the relative path is built only from a validated profile
+// id plus a fixed filename, then realpath-resolved and re-checked so a symlink
+// can't escape the Hermes home.
 //
 // config.yaml is validated as YAML on save (via the same PyYAML that Hermes
 // loads it with); a syntax error rejects the write. SOUL.md / USER.md /
@@ -14,8 +14,7 @@
 
 import { promises as fs } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
-import { homedir } from 'node:os';
-import { PROFILE_ID_RE } from './core';
+import { defaultHermesRoot, PROFILE_ID_RE } from './core';
 import { runPython } from '../run-python';
 import {
   CONFIG_FILE_META,
@@ -29,7 +28,6 @@ import {
   charLimitFor,
 } from '@/lib/config-files';
 
-const HERMES_HOME = join(homedir(), '.hermes');
 const MAX_CONFIG_BYTES = 1024 * 1024; // 1MB — far above any real config file.
 
 interface ConfigError extends Error {
@@ -54,12 +52,12 @@ function validateProfileId(raw: unknown): string {
   return id;
 }
 
-function profileBaseDir(profileId: string): string {
-  return profileId === 'default' ? HERMES_HOME : join(HERMES_HOME, 'profiles', profileId);
+function profileBaseDir(profileId: string, root = defaultHermesRoot()): string {
+  return profileId === 'default' ? root : join(root, 'profiles', profileId);
 }
 
-function displayBaseDir(profileId: string): string {
-  return profileId === 'default' ? '~/.hermes' : `~/.hermes/profiles/${profileId}`;
+function displayBaseDir(profileId: string, root: string): string {
+  return profileBaseDir(profileId, root);
 }
 
 function posixJoin(...parts: string[]): string {
@@ -101,10 +99,10 @@ interface RawFile {
   readOnly: boolean;
 }
 
-async function readConfigFile(base: string, meta: ConfigFileMeta): Promise<RawFile> {
+async function readConfigFile(root: string, base: string, meta: ConfigFileMeta): Promise<RawFile> {
   const abs = join(base, meta.subdir, meta.filename);
   try {
-    await realpathInside(HERMES_HOME, abs);
+    await realpathInside(root, abs);
     const st = await fs.stat(abs);
     if (!st.isFile() || st.size > MAX_CONFIG_BYTES) {
       return { meta, content: '', size: st.size, mtime: st.mtime.toISOString(), exists: true, readOnly: true };
@@ -135,10 +133,11 @@ async function readConfigYamlBody(base: string): Promise<string> {
 /** Read all four config files for a profile, with limits + char counts. */
 export async function readProfileConfig(profileIdRaw: string): Promise<DeckConfigBundle> {
   const profileId = validateProfileId(profileIdRaw);
-  const base = profileBaseDir(profileId);
-  const display = displayBaseDir(profileId);
+  const root = defaultHermesRoot();
+  const base = profileBaseDir(profileId, root);
+  const display = displayBaseDir(profileId, root);
 
-  const raw = await Promise.all(CONFIG_FILE_META.map((m) => readConfigFile(base, m)));
+  const raw = await Promise.all(CONFIG_FILE_META.map((m) => readConfigFile(root, base, m)));
   const configBody = raw.find((r) => r.meta.key === 'config')?.content ?? '';
 
   const files: DeckConfigFile[] = raw.map((r) => ({
@@ -240,10 +239,11 @@ export async function saveProfileConfigFile(input: SaveConfigInput): Promise<Sav
     validationSkipped = Boolean(v.skipped);
   }
 
-  const base = profileBaseDir(profileId);
+  const root = defaultHermesRoot();
+  const base = profileBaseDir(profileId, root);
   const dir = join(base, meta.subdir);
   const file = join(dir, meta.filename);
-  await realpathInside(HERMES_HOME, file);
+  await realpathInside(root, file);
 
   // Optimistic concurrency: reject if the file changed since it was read.
   if (input.mtime) {

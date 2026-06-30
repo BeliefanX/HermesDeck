@@ -98,7 +98,7 @@ server {
 - 只有可信反代才启用 `HERMESDECK_TRUST_PROXY=1`。
 - 不要把 Deck 裸奔到公网；Deck 管理 Agent 背后的 Hermes profile/config、可选终端，并持有用户 session。
 - Live Terminal 默认关。启用后仅 active admin/super_admin 可用，但本质上仍是宿主用户 shell。
-- admin/super_admin 依赖 API-backed Agent catalog；API outage 时 fail-closed，不本地枚举 profiles/models，也不把 catalog/health proof 缺失解释成用户无权限。
+- admin/super_admin 先依赖 API-backed Agent catalog；只有 strict `/v1/profiles` 与 `/api/profiles` 都返回 404 时，才可使用 bounded immediate local profile-dir catalog fallback，且每个 candidate 必须 `/health` 证明。普通用户没有本地枚举 fallback，也不把 catalog/health proof 缺失解释成用户无权限。
 
 ## Hermes API Server requirements
 
@@ -107,6 +107,14 @@ server {
 - Agent catalog endpoint：`/v1/profiles` 或 `/api/profiles` 至少一个可用。
 - Models：`/v1/models` 可用且返回 selectable models。
 - Cron：`/api/jobs?include_disabled=true&profile=<id>` 必须返回 Agent routing proof；无 proof 时这类敏感 upstream data fail closed。
+- Sessions/stats：named-Agent session/stat lists 必须先成功取得 routing-proven API rows，再合并 Deck projection；routing error 时返回 `profile_routing_unavailable`/502。
+
+## Notifications / Web Push
+
+- 配置 `HERMESDECK_VAPID_PUBLIC_KEY`、`HERMESDECK_VAPID_PRIVATE_KEY`、`HERMESDECK_VAPID_SUBJECT`（或可用 `HERMESDECK_PUBLIC_ORIGIN` 作为 subject fallback）。
+- Store 为 `notifications.v1.json` under Deck data/auth dir，按 Deck user 保存 preferences/subscriptions。
+- Service Worker 不缓存 `/api/*`；push notification click 只打开同源非 API URL。
+- Web Push 只覆盖 chat completed/failed；Kanban/Cron completion 是 page-open browser notifications。
 
 ## PWA and HTTPS
 

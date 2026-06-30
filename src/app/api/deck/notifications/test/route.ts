@@ -22,18 +22,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'notifications_unavailable', detail: config.reason || 'vapid_not_configured', config }, { status: 503 });
   }
 
-  const profileId = normalizeProfileId(parsed.value.profileId, 'default');
-  if (!profileId) return NextResponse.json({ ok: false, error: 'invalid_profile' }, { status: 400 });
-  const access = requireProfileAccess(auth.user, profileId, { fallback: profileId });
-  if (!access.ok) return access.response;
+  const rawProfileId = typeof parsed.value.profileId === 'string' && parsed.value.profileId.trim()
+    ? parsed.value.profileId.trim()
+    : '';
+  const profileId = rawProfileId ? normalizeProfileId(rawProfileId, '') : '';
+  if (rawProfileId && !profileId) return NextResponse.json({ ok: false, error: 'invalid_profile' }, { status: 400 });
+  if (profileId) {
+    const access = requireProfileAccess(auth.user, profileId, { fallback: profileId });
+    if (!access.ok) return access.response;
+  }
 
   const sessionId = typeof parsed.value.sessionId === 'string' && parsed.value.sessionId.trim()
     ? parsed.value.sessionId.trim().slice(0, 160)
-    : 'test';
+    : '';
   const result = await dispatchChatNotification({
     userId: auth.user.id,
-    profileId,
-    sessionId,
+    ...(profileId ? { profileId } : {}),
+    ...(sessionId ? { sessionId } : {}),
     kind: 'chat_completed',
   });
   if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: 500 });

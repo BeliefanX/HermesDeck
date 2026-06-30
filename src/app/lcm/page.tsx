@@ -47,7 +47,7 @@ export default function LcmPage() {
 
   const t = useT({
     zh: {
-      intro: 'Lossless Context Management — hermes-lcm 插件运行时仪表盘。所有数值直接从 ~/.hermes/lcm.db 及各 Agent 子库读取。',
+      intro: 'Lossless Context Management — hermes-lcm 插件运行时仪表盘。所有数值来自 HermesDeck 对现有 hermes-lcm 本地状态的只读适配。',
       kickerPlugin: '插件',
       kickerTools: '工具',
       kickerVersion: '版本',
@@ -77,6 +77,7 @@ export default function LcmPage() {
       titleHealth: 'SQLite 健康',
       titleLargest: '最大单行 · 字节数',
       pluginMissing: '未检测到 hermes-lcm 插件 —— 期望路径：~/.hermes/plugins/hermes-lcm',
+      lcmApiUnavailable: 'LCM 数据暂不可用。',
       noProfiles: '未发现 LCM 数据库。',
       noData: '暂无数据',
       sessionId: '会话 ID',
@@ -114,7 +115,7 @@ export default function LcmPage() {
       bytes: '字节',
     },
     en: {
-      intro: 'Lossless Context Management — runtime dashboard for the hermes-lcm plugin. Numbers come straight from ~/.hermes/lcm.db and per-Agent shards.',
+      intro: 'Lossless Context Management — runtime dashboard for the hermes-lcm plugin. Numbers come from HermesDeck’s read-only adapter over existing hermes-lcm local state.',
       kickerPlugin: 'PLUGIN',
       kickerTools: 'TOOLS',
       kickerVersion: 'VERSION',
@@ -144,6 +145,7 @@ export default function LcmPage() {
       titleHealth: 'SQLite health',
       titleLargest: 'Largest rows · bytes',
       pluginMissing: 'hermes-lcm plugin not detected — expected ~/.hermes/plugins/hermes-lcm',
+      lcmApiUnavailable: 'LCM data is unavailable.',
       noProfiles: 'No LCM databases found.',
       noData: 'No data',
       sessionId: 'Session ID',
@@ -208,6 +210,7 @@ export default function LcmPage() {
   }, [load]);
 
   const active = data?.profiles.find((p) => p.profile === profileSel) || data?.profiles[0];
+  const lcmUnavailable = Boolean(data?.unavailableReason);
 
   return (
     <Page intro={t.intro}>
@@ -231,7 +234,7 @@ export default function LcmPage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {data?.plugin.installed ? <Tag variant="green" icon={<Package size={11} />}>installed</Tag> : <Tag variant="red" icon={<AlertCircle size={11} />}>not installed</Tag>}
+            {lcmUnavailable ? <Tag variant="yellow" icon={<AlertCircle size={11} />}>unavailable</Tag> : data?.plugin.installed ? <Tag variant="green" icon={<Package size={11} />}>installed</Tag> : <Tag variant="red" icon={<AlertCircle size={11} />}>not installed</Tag>}
             {data?.plugin.gitBranch && (
               <Tag variant="cyan" icon={<GitBranch size={11} />}>
                 {data.plugin.gitBranch}{data.plugin.gitCommit ? ` · ${data.plugin.gitCommit}` : ''}{data.plugin.gitDirty ? ' · dirty' : ''}
@@ -261,13 +264,19 @@ export default function LcmPage() {
         </Card>
       )}
 
-      {data && !data.plugin.installed && (
+      {data?.unavailableReason && (
+        <Card>
+          <div style={{ color: 'var(--yellow)', fontSize: 13 }}>{t.lcmApiUnavailable}</div>
+        </Card>
+      )}
+
+      {data && !data.unavailableReason && !data.plugin.installed && (
         <Card>
           <div style={{ color: 'var(--yellow)', fontSize: 13 }}>{t.pluginMissing}</div>
         </Card>
       )}
 
-      {data && (
+      {data && !lcmUnavailable && (
         <>
           {/* Headline metrics — aggregate across all profiles */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>

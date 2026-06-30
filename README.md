@@ -48,7 +48,7 @@ export HERMESDECK_VAPID_PRIVATE_KEY=...
 export HERMESDECK_VAPID_SUBJECT=mailto:ops@example.com  # 可省略，默认取 PUBLIC_ORIGIN
 ```
 
-部署后在 Settings → Notifications 启用通知、授权浏览器权限，并发送 test notification。Cloudflare Tunnel/Caddy/Nginx 等 HTTPS 反代适合承载 Web Push/PWA；普通 LAN HTTP 只能当网页访问，通常无法安装 PWA 或订阅 push。iOS/iPadOS Safari 只有安装到主屏幕的 PWA 才支持 Web Push，且权限仍需用户手动授予。
+部署后在 Settings → Notifications 启用通知、授权浏览器权限，并发送 test notification。Cloudflare Tunnel/Caddy/Nginx 等 HTTPS 反代适合承载 Web Push/PWA；普通 LAN HTTP 只能当网页访问，通常无法安装 PWA 或订阅 push。Deck 只接受常见浏览器 push provider endpoint，API 返回的订阅列表只含不可逆 public id，不暴露 endpoint/key。iOS/iPadOS Safari 只有安装到主屏幕的 PWA 才支持 Web Push，且权限仍需用户手动授予。
 
 支持矩阵：
 

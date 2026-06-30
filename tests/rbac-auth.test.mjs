@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomBytes, scryptSync } from 'node:crypto';
 import { register as registerLoader } from 'node:module';
+import { NextRequest } from 'next/server.js';
 
 registerLoader('./route-loader.mjs', import.meta.url);
 
@@ -43,6 +44,8 @@ const adminUserProfilesRoutePath = resolve('src/app/api/deck/admin/users/[id]/pr
 const deckProfilesRoutePath = resolve('src/app/api/deck/profiles/route.ts');
 const deckModelsRoutePath = resolve('src/app/api/deck/models/route.ts');
 const deckSessionsRoutePath = resolve('src/app/api/deck/sessions/route.ts');
+const runsRoutePath = resolve('src/app/api/deck/runs/route.ts');
+const kanbanBoardsRoutePath = resolve('src/app/api/deck/kanban/boards/route.ts');
 let importNonce = 0;
 
 function makeHome() {
@@ -622,6 +625,10 @@ async function loadHermesMessagesModule() {
   return import(`${pathToFileURL(hermesMessagesModulePath).href}?case=${Date.now()}-${importNonce++}`);
 }
 
+async function loadHermesCronModule() {
+  return import(`${pathToFileURL(hermesCronModulePath).href}?case=${Date.now()}-${importNonce++}`);
+}
+
 async function loadHermesProfilesModule() {
   return import(`${pathToFileURL(profilesModulePath).href}?case=${Date.now()}-${importNonce++}`);
 }
@@ -678,6 +685,66 @@ function assertSafeUserPayload(user) {
   assert.equal('sessionSecret' in user, false);
 }
 
+test('runs route downgrades known-unavailable Hermes API gap only', async () => {
+  const home = makeHome();
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  try {
+    const auth = await loadAuth(home);
+    const store = withSuppressedBootstrapLog(() => auth.readAuth());
+    const token = auth.issueSessionToken(Object.values(store.users)[0].id);
+    const route = await loadRouteModule(runsRoutePath);
+
+    const res = await route.GET(routeRequest('/api/deck/runs', { headers: { cookie: cookieHeader(token) } }));
+    assert.equal(res.status, 200);
+    const payload = await responseJson(res);
+    assert.deepEqual(payload.runs, []);
+    assert.match(payload.unavailableReason, /does not currently expose/i);
+  } finally {
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+  }
+});
+
+test('Kanban boards route downgrades known 404s but preserves unexpected upstream errors', async () => {
+  const home = makeHome();
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldHermesApiBase = process.env.HERMES_API_BASE;
+  const originalFetch = globalThis.fetch;
+  try {
+    process.env.HERMES_API_BASE = 'http://agent.local';
+    const auth = await loadAuth(home);
+    const store = withSuppressedBootstrapLog(() => auth.readAuth());
+    const token = auth.issueSessionToken(Object.values(store.users)[0].id);
+    const route = await loadRouteModule(kanbanBoardsRoutePath);
+    const req = () => routeRequest('/api/deck/kanban/boards', { headers: { cookie: cookieHeader(token) } });
+
+    globalThis.fetch = async () => new Response('missing', { status: 404 });
+    const unavailable = await route.GET(req());
+    assert.equal(unavailable.status, 200);
+    assert.deepEqual((await responseJson(unavailable)).boards, []);
+
+    globalThis.fetch = async () => new Response('boom', { status: 500 });
+    const failed = await route.GET(req());
+    assert.equal(failed.status, 500);
+    const payload = await responseJson(failed);
+    assert.equal(payload.error, 'kanban_boards_failed');
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
+    else process.env.HERMES_API_BASE = oldHermesApiBase;
+  }
+});
+
 test('profile-scoped Hermes sessions fail closed when upstream omits profile metadata', async () => {
   const home = makeHome();
   const oldHome = process.env.HOME;
@@ -703,23 +770,91 @@ test('profile-scoped Hermes sessions fail closed when upstream omits profile met
 });
 
 test('profile-scoped Hermes sessions fail closed on mismatched upstream profile metadata', async () => {
-  await withMockedHermesFetch(async () => ({ data: [{ id: 'default-owned', profile_id: 'default' }] }), async () => {
-    const sessions = await loadHermesSessionsModule();
-    await assert.rejects(
-      () => sessions.getSessions('sensgift'),
-      (err) => err?.code === 'session_profile_mismatch' && err?.status === 403,
-    );
-  });
+  const home = makeHome();
+  const hermesRoot = join(home, '.hermes');
+  mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=18648\nAPI_SERVER_KEY=sensgift-secret\n');
+
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMES_HOME = hermesRoot;
+    await withMockedHermesFetch(async () => ({ data: [{ id: 'default-owned', profile_id: 'default' }] }), async () => {
+      const sessions = await loadHermesSessionsModule();
+      await assert.rejects(
+        () => sessions.getSessions('sensgift'),
+        (err) => err?.code === 'session_profile_mismatch' && err?.status === 403,
+      );
+    });
+  } finally {
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+  }
 });
 
 test('profile-scoped Hermes sessions accept matching upstream profile metadata', async () => {
-  await withMockedHermesFetch(async () => ({ data: [{ id: 'sensgift-owned', profile_id: 'sensgift', title: 'Sensgift' }] }), async () => {
-    const sessions = await loadHermesSessionsModule();
-    const rows = await sessions.getSessions('sensgift');
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0].id, 'sensgift-owned');
-    assert.equal(rows[0].profileId, 'sensgift');
-  });
+  const home = makeHome();
+  const hermesRoot = join(home, '.hermes');
+  mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=18648\nAPI_SERVER_KEY=sensgift-secret\n');
+
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMES_HOME = hermesRoot;
+    await withMockedHermesFetch(async () => ({ data: [{ id: 'sensgift-owned', profile_id: 'sensgift', title: 'Sensgift' }] }), async () => {
+      const sessions = await loadHermesSessionsModule();
+      const rows = await sessions.getSessions('sensgift');
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].id, 'sensgift-owned');
+      assert.equal(rows[0].profileId, 'sensgift');
+    });
+  } finally {
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+  }
+});
+
+test('profile-scoped Hermes sessions accept response-envelope profile metadata', async () => {
+  const home = makeHome();
+  const hermesRoot = join(home, '.hermes');
+  mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=18648\nAPI_SERVER_KEY=sensgift-secret\n');
+
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMES_HOME = hermesRoot;
+    await withMockedHermesFetch(async () => ({
+      profile_id: 'sensgift',
+      data: [{ id: 'sensgift-envelope', title: 'Envelope-profile legacy row' }],
+    }), async (calls) => {
+      const sessions = await loadHermesSessionsModule();
+      const rows = await sessions.getSessions('sensgift');
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].id, 'sensgift-envelope');
+      assert.equal(rows[0].profileId, 'sensgift');
+      assert.equal(calls[0].startsWith('http://127.0.0.1:18648/api/sessions?'), true);
+    });
+  } finally {
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+  }
 });
 
 test('profile-scoped Hermes sessions reject unlabeled rows even from a dedicated profile API base', async () => {
@@ -742,6 +877,73 @@ test('profile-scoped Hermes sessions reject unlabeled rows even from a dedicated
         (err) => err?.code === 'profile_routing_unavailable' && err?.status === 502,
       );
       assert.equal(calls[0].startsWith('http://127.0.0.1:18648/api/sessions?'), true);
+    });
+  } finally {
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+  }
+});
+
+test('profile-scoped Hermes sessions reject empty unlabeled pages without envelope proof', async () => {
+  const home = makeHome();
+  const hermesRoot = join(home, '.hermes');
+  mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=18648\nAPI_SERVER_KEY=sensgift-secret\n');
+
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMES_HOME = hermesRoot;
+    await withMockedHermesFetch(async () => ({ data: [] }), async () => {
+      const sessions = await loadHermesSessionsModule();
+      await assert.rejects(
+        () => sessions.getSessions('sensgift'),
+        (err) => err?.code === 'profile_routing_unavailable' && err?.status === 502,
+      );
+      await assert.rejects(
+        () => sessions.getSessionsForStats('sensgift'),
+        (err) => err?.code === 'profile_routing_unavailable' && err?.status === 502,
+      );
+    });
+  } finally {
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+  }
+});
+
+test('profile-scoped Hermes cron accepts unlabeled jobs from a dedicated profile API base', async () => {
+  const home = makeHome();
+  const hermesRoot = join(home, '.hermes');
+  mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=18648\nAPI_SERVER_KEY=sensgift-secret\n');
+
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMES_HOME = hermesRoot;
+    await withMockedHermesFetch(async () => ({ jobs: [{ id: 'job-1', schedule: '* * * * *' }] }), async (calls) => {
+      const cron = await loadHermesCronModule();
+      const jobs = await cron.getCronJobs(['sensgift']);
+      assert.equal(jobs.length, 1);
+      assert.equal(jobs[0].profile, 'sensgift');
+      assert.equal(calls[0], 'http://127.0.0.1:18648/api/jobs?include_disabled=true&profile=sensgift');
+    });
+    await withMockedHermesFetch(async () => ({ jobs: [{ id: 'job-2', profile: 'default', schedule: '* * * * *' }] }), async () => {
+      const cron = await loadHermesCronModule();
+      await assert.rejects(
+        () => cron.getCronJobs(['sensgift']),
+        (err) => err?.code === 'cron_profile_mismatch' && err?.status === 403,
+      );
     });
   } finally {
     process.env.HOME = oldHome;
@@ -798,7 +1000,7 @@ test('default Hermes sessions still accept legacy upstream rows without profile 
   });
 });
 
-test('Deck session list falls back to owner-scoped projections when upstream Agent metadata proof is unavailable', async () => {
+test('Deck session list fails closed when upstream Agent metadata proof is unavailable', async () => {
   const home = makeHome();
   const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
   const oldDataDir = process.env.HERMESDECK_DATA_DIR;
@@ -831,9 +1033,14 @@ test('Deck session list falls back to owner-scoped projections when upstream Age
         message: 'Other user projected turn',
       });
 
-      const result = await sessionList.listDeckSessionsForProfile('sensgift', { userId: 'kevinchen', role: 'user' });
-      assert.deepEqual(result.sessions.map((row) => row.id), ['sensgift-kevin-projected']);
-      assert.equal(result.sessions.some((row) => row.id === 'sensgift-other-owner'), false);
+      await assert.rejects(
+        () => sessionList.listDeckSessionsForProfile('sensgift', { userId: 'kevinchen', role: 'user' }),
+        (err) => err?.code === 'profile_routing_unavailable' && err?.status === 502,
+      );
+      assert.deepEqual(
+        projection.listProjectedSessions('sensgift', { userId: 'kevinchen', role: 'user' }).map((row) => row.id),
+        ['sensgift-kevin-projected'],
+      );
     });
   } finally {
     if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
@@ -929,6 +1136,64 @@ test('Deck chat projection proof/write helpers are profile-scoped and owner/admi
       }),
       (err) => err?.code === 'session_profile_mismatch' && err?.status === 403,
     );
+  } finally {
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+  }
+});
+
+test('projected continuation history is owner/profile scoped and omits unsafe rows', async () => {
+  const home = makeHome();
+  const dataDir = join(home, '.hermesdeck');
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  try {
+    mkdirSync(dataDir, { recursive: true });
+    process.env.HERMESDECK_DATA_DIR = dataDir;
+    delete process.env.HERMESDECK_AUTH_DIR;
+    const longText = 'L'.repeat(1500);
+    writeFileSync(join(dataDir, 'chat-projection.v1.json'), JSON.stringify({
+      version: 1,
+      sessions: {
+        'history-safe-session': {
+          id: 'history-safe-session',
+          profileId: 'sensgift',
+          title: 'history safe',
+          source: 'hermesdeck',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          messageCount: 8,
+          ownerUserId: 'owner-a',
+          ownerRole: 'user',
+          status: 'completed',
+          messages: [
+            { id: 'u1', role: 'user', content: 'safe user', createdAt: '2026-01-01T00:00:00.000Z' },
+            { id: 'a1', role: 'assistant', content: 'safe assistant', createdAt: '2026-01-01T00:00:01.000Z', metadata: { projectionStatus: 'final' } },
+            { id: 'tool1', role: 'tool', content: 'tool output must not leak', createdAt: '2026-01-01T00:00:02.000Z' },
+            { id: 'draft1', role: 'assistant', content: 'draft must not leak', createdAt: '2026-01-01T00:00:03.000Z', metadata: { projectionStatus: 'draft' } },
+            { id: 'err1', role: 'assistant', content: 'Error: secret failure body', createdAt: '2026-01-01T00:00:04.000Z', metadata: { projectionStatus: 'error' } },
+            { id: 'att1', role: 'user', content: 'attachment body must not leak', createdAt: '2026-01-01T00:00:05.000Z', attachments: [{ id: 'att', name: 'raw.txt', mime: 'text/plain', size: 10, kind: 'text', text: 'private' }] },
+            { id: 'tc1', role: 'assistant', content: '', createdAt: '2026-01-01T00:00:06.000Z', toolName: 'search', toolCalls: [{ id: 'call_1', name: 'search', arguments: '{}' }] },
+            { id: 'a2', role: 'assistant', content: longText, createdAt: '2026-01-01T00:00:07.000Z', metadata: { projectionStatus: 'final' } },
+          ],
+        },
+      },
+      aliases: {},
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }, null, 2));
+
+    const projection = await import(`${pathToFileURL(deckChatProjectionModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    const continuation = projection.getProjectedContinuation('history-safe-session', 'sensgift', { userId: 'owner-a', role: 'user' });
+    assert.deepEqual(continuation.conversationHistory, [
+      { role: 'user', content: 'safe user' },
+      { role: 'assistant', content: 'safe assistant' },
+      { role: 'assistant', content: 'L'.repeat(1000) },
+    ]);
+    assert.equal(projection.getProjectedContinuation('history-safe-session', 'sensgift', { userId: 'owner-b', role: 'user' }), null);
+    assert.equal(projection.getProjectedContinuation('history-safe-session', 'default', { userId: 'owner-a', role: 'user' }), null);
   } finally {
     if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
     else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
@@ -1377,6 +1642,452 @@ test('chat stream rejects another ordinary user continuing owner-scoped projecte
   }
 });
 
+test('server-canonical projection response id overrides stale client continuation and item ids are ignored', async () => {
+  const home = makeHome();
+  const dataDir = join(home, '.hermesdeck-data');
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  const oldHermesApiBase = process.env.HERMES_API_BASE;
+  const oldApiServerKey = process.env.API_SERVER_KEY;
+  const originalFetch = globalThis.fetch;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMESDECK_AUTH_DIR = join(home, '.hermesdeck');
+    process.env.HERMESDECK_DATA_DIR = dataDir;
+    process.env.HERMES_API_BASE = 'http://127.0.0.1:18703';
+    process.env.API_SERVER_KEY = 'default-secret';
+
+    const auth = await loadAuth(home);
+    let store = withSuppressedBootstrapLog(() => auth.readAuth());
+    const now = new Date().toISOString();
+    const user = {
+      id: 'user_canonical_continuation',
+      username: 'canonical-continuation',
+      role: 'user',
+      status: 'active',
+      ...auth.createPasswordRecord('canonical-continuation-password-123'),
+      assignedProfileIds: ['default'],
+      preferences: { profiles: {} },
+      createdAt: now,
+      updatedAt: now,
+      approvedAt: now,
+      approvedBy: Object.values(store.users)[0].id,
+    };
+    store = { ...store, users: { ...store.users, [user.id]: user } };
+    writeStore(home, store);
+    const token = auth.issueSessionToken(user.id);
+
+    const projection = await import(`${pathToFileURL(deckChatProjectionModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    projection.startProjectedTurn({
+      sessionId: 'deck-visible-session',
+      profileId: 'default',
+      ownerUserId: user.id,
+      ownerRole: user.role,
+      message: 'first',
+    });
+    projection.finalizeProjectedTurn({
+      sessionId: 'deck-visible-session',
+      profileId: 'default',
+      viewer: { userId: user.id, role: user.role },
+      content: 'first answer',
+      responseId: 'resp_server_canonical',
+    });
+
+    const upstreamCalls = [];
+    globalThis.fetch = async (url, init = {}) => {
+      upstreamCalls.push({
+        url: String(url),
+        method: init.method || 'GET',
+        sessionId: init.headers?.['X-Hermes-Session-Id'],
+        body: init.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {"type":"response.output_item.done","item":{"id":"fc_tool_item","type":"function_call","name":"tool","arguments":"{}"}}\n\n'));
+          controller.enqueue(new TextEncoder().encode('data: {"type":"response.completed","response":{"id":"resp_new_server"}}\n\n'));
+          controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream', 'X-Hermes-Session-Id': 'deck-visible-session' } });
+    };
+
+    const streamRoute = await loadRouteModule(chatStreamRoutePath);
+    const res = await streamRoute.POST(jsonRouteRequest('/api/deck/chat/stream', 'POST', {
+      profileId: 'default',
+      sessionId: 'deck-visible-session',
+      previousResponseId: 'resp_stale_client_value',
+      message: 'continue',
+      model: 'mock-model',
+    }, { cookie: cookieHeader(token) }));
+    assert.equal(res.status, 200);
+    const sseText = await res.text();
+    assert.equal(upstreamCalls.length, 1);
+    assert.equal(upstreamCalls[0].sessionId, 'deck-visible-session');
+    assert.equal(upstreamCalls[0].body.previous_response_id, 'resp_server_canonical');
+    assert.equal('conversation_history' in upstreamCalls[0].body, false);
+    assert.match(sseText, /"responseId":"resp_new_server"/);
+    assert.doesNotMatch(sseText, /"responseId":"fc_tool_item"/);
+
+    const stored = JSON.parse(readFileSync(join(dataDir, 'chat-projection.v1.json'), 'utf8'));
+    assert.equal(stored.sessions['deck-visible-session'].responseId, 'resp_new_server');
+    assert.equal(stored.sessions['deck-visible-session'].messages.some((message) => message.metadata?.responseId === 'fc_tool_item'), false);
+
+    const hub = await import(`${pathToFileURL(streamHubModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    const activeStream = hub.getActiveStream('deck-visible-session');
+    if (activeStream?.evictTimer) clearTimeout(activeStream.evictTimer);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+    if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
+    else process.env.HERMES_API_BASE = oldHermesApiBase;
+    if (oldApiServerKey === undefined) delete process.env.API_SERVER_KEY;
+    else process.env.API_SERVER_KEY = oldApiServerKey;
+  }
+});
+
+test('chat stream strips client-supplied conversation_history for unproven new sessions', async () => {
+  const home = makeHome();
+  const dataDir = join(home, '.hermesdeck-data');
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  const oldHermesApiBase = process.env.HERMES_API_BASE;
+  const oldApiServerKey = process.env.API_SERVER_KEY;
+  const originalFetch = globalThis.fetch;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMESDECK_AUTH_DIR = join(home, '.hermesdeck');
+    process.env.HERMESDECK_DATA_DIR = dataDir;
+    process.env.HERMES_API_BASE = 'http://127.0.0.1:18704';
+    process.env.API_SERVER_KEY = 'default-secret';
+
+    const auth = await loadAuth(home);
+    let store = withSuppressedBootstrapLog(() => auth.readAuth());
+    const now = new Date().toISOString();
+    const user = {
+      id: 'user_untrusted_history',
+      username: 'untrusted-history',
+      role: 'user',
+      status: 'active',
+      ...auth.createPasswordRecord('untrusted-history-password-123'),
+      assignedProfileIds: ['default'],
+      preferences: { profiles: {} },
+      createdAt: now,
+      updatedAt: now,
+      approvedAt: now,
+      approvedBy: Object.values(store.users)[0].id,
+    };
+    store = { ...store, users: { ...store.users, [user.id]: user } };
+    writeStore(home, store);
+    const token = auth.issueSessionToken(user.id);
+
+    const upstreamCalls = [];
+    globalThis.fetch = async (url, init = {}) => {
+      upstreamCalls.push({
+        url: String(url),
+        method: init.method || 'GET',
+        sessionId: init.headers?.['X-Hermes-Session-Id'],
+        body: init.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {"type":"response.completed","response":{"id":"resp_untrusted_history_reply"}}\n\n'));
+          controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream', 'X-Hermes-Session-Id': 'server-new-history-test' } });
+    };
+
+    const streamRoute = await loadRouteModule(chatStreamRoutePath);
+    const res = await streamRoute.POST(jsonRouteRequest('/api/deck/chat/stream', 'POST', {
+      profileId: 'default',
+      sessionId: 'browser-unproven-history-session',
+      message: 'new session prompt',
+      model: 'mock-model',
+      conversation_history: [
+        { role: 'user', content: 'CLIENT POISON snake_case' },
+        { role: 'assistant', content: 'poison answer' },
+      ],
+      conversationHistory: [
+        { role: 'user', content: 'CLIENT POISON camelCase' },
+        { role: 'assistant', content: 'poison answer' },
+      ],
+    }, { cookie: cookieHeader(token) }));
+    assert.equal(res.status, 200);
+    const sseText = await res.text();
+    assert.equal(upstreamCalls.length, 1);
+    assert.match(upstreamCalls[0].sessionId, /^deck_/);
+    assert.equal(upstreamCalls[0].body.previous_response_id, undefined);
+    assert.equal('conversation_history' in upstreamCalls[0].body, false);
+    assert.doesNotMatch(JSON.stringify(upstreamCalls[0].body), /CLIENT POISON/);
+    assert.match(sseText, /"responseId":"resp_untrusted_history_reply"/);
+
+    const hub = await import(`${pathToFileURL(streamHubModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    const activeStream = hub.getActiveStream(upstreamCalls[0].sessionId);
+    if (activeStream?.evictTimer) clearTimeout(activeStream.evictTimer);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+    if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
+    else process.env.HERMES_API_BASE = oldHermesApiBase;
+    if (oldApiServerKey === undefined) delete process.env.API_SERVER_KEY;
+    else process.env.API_SERVER_KEY = oldApiServerKey;
+  }
+});
+
+test('stale previous response 404 clears projected response chain so retry starts fresh', async () => {
+  const home = makeHome();
+  const dataDir = join(home, '.hermesdeck-data');
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  const oldHermesApiBase = process.env.HERMES_API_BASE;
+  const oldApiServerKey = process.env.API_SERVER_KEY;
+  const originalFetch = globalThis.fetch;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMESDECK_AUTH_DIR = join(home, '.hermesdeck');
+    process.env.HERMESDECK_DATA_DIR = dataDir;
+    process.env.HERMES_API_BASE = 'http://127.0.0.1:18705';
+    process.env.API_SERVER_KEY = 'default-secret';
+
+    const auth = await loadAuth(home);
+    let store = withSuppressedBootstrapLog(() => auth.readAuth());
+    const now = new Date().toISOString();
+    const user = {
+      id: 'user_stale_previous_response',
+      username: 'stale-previous-response',
+      role: 'user',
+      status: 'active',
+      ...auth.createPasswordRecord('stale-previous-response-password-123'),
+      assignedProfileIds: ['default'],
+      preferences: { profiles: {} },
+      createdAt: now,
+      updatedAt: now,
+      approvedAt: now,
+      approvedBy: Object.values(store.users)[0].id,
+    };
+    store = { ...store, users: { ...store.users, [user.id]: user } };
+    writeStore(home, store);
+    const token = auth.issueSessionToken(user.id);
+
+    const projection = await import(`${pathToFileURL(deckChatProjectionModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    projection.startProjectedTurn({
+      sessionId: 'deck-stale-response-session',
+      profileId: 'default',
+      ownerUserId: user.id,
+      ownerRole: user.role,
+      message: 'first',
+    });
+    projection.finalizeProjectedTurn({
+      sessionId: 'deck-stale-response-session',
+      profileId: 'default',
+      viewer: { userId: user.id, role: user.role },
+      content: 'first answer',
+      responseId: 'resp_missing_upstream',
+    });
+
+    const upstreamCalls = [];
+    globalThis.fetch = async (url, init = {}) => {
+      upstreamCalls.push({
+        url: String(url),
+        method: init.method || 'GET',
+        sessionId: init.headers?.['X-Hermes-Session-Id'],
+        body: init.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      if (upstreamCalls.length === 1) {
+        return new Response(JSON.stringify({ error: 'Previous response not found: resp_missing_upstream' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {"type":"response.completed","response":{"id":"resp_after_repair"}}\n\n'));
+          controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream', 'X-Hermes-Session-Id': 'deck-stale-response-session' } });
+    };
+
+    const streamRoute = await loadRouteModule(chatStreamRoutePath);
+    const failed = await streamRoute.POST(jsonRouteRequest('/api/deck/chat/stream', 'POST', {
+      profileId: 'default',
+      sessionId: 'deck-stale-response-session',
+      previousResponseId: 'resp_client_stale_ignored',
+      message: 'continue with stale server id',
+      model: 'mock-model',
+    }, { cookie: cookieHeader(token) }));
+    assert.equal(failed.status, 200);
+    const failedSse = await failed.text();
+    assert.match(failedSse, /Previous response not found: resp_missing_upstream/);
+    assert.equal(upstreamCalls[0].body.previous_response_id, 'resp_missing_upstream');
+
+    let stored = JSON.parse(readFileSync(join(dataDir, 'chat-projection.v1.json'), 'utf8'));
+    assert.equal(stored.sessions['deck-stale-response-session'].responseId, undefined);
+    assert.equal(stored.sessions['deck-stale-response-session'].previousResponseId, undefined);
+    const continuationAfterStale = projection.getProjectedContinuation('deck-stale-response-session', 'default', { userId: user.id, role: user.role });
+    assert.equal(continuationAfterStale.sessionId, 'deck-stale-response-session');
+    assert.equal(continuationAfterStale.responseChainStale, true);
+    assert.deepEqual(continuationAfterStale.conversationHistory, [
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'first answer' },
+      { role: 'user', content: 'continue with stale server id' },
+    ]);
+
+    const retry = await streamRoute.POST(jsonRouteRequest('/api/deck/chat/stream', 'POST', {
+      profileId: 'default',
+      sessionId: 'deck-stale-response-session',
+      previousResponseId: 'resp_client_still_stale',
+      message: 'retry after repair',
+      model: 'mock-model',
+    }, { cookie: cookieHeader(token) }));
+    assert.equal(retry.status, 200);
+    const retrySse = await retry.text();
+    assert.equal(upstreamCalls.length, 2);
+    assert.equal(upstreamCalls[1].body.previous_response_id, undefined);
+    assert.deepEqual(upstreamCalls[1].body.conversation_history, [
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'first answer' },
+      { role: 'user', content: 'continue with stale server id' },
+    ]);
+    assert.match(retrySse, /"responseId":"resp_after_repair"/);
+    stored = JSON.parse(readFileSync(join(dataDir, 'chat-projection.v1.json'), 'utf8'));
+    assert.equal(stored.sessions['deck-stale-response-session'].responseId, 'resp_after_repair');
+
+    const hub = await import(`${pathToFileURL(streamHubModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    const activeStream = hub.getActiveStream('deck-stale-response-session');
+    if (activeStream?.evictTimer) clearTimeout(activeStream.evictTimer);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+    if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
+    else process.env.HERMES_API_BASE = oldHermesApiBase;
+    if (oldApiServerKey === undefined) delete process.env.API_SERVER_KEY;
+    else process.env.API_SERVER_KEY = oldApiServerKey;
+  }
+});
+
+test('projected continuation rejects non-resp ids and unproven response chains fail closed', async () => {
+  const home = makeHome();
+  const dataDir = join(home, '.hermesdeck-data');
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  const oldHermesApiBase = process.env.HERMES_API_BASE;
+  const oldApiServerKey = process.env.API_SERVER_KEY;
+  const originalFetch = globalThis.fetch;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMESDECK_AUTH_DIR = join(home, '.hermesdeck');
+    process.env.HERMESDECK_DATA_DIR = dataDir;
+    process.env.HERMES_API_BASE = 'http://127.0.0.1:18704';
+    process.env.API_SERVER_KEY = 'default-secret';
+
+    const auth = await loadAuth(home);
+    let store = withSuppressedBootstrapLog(() => auth.readAuth());
+    const now = new Date().toISOString();
+    const user = {
+      id: 'user_invalid_continuation',
+      username: 'invalid-continuation',
+      role: 'user',
+      status: 'active',
+      ...auth.createPasswordRecord('invalid-continuation-password-123'),
+      assignedProfileIds: ['default'],
+      preferences: { profiles: {} },
+      createdAt: now,
+      updatedAt: now,
+      approvedAt: now,
+      approvedBy: Object.values(store.users)[0].id,
+    };
+    store = { ...store, users: { ...store.users, [user.id]: user } };
+    writeStore(home, store);
+    const token = auth.issueSessionToken(user.id);
+
+    const projection = await import(`${pathToFileURL(deckChatProjectionModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    projection.startProjectedTurn({
+      sessionId: 'no-response-proof-session',
+      profileId: 'default',
+      ownerUserId: user.id,
+      ownerRole: user.role,
+      message: 'first',
+      previousResponseId: 'fc_invalid_previous',
+    });
+    projection.finalizeProjectedTurn({
+      sessionId: 'no-response-proof-session',
+      profileId: 'default',
+      viewer: { userId: user.id, role: user.role },
+      content: 'bad answer id ignored',
+      responseId: 'call_invalid_response',
+    });
+    assert.equal(projection.projectedResponseIdMatches('no-response-proof-session', 'default', 'call_invalid_response', { userId: user.id, role: user.role }), false);
+    const invalidContinuation = projection.getProjectedContinuation('no-response-proof-session', 'default', { userId: user.id, role: user.role });
+    assert.equal(invalidContinuation.sessionId, 'no-response-proof-session');
+    assert.equal(invalidContinuation.responseId, undefined);
+    assert.deepEqual(invalidContinuation.conversationHistory, [
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'bad answer id ignored' },
+    ]);
+
+    const upstreamCalls = [];
+    globalThis.fetch = async (url, init = {}) => {
+      upstreamCalls.push({ url: String(url), method: init.method || 'GET' });
+      return Response.json({ unexpected: true });
+    };
+
+    const streamRoute = await loadRouteModule(chatStreamRoutePath);
+    const res = await streamRoute.POST(jsonRouteRequest('/api/deck/chat/stream', 'POST', {
+      profileId: 'default',
+      sessionId: 'no-response-proof-session',
+      previousResponseId: 'fc_invalid_previous',
+      message: 'must fail closed',
+      model: 'mock-model',
+    }, { cookie: cookieHeader(token) }));
+    assert.equal(res.status, 403);
+    assert.equal((await responseJson(res)).error, 'response_profile_unverified');
+    assert.deepEqual(upstreamCalls, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+    if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
+    else process.env.HERMES_API_BASE = oldHermesApiBase;
+    if (oldApiServerKey === undefined) delete process.env.API_SERVER_KEY;
+    else process.env.API_SERVER_KEY = oldApiServerKey;
+  }
+});
+
 test('chat stream does not forward unproven client session ids or response ids upstream', () => {
   const routeSource = readFileSync(chatStreamRoutePath, 'utf8');
   const streamSource = readFileSync(chatStreamModulePath, 'utf8');
@@ -1384,8 +2095,8 @@ test('chat stream does not forward unproven client session ids or response ids u
   assert.match(routeSource, /proveProfileRoutable\(profileId\)/);
   assert.match(routeSource, /profileId !== 'default'/);
   assert.match(routeSource, /profile_routing_unavailable/);
-  assert.match(routeSource, /hasProjectedSession\(requestedSessionId, profileId, projectionViewer\)/);
-  assert.match(routeSource, /projectedResponseIdMatches\(requestedSessionId, profileId, previousResponseId, projectionViewer\)/);
+  assert.match(routeSource, /getProjectedContinuation\(requestedSessionId, profileId, projectionViewer\)/);
+  assert.doesNotMatch(routeSource, /projectedResponseIdMatches\(requestedSessionId, profileId, previousResponseId, projectionViewer\)/);
   assert.doesNotMatch(routeSource, /profileId !== 'default' && hasPreviousResponseId/);
   assert.match(routeSource, /const generatedDeckSessionId = requestedSessionId && !projectedSessionIsTrusted/);
   assert.doesNotMatch(routeSource, /trustedSessionIdForProfile = profileId === 'default'/);
@@ -1416,11 +2127,11 @@ test('chat resume cursor advances only after replayed events are consumed and ga
   assert.match(hookSource, /lastSeq: inf\.lastSeq/);
 });
 
-test('profile-scoped session rows require per-row profile proof for named profiles', () => {
+test('profile-scoped session rows require upstream profile proof for named profiles', () => {
   const sessionsSource = readFileSync(hermesSessionsModulePath, 'utf8');
 
-  assert.match(sessionsSource, /function profileIdForTrustedRow\(row: HermesSessionRow, requestedProfile\?: string, _responseHasProfileMetadata = false\)/);
-  assert.doesNotMatch(sessionsSource, /if \(requestedProfile && responseHasProfileMetadata\) return requestedProfile/);
+  assert.match(sessionsSource, /function profileIdForTrustedRow\([\s\S]*responseHasProfileMetadata = false/);
+  assert.match(sessionsSource, /!isDefaultProfile\(requestedProfile\)[\s\S]*!responseHasProfileMetadata/);
   assert.match(sessionsSource, /Hermes Agent did not include session profile metadata for a profile-scoped session list/);
 });
 
@@ -2456,10 +3167,50 @@ test('proxy auth boundary classifies inactive signed sessions before unauthentic
 
 test('token analytics route uses the admin-only guard', () => {
   const source = readFileSync(tokenRoutePath, 'utf8');
-  assert.match(source, /import \{ requireAdmin \} from '@\/lib\/server\/rbac';/);
+  assert.match(source, /requireAdmin/);
   assert.match(source, /const auth = requireAdmin\(req\);/);
-  assert.doesNotMatch(source, /requireProfileAccess/);
+  assert.match(source, /requireProfileAccess\(auth\.user, profile\)/);
+  assert.match(source, /isSuperAdminRole\(auth\.user\.role\)/);
   assert.doesNotMatch(source, /getTokenStats\(days\)[\s\S]*requireAdmin\(req\)/);
+});
+
+test('token analytics route checks scoped admin profile access before unavailable fallback', async () => {
+  const home = makeHome();
+  let auth = await loadAuth(home);
+  const store = withSuppressedBootstrapLog(() => auth.readAuth());
+  const superAdmin = Object.values(store.users)[0];
+  const now = new Date().toISOString();
+  const admin = {
+    id: 'token_admin',
+    username: 'token-admin',
+    role: 'admin',
+    status: 'active',
+    ...auth.createPasswordRecord('token-admin-password-123'),
+    assignedProfileIds: ['agent-a'],
+    preferences: { profiles: {} },
+    createdAt: now,
+    updatedAt: now,
+    approvedAt: now,
+    approvedBy: superAdmin.id,
+  };
+  writeStore(home, { ...store, users: { ...store.users, [admin.id]: admin } });
+  auth = await loadAuth(home);
+  const token = auth.issueSessionToken(admin.id);
+  const route = await import(`${pathToFileURL(tokenRoutePath).href}?case=${Date.now()}-${importNonce++}`);
+  const req = (profile) => new NextRequest(`https://deck.example.test/api/deck/tokens?days=7${profile ? `&profile=${profile}` : ''}`, {
+    headers: { cookie: `hermesdeck_session=${encodeURIComponent(token)}` },
+  });
+
+  const globalDenied = await route.GET(req());
+  assert.equal(globalDenied.status, 403);
+
+  const profileDenied = await route.GET(req('agent-b'));
+  assert.equal(profileDenied.status, 403);
+
+  const unavailable = await route.GET(req('agent-a'));
+  assert.equal(unavailable.status, 200);
+  const body = await unavailable.json();
+  assert.equal(body.unavailableReason.includes('does not currently expose token analytics'), true);
 });
 
 test('chat resume authorization is bound to immutable stream metadata and API failures do not fall back to Hermes CLI', () => {
@@ -2553,10 +3304,11 @@ test('cron profile routing errors preserve typed error code at route boundary', 
   const cronSource = readFileSync(hermesCronModulePath, 'utf8');
   const routeSource = readFileSync(cronRoutePath, 'utf8');
   assert.match(cronSource, /export class CronProfileRoutingError extends Error/);
-  assert.match(cronSource, /readonly code = 'profile_routing_unavailable'/);
+  assert.match(cronSource, /profile_routing_unavailable/);
+  assert.match(cronSource, /cron_profile_mismatch/);
   assert.match(cronSource, /routed_profile_id/);
   assert.match(cronSource, /routing\.profile_id/);
-  assert.match(cronSource, /throw new CronProfileRoutingError\(requestedProfile\)/);
+  assert.match(cronSource, /return true/);
   assert.match(routeSource, /err instanceof CronProfileRoutingError/);
   assert.match(routeSource, /error: err\.code/);
   assert.match(routeSource, /status: err\.status/);
@@ -2574,7 +3326,6 @@ test('API-only runtime helpers no longer use direct runtime storage or Hermes CL
     'src/lib/server/hermes/models.ts',
     'src/lib/server/hermes/health.ts',
     'src/lib/server/hermes/kanban.ts',
-    'src/lib/server/hermes/lcm.ts',
   ];
   const combined = helperPaths.map((p) => readFileSync(resolve(p), 'utf8')).join('\n');
   assert.doesNotMatch(combined, /state\.db|sqlite3|pathlib\.Path\.home\(\)|execFileAsync\(['\"]hermes['\"]|spawn\(['\"]hermes['\"]|config\.yaml|profiles\/<id>|lcm\.db|kanban\.db|hermes kanban|runPython|node:fs|homedir\(\)|HERMES_DASHBOARD_BASE/);
@@ -2586,6 +3337,6 @@ test('API-only runtime helpers no longer use direct runtime storage or Hermes CL
   assert.match(readFileSync(resolve('src/lib/server/hermes/messages.ts'), 'utf8'), /\/api\/sessions\/\$\{encodeURIComponent\(trimmedSessionId\)\}\/messages/);
   assert.match(readFileSync(resolve('src/lib/server/hermes/stats.ts'), 'utf8'), /getSessionsForStats/);
   assert.match(readFileSync(resolve('src/lib/server/hermes/kanban.ts'), 'utf8'), /Hermes Agent API[\s\S]*\/api\/kanban/);
-  assert.match(readFileSync(resolve('src/lib/server/hermes/lcm.ts'), 'utf8'), /\/api\/lcm[\s\S]*\/api\/lcm\/dashboard/);
+  assert.match(readFileSync(resolve('src/lib/server/hermes/lcm.ts'), 'utf8'), /read-only adapter over hermes-lcm's existing on-disk SQLite state/);
   assert.doesNotMatch(readFileSync(resolve('src/lib/server/hermes/health.ts'), 'utf8'), /9120|\/api\/sessions|Dashboard sidecar|HERMES_DASHBOARD_BASE/);
 });

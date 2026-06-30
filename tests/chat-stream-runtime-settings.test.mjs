@@ -59,3 +59,26 @@ test('chat stream timeout defaults to Hermes subagent timeout plus five minutes'
   assert.equal(CHAT_STREAM_DEFAULT_TIMEOUT_MS, 2_100_000);
   assert.equal(CHAT_STREAM_HARD_TIMEOUT_MS, CHAT_STREAM_DEFAULT_TIMEOUT_MS);
 });
+
+test('Hermes request body preflight uses the current 10MB byte limit', async () => {
+  const { HERMES_REQUEST_BODY_BYTE_LIMIT, hermesRequestBodyByteSize } = await loadChatStream();
+  const b64 = (bytes) => 'A'.repeat(Math.ceil(bytes / 3) * 4);
+  const kevinTwoImages = JSON.stringify({
+    input: [{
+      role: 'user',
+      content: [
+        { type: 'input_text', text: 'two images' },
+        { type: 'input_image', image_url: { url: `data:image/jpeg;base64,${b64(166_896)}`, detail: 'auto' } },
+        { type: 'input_image', image_url: { url: `data:image/jpeg;base64,${b64(650_307)}`, detail: 'auto' } },
+      ],
+    }],
+    stream: true,
+    metadata: { profileId: 'sensgift', source: 'hermesdeck' },
+  });
+
+  assert.equal(HERMES_REQUEST_BODY_BYTE_LIMIT, 10_000_000);
+  assert.equal(hermesRequestBodyByteSize('你'), 3);
+  assert.ok(hermesRequestBodyByteSize(kevinTwoImages) > 1_000_000);
+  assert.ok(hermesRequestBodyByteSize(kevinTwoImages) <= HERMES_REQUEST_BODY_BYTE_LIMIT);
+  assert.ok(hermesRequestBodyByteSize(JSON.stringify({ input: 'x'.repeat(HERMES_REQUEST_BODY_BYTE_LIMIT) })) > HERMES_REQUEST_BODY_BYTE_LIMIT);
+});

@@ -33,6 +33,9 @@ const FAILED_OR_RUNNING_SESSION_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 const LOCK_STALE_MS = 5 * 60_000;
 const LOCK_RETRY_MS = 25;
 const LOCK_TIMEOUT_MS = 5_000;
+const CONTINUATION_HISTORY_MAX_MESSAGES = 20;
+const CONTINUATION_HISTORY_MAX_MESSAGE_CHARS = 1_000;
+const CONTINUATION_HISTORY_MAX_TOTAL_CHARS = 6_000;
 
 export type ProjectedSessionStatus = 'running' | 'completed' | 'failed';
 
@@ -90,6 +93,13 @@ export type RecordProjectedErrorInput = {
   detail?: string;
 };
 
+export type ClearProjectedResponseChainInput = {
+  sessionId: string;
+  profileId: string;
+  viewer?: ProjectionViewer;
+  staleResponseId?: string;
+};
+
 export type RecordProjectedRunEventInput = {
   sessionId: string;
   profileId: string;
@@ -101,6 +111,11 @@ export type RecordProjectedRunEventInput = {
 export type ProjectionViewer = {
   userId: string;
   role?: string;
+};
+
+export type ProjectedConversationHistoryItem = {
+  role: 'user' | 'assistant';
+  content: string;
 };
 
 export type ImportProjectedChatStateInput = {
@@ -132,6 +147,15 @@ function safeRecord(value: unknown): Record<string, unknown> | null {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+export function isValidResponsesApiId(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().startsWith('resp_');
+}
+
+function responseIdValue(value: unknown): string | undefined {
+  const raw = stringValue(value);
+  return isValidResponsesApiId(raw) ? raw : undefined;
 }
 
 function isoTimestamp(value: unknown): string | undefined {
@@ -222,6 +246,40 @@ function sanitizeMessage(value: unknown, fallbackId: string): ProjectedMessage |
     toolCallId: stringValue(rec.toolCallId),
     toolCalls: toolCalls?.length ? toolCalls : undefined,
   };
+}
+
+function responseChainKnownStale(session: ProjectedSession, responseId?: string): boolean {
+  const lastError = stringValue(session.lastError) || '';
+  if (!/previous response not found/i.test(lastError)) return false;
+  return !responseId || lastError.includes(responseId);
+}
+
+function projectedConversationHistory(session: ProjectedSession): ProjectedConversationHistoryItem[] {
+  const safeMessages: ProjectedConversationHistoryItem[] = [];
+  let totalChars = 0;
+  for (const message of session.messages || []) {
+    let role: 'user' | 'assistant' | undefined;
+    if (message.role === 'user') role = 'user';
+    else if (message.role === 'assistant') role = 'assistant';
+    if (!role) continue;
+    const metadata = safeRecord(message.metadata) || {};
+    const projectionStatus = stringValue(metadata.projectionStatus);
+    const projectionKind = stringValue(metadata.projectionKind);
+    if (projectionStatus === 'draft' || projectionStatus === 'error') continue;
+    if (projectionKind && projectionKind !== 'message') continue;
+    if (message.toolName || message.toolCallId || (Array.isArray(message.toolCalls) && message.toolCalls.length)) continue;
+    if (Array.isArray(message.attachments) && message.attachments.length) continue;
+    const raw = sanitizeText(message.content, CONTINUATION_HISTORY_MAX_MESSAGE_CHARS).trim();
+    if (!raw || /^Error:/i.test(raw)) continue;
+    const remaining = CONTINUATION_HISTORY_MAX_TOTAL_CHARS - totalChars;
+    if (remaining <= 0) break;
+    const content = raw.length > remaining ? raw.slice(0, remaining) : raw;
+    if (!content.trim()) continue;
+    safeMessages.push({ role, content });
+    totalChars += content.length;
+    if (safeMessages.length >= CONTINUATION_HISTORY_MAX_MESSAGES) break;
+  }
+  return safeMessages;
 }
 
 function normalizeProfile(profileId: string): string {
@@ -630,7 +688,7 @@ export function startProjectedTurn(input: StartProjectedTurnInput): void {
         ownerUserId: input.ownerUserId,
         ownerRole: input.ownerRole,
         status: 'running',
-        previousResponseId: input.previousResponseId,
+        previousResponseId: responseIdValue(input.previousResponseId),
         messages: [],
       };
       store.sessions[canonicalId] = session;
@@ -647,7 +705,7 @@ export function startProjectedTurn(input: StartProjectedTurnInput): void {
     session.ownerRole ||= input.ownerRole;
     session.model = input.model || session.model;
     session.reasoningEffort = input.reasoningEffort || session.reasoningEffort;
-    session.previousResponseId = input.previousResponseId || session.previousResponseId;
+    session.previousResponseId = responseIdValue(input.previousResponseId) || session.previousResponseId;
     session.status = 'running';
     session.updatedAt = now;
     if (text) {
@@ -821,6 +879,7 @@ export function finalizeProjectedTurn(input: FinalizeProjectedTurnInput): void {
   if (!sessionId) return;
   const content = sanitizeText(input.content);
   const attachments = sanitizeAttachments(input.attachments);
+  const responseId = responseIdValue(input.responseId);
   mutateStore((store) => {
     const canonicalId = resolveAlias(store, sessionId);
     const session = store.sessions[canonicalId];
@@ -835,7 +894,7 @@ export function finalizeProjectedTurn(input: FinalizeProjectedTurnInput): void {
       draft.content = content;
       draft.updatedAt = now;
       draft.attachments = attachments || draft.attachments;
-      draft.metadata = { ...(draft.metadata || {}), projectionStatus: 'final', responseId: input.responseId };
+      draft.metadata = { ...(draft.metadata || {}), projectionStatus: 'final', ...(responseId ? { responseId } : {}) };
     } else {
       session.messages.push({
         id: messageId('a'),
@@ -843,10 +902,11 @@ export function finalizeProjectedTurn(input: FinalizeProjectedTurnInput): void {
         content,
         createdAt: now,
         attachments,
-        metadata: { observedFrom: 'deck-stream', projectionStatus: 'final', responseId: input.responseId },
+        metadata: { observedFrom: 'deck-stream', projectionStatus: 'final', ...(responseId ? { responseId } : {}) },
       });
     }
-    session.responseId = input.responseId || session.responseId;
+    session.responseId = responseId || session.responseId;
+    if (responseId) delete session.lastError;
     session.model = input.model || session.model;
     session.reasoningEffort = input.reasoningEffort || session.reasoningEffort;
     session.status = 'completed';
@@ -888,6 +948,32 @@ export function recordProjectedTurnError(input: RecordProjectedErrorInput): void
     session.status = 'failed';
     session.updatedAt = now;
     session.messageCount = session.messages.length;
+  });
+}
+
+export function clearProjectedResponseChain(input: ClearProjectedResponseChainInput): boolean {
+  const profile = normalizeProfile(input.profileId);
+  const sessionId = input.sessionId.trim();
+  if (!sessionId) return false;
+  const staleResponseId = responseIdValue(input.staleResponseId);
+  return !!mutateStore((store) => {
+    const canonicalId = resolveAlias(store, sessionId);
+    const session = store.sessions[canonicalId];
+    if (!session) return false;
+    if (session.profileId !== profile) {
+      throw new SessionProfileRoutingError(SESSION_PROFILE_MISMATCH, 'Projected session belongs to a different profile.', 403);
+    }
+    assertCanWriteProjectedSession(session, input.viewer);
+    const currentResponseId = responseIdValue(session.responseId);
+    const currentPreviousResponseId = responseIdValue(session.previousResponseId);
+    if (staleResponseId && currentResponseId !== staleResponseId && currentPreviousResponseId !== staleResponseId) {
+      return false;
+    }
+    if (!currentResponseId && !currentPreviousResponseId) return false;
+    delete session.responseId;
+    delete session.previousResponseId;
+    session.updatedAt = nowIso();
+    return true;
   });
 }
 
@@ -963,7 +1049,7 @@ export function importProjectedChatState(input: ImportProjectedChatStateInput): 
       if (existing && existing.profileId !== profileId) continue;
       const createdAt = isoTimestamp(rec.createdAt) || messages[0]?.createdAt || now;
       const updatedAt = isoTimestamp(rec.updatedAt) || messages[messages.length - 1]?.createdAt || createdAt;
-      const responseId = stringValue(responseIds[id]);
+      const responseId = responseIdValue(responseIds[id]);
       store.sessions[id] = {
         ...existing,
         id,
@@ -997,17 +1083,37 @@ export function hasProjectedSession(sessionId: string, profileId: string, viewer
   return !!session && session.profileId === normalizeProfile(profileId) && canWriteProjectedSession(session, viewer);
 }
 
+export function getProjectedContinuation(
+  sessionId: string,
+  profileId: string,
+  viewer?: ProjectionViewer,
+): { sessionId: string; responseId?: string; responseChainStale?: boolean; conversationHistory?: ProjectedConversationHistoryItem[] } | null {
+  const store = readStore();
+  const canonicalId = resolveAlias(store, sessionId.trim());
+  const session = store.sessions[canonicalId];
+  if (!session || session.profileId !== normalizeProfile(profileId) || !canWriteProjectedSession(session, viewer)) return null;
+  const responseId = responseIdValue(session.responseId);
+  const responseChainStale = responseChainKnownStale(session, responseId);
+  const conversationHistory = (!responseId || responseChainStale) ? projectedConversationHistory(session) : [];
+  return {
+    sessionId: session.id || canonicalId,
+    ...(responseId && !responseChainStale ? { responseId } : {}),
+    ...(responseChainStale ? { responseChainStale: true } : {}),
+    ...(conversationHistory.length ? { conversationHistory } : {}),
+  };
+}
+
 export function projectedResponseIdMatches(sessionId: string, profileId: string, responseId: string, viewer?: ProjectionViewer): boolean {
-  const expected = responseId.trim();
+  const expected = responseIdValue(responseId);
   if (!expected) return false;
   const store = readStore();
   const canonicalId = resolveAlias(store, sessionId.trim());
   const session = store.sessions[canonicalId];
   if (!session || session.profileId !== normalizeProfile(profileId) || !canWriteProjectedSession(session, viewer)) return false;
-  if (session.responseId === expected) return true;
+  if (responseIdValue(session.responseId) === expected) return true;
   return session.messages.some((message) => {
     const metadata = safeRecord(message.metadata);
-    return stringValue(metadata?.responseId) === expected;
+    return responseIdValue(metadata?.responseId) === expected;
   });
 }
 

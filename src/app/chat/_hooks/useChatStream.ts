@@ -4,6 +4,13 @@ import { deckApi, ApiError } from '@/lib/api';
 import { resumeChatStreamClient, streamChat, type StreamCallbacks } from '@/lib/client-sse';
 import { CHAT_STREAM_DEFAULT_TIMEOUT_MS } from '@/lib/chat-timeouts';
 import {
+  isRecoverableStreamTransportError,
+  shouldApplyStreamRecoveryUpdate,
+  streamErrorMessage,
+  STREAM_RECOVERY_FAILED_MESSAGE,
+  STREAM_RECONNECTING_MESSAGE,
+} from '@/lib/chat-stream-resilience';
+import {
   attachmentToPayload,
   type AttachmentItem,
 } from '@/lib/attachments';
@@ -136,6 +143,14 @@ function writeInflight(v: InflightStorage): void {
 }
 function clearInflight(): void {
   try { localStorage.removeItem(INFLIGHT_KEY); } catch {}
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function hasProjectedDraft(list: DeckMessage[]): boolean {
+  return list.some((m) => m.role === 'assistant' && m.metadata?.projectionStatus === 'draft');
 }
 
 function serializeToolCalls(map: Map<string, ToolCallSlot>): StoredToolCall[] {
@@ -666,12 +681,19 @@ export function useChatStream(params: UseChatStreamParams) {
         const inf = inflightRef.current!;
         myTextAssistantId = inf.textAssistantId || myTextAssistantId;
         const targetId = myTextAssistantId;
-        setMessages((m) => ({
-          ...m,
-          [sid]: (m[sid] || []).map((x) => x.id === targetId
-            ? { ...x, content: x.content + delta }
-            : x),
-        }));
+        setMessages((m) => {
+          const list = m[sid] || [];
+          const last = list[list.length - 1];
+          if (last?.id === targetId) {
+            return { ...m, [sid]: [...list.slice(0, -1), { ...last, content: last.content + delta }] };
+          }
+          return {
+            ...m,
+            [sid]: list.map((x) => x.id === targetId
+              ? { ...x, content: x.content + delta }
+              : x),
+          };
+        });
       },
       onEvent(type, payload) {
         if (init.isAbortedRef.current) return;
@@ -771,6 +793,94 @@ export function useChatStream(params: UseChatStreamParams) {
     };
   }, [applyToolEventToMessages, handleEvent, profile, pushTimeline, setError, setMessages, setResponseIds, setSessions, setUsage, t]);
 
+  const recoverTransportDrop = useCallback(async (init: {
+    hubKey: string;
+    getSessionId: () => string;
+    initialAssistantId: string;
+    streamId: number;
+    lastSeq: () => number;
+    profile: string;
+    signal: AbortSignal;
+    isAbortedRef: React.MutableRefObject<boolean>;
+    onSidReconcile: (incoming: string) => void;
+  }): Promise<boolean> => {
+    const recoveryOwner = { streamId: init.streamId, profile: init.profile };
+    const isCurrent = () => shouldApplyStreamRecoveryUpdate(
+      inflightRef.current ? { streamId: inflightRef.current.streamId, profile: profileRef.current } : null,
+      recoveryOwner,
+      init.signal.aborted || init.isAbortedRef.current,
+    );
+    const isStillRelevant = (allowCompleted = false) => {
+      if (init.signal.aborted || init.isAbortedRef.current) return false;
+      const inf = inflightRef.current;
+      if (!inf) return allowCompleted && profileRef.current === init.profile;
+      return shouldApplyStreamRecoveryUpdate(
+        { streamId: inf.streamId, profile: profileRef.current },
+        recoveryOwner,
+        false,
+      );
+    };
+    if (!isCurrent()) return false;
+    setError(STREAM_RECONNECTING_MESSAGE);
+
+    try {
+      const ok = await resumeChatStreamClient(
+        init.hubKey,
+        init.profile,
+        init.lastSeq(),
+        buildCallbacks({
+          sid: init.getSessionId(),
+          initialAssistantId: init.initialAssistantId,
+          streamId: init.streamId,
+          profile: init.profile,
+          onSidReconcile: init.onSidReconcile,
+          isAbortedRef: init.isAbortedRef,
+        }),
+        init.signal,
+      );
+      if (!isStillRelevant(true)) return false;
+      if (ok) {
+        setError('');
+        return true;
+      }
+    } catch (err) {
+      if (!isCurrent()) return false;
+      // A resumed stream can hit the same WebKit transport drop. Fall through
+      // to server projection polling instead of surfacing the raw browser text.
+      if (!isRecoverableStreamTransportError(err, init.signal.aborted || init.isAbortedRef.current)) {
+        setError(streamErrorMessage(err, { explicitAbort: false, recoveryFailed: true }));
+      }
+    }
+
+    let fetchedAnyProjection = false;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      if (!isCurrent()) return false;
+      try {
+        const sid = init.getSessionId();
+        const r = await deckApi.messages(sid, init.profile, init.signal);
+        if (!isCurrent()) return false;
+        if (r.messages.length) {
+          fetchedAnyProjection = true;
+          setMessages((m) => ({ ...m, [sid]: r.messages }));
+          // If the server projection is still a draft, keep polling briefly so
+          // final tool results can land after a mobile-WebKit stream drop.
+          if (!hasProjectedDraft(r.messages)) break;
+        }
+      } catch {
+        // Projection fetch can be briefly unavailable while the stream route is
+        // still writing. Retry with a bounded, non-tight loop.
+      }
+      await sleep(attempt < 2 ? 1000 : 3000);
+    }
+    if (!isCurrent()) return false;
+    if (fetchedAnyProjection) {
+      setError('');
+      return true;
+    }
+    setError(STREAM_RECOVERY_FAILED_MESSAGE);
+    return false;
+  }, [buildCallbacks, setError, setMessages]);
+
   const send = useCallback(async (
     textArg?: string,
     opts?: {
@@ -801,6 +911,7 @@ export function useChatStream(params: UseChatStreamParams) {
       setMessages((m) => ({ ...m, [sid]: [] }));
       setActive(sid);
     }
+    const originalHubKey = sid;
     const currentResponseId = opts?.previousResponseIdOverride === null
       ? undefined
       : (opts?.previousResponseIdOverride ?? responseIds[sid]);
@@ -841,7 +952,7 @@ export function useChatStream(params: UseChatStreamParams) {
     stickToBottomRef.current = true;
     const streamId = nextStreamId++;
     inflightRef.current = {
-      hubKey: sid,
+      hubKey: originalHubKey,
       sessionId: sid,
       textAssistantId: assistantId,
       toolCalls: new Map(),
@@ -849,7 +960,7 @@ export function useChatStream(params: UseChatStreamParams) {
       streamId,
     };
     writeInflight({
-      hubKey: sid,
+      hubKey: originalHubKey,
       sessionId: sid,
       lastSeq: 0,
       profile,
@@ -919,8 +1030,23 @@ export function useChatStream(params: UseChatStreamParams) {
         ac.signal,
       );
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (!ac.signal.aborted) {
+      const recoverableDrop = isRecoverableStreamTransportError(e, ac.signal.aborted);
+      if (!ac.signal.aborted && recoverableDrop) {
+        const inf = inflightRef.current;
+        const recoveryHubKey = inf && inf.streamId === streamId ? inf.hubKey : originalHubKey;
+        await recoverTransportDrop({
+          hubKey: recoveryHubKey,
+          getSessionId: () => sid,
+          initialAssistantId: assistantId,
+          streamId,
+          lastSeq: () => inflightRef.current?.lastSeq ?? 0,
+          profile,
+          signal: ac.signal,
+          isAbortedRef,
+          onSidReconcile: reconcileSid,
+        });
+      } else if (!ac.signal.aborted) {
+        const msg = streamErrorMessage(e, { explicitAbort: false });
         setError(msg);
         // Restore the composer attachments so the user can retry without
         // re-uploading. Aborts (user pressed Stop) are intentional and we
@@ -950,7 +1076,7 @@ export function useChatStream(params: UseChatStreamParams) {
     }
   }, [
     abortRef, active, attachments, buildCallbacks, busy, clearTimeline, defaultReasoning, input,
-    profile, reasoningEffort, responseIds, selectedModel, stickToBottomRef, t,
+    profile, reasoningEffort, recoverTransportDrop, responseIds, selectedModel, stickToBottomRef, t,
     setActive, setAttachments, setBusy, setError, setInput, setMessages, setResponseIds, setSessions,
   ]);
 
@@ -1058,8 +1184,29 @@ export function useChatStream(params: UseChatStreamParams) {
         }
       } catch (e) {
         if (!isAbortedRef.current) {
-          const msg = e instanceof Error ? e.message : String(e);
-          setError(msg);
+          if (isRecoverableStreamTransportError(e, ac.signal.aborted || isAbortedRef.current)) {
+            setError(STREAM_RECONNECTING_MESSAGE);
+            let fetchedAnyProjection = false;
+            for (let attempt = 0; attempt < 8; attempt += 1) {
+              if (isAbortedRef.current || ac.signal.aborted) break;
+              try {
+                const r = await deckApi.messages(liveSid, profile, ac.signal);
+                if (isAbortedRef.current || ac.signal.aborted) break;
+                if (r.messages.length) {
+                  fetchedAnyProjection = true;
+                  setMessages((m) => ({ ...m, [liveSid]: r.messages }));
+                  if (!hasProjectedDraft(r.messages)) break;
+                }
+              } catch {}
+              await sleep(attempt < 2 ? 1000 : 3000);
+            }
+            if (!isAbortedRef.current && !ac.signal.aborted) {
+              setError(fetchedAnyProjection ? '' : STREAM_RECOVERY_FAILED_MESSAGE);
+            }
+          } else {
+            const msg = streamErrorMessage(e, { explicitAbort: false });
+            setError(msg);
+          }
         }
         // Do NOT clearInflight here for the same reason as `send`'s catch:
         // browser cancellation during page unload would otherwise wipe the
