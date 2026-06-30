@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getStats } from '@/lib/server/hermes';
 import { requireAuth } from '@/lib/server/csrf';
+import { isKnownUnavailableError, statusForUnexpectedError } from '../../_unavailable';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,9 @@ export async function GET(req: Request) {
     return NextResponse.json(stats, { headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=15' } });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: 'kanban_stats_failed', detail: msg.slice(0, 240) }, { status: 502 });
+    if (!isKnownUnavailableError(err)) {
+      return NextResponse.json({ error: 'kanban_stats_failed', detail: msg.slice(0, 240) }, { status: statusForUnexpectedError(err) });
+    }
+    return NextResponse.json({ total: 0, byStatus: {}, byAssignee: {}, unavailableReason: msg.slice(0, 240) }, { headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=60' } });
   }
 }

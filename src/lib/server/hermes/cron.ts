@@ -12,11 +12,15 @@ type HermesCronJobsResponse = {
 } | unknown[];
 
 export class CronProfileRoutingError extends Error {
-  readonly code = 'profile_routing_unavailable';
-  readonly status = 502;
-  constructor(profileId: string) {
-    super(`Hermes API did not confirm cron profile routing for '${profileId}'. Restart/upgrade the Hermes API before showing profile-specific jobs.`);
+  readonly code: 'profile_routing_unavailable' | 'cron_profile_mismatch';
+  readonly status: 502 | 403;
+  constructor(profileId: string, code: 'profile_routing_unavailable' | 'cron_profile_mismatch' = 'profile_routing_unavailable') {
+    super(code === 'cron_profile_mismatch'
+      ? `Hermes API returned cron jobs outside requested profile '${profileId}'.`
+      : `Hermes API did not confirm cron profile routing for '${profileId}'. Restart/upgrade the Hermes API before showing profile-specific jobs.`);
     this.name = 'CronProfileRoutingError';
+    this.code = code;
+    this.status = code === 'cron_profile_mismatch' ? 403 : 502;
   }
 }
 
@@ -96,13 +100,13 @@ function confirmedProfileId(payload: HermesCronJobsResponse): string | undefined
 function assertProfileRoutingConfirmed(payload: HermesCronJobsResponse, rawJobs: unknown[], requestedProfile: string): boolean {
   const confirmed = confirmedProfileId(payload);
   if (confirmed === requestedProfile) return true;
+  if (confirmed) throw new CronProfileRoutingError(requestedProfile, 'cron_profile_mismatch');
 
   const rowProfiles = rawJobs
     .map((job) => str(obj(job).profile))
     .filter((profile): profile is string => Boolean(profile));
-  if (rowProfiles.length > 0 && rowProfiles.every((profile) => profile === requestedProfile)) return true;
-
-  throw new CronProfileRoutingError(requestedProfile);
+  if (rowProfiles.some((profile) => profile !== requestedProfile)) throw new CronProfileRoutingError(requestedProfile, 'cron_profile_mismatch');
+  return true;
 }
 
 async function getCronJobsForProfile(profileId: string): Promise<DeckCronJob[]> {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAssignees } from '@/lib/server/hermes';
 import { requireAuth } from '@/lib/server/csrf';
+import { isKnownUnavailableError, statusForUnexpectedError } from '../../_unavailable';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ assignees }, { headers: { 'Cache-Control': 'private, max-age=8, stale-while-revalidate=24' } });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: 'kanban_assignees_failed', detail: msg.slice(0, 240) }, { status: 502 });
+    if (!isKnownUnavailableError(err)) {
+      return NextResponse.json({ error: 'kanban_assignees_failed', detail: msg.slice(0, 240) }, { status: statusForUnexpectedError(err) });
+    }
+    return NextResponse.json({ assignees: [], unavailableReason: msg.slice(0, 240) }, { headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=60' } });
   }
 }

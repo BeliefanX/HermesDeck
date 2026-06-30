@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getBoards, setActiveBoard } from '@/lib/server/hermes';
 import { guardMutating, guardRequestBody, readLimitedJson, requireAuth } from '@/lib/server/csrf';
+import { isKnownUnavailableError, statusForUnexpectedError } from '../../_unavailable';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,9 +18,12 @@ export async function GET(req: Request) {
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (!isKnownUnavailableError(err)) {
+      return NextResponse.json({ error: 'kanban_boards_failed', detail: msg.slice(0, 200) }, { status: statusForUnexpectedError(err) });
+    }
     return NextResponse.json(
-      { boards: [], error: 'kanban_boards_failed', detail: msg.slice(0, 200) },
-      { status: 502 },
+      { boards: [], unavailableReason: msg.slice(0, 200) },
+      { headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=60' } },
     );
   }
 }

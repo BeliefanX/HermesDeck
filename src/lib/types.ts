@@ -309,6 +309,7 @@ export interface TokenStats {
   topSources: Array<{ source: string; tokens: number; sessions: number }>;
   /** Window length in days the stats cover. */
   windowDays: number;
+  unavailableReason?: string;
 }
 
 /** Aggregate counts that span the entire Hermes state, not just the recent
@@ -533,8 +534,9 @@ export interface KanbanMarkdownFile {
 
 /** Per-board task summary returned by GET /api/deck/kanban?board=… */
 export interface KanbanBoardSnapshot {
-  board: KanbanBoard;
+  board?: KanbanBoard;
   tasks: KanbanTask[];
+  unavailableReason?: string;
 }
 
 export interface KanbanDiagnostic {

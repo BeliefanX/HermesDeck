@@ -36,7 +36,7 @@ export default function KanbanPage() {
   const { profiles, activeProfile } = useActiveProfile();
   const t = useT({
     zh: {
-      intro: 'Hermes Kanban —— 多 agent 共享一块持久看板，worker 自动认领、心跳、重试，挂掉会自动 reclaim。本页 1:1 读 ~/.hermes/kanban.db，操作走 hermes kanban CLI。',
+      intro: 'Hermes Kanban —— 多 agent 共享一块持久看板，worker 自动认领、心跳、重试，挂掉会自动 reclaim。本页通过 Hermes Agent API 读取和操作；上游端点缺失时会显示暂不可用。',
       newTask: '新建任务',
       refresh: '刷新',
       board: '看板',
@@ -154,7 +154,7 @@ export default function KanbanPage() {
       detailResize: '拖动调整详情面板宽度（双击重置）',
     },
     en: {
-      intro: 'Hermes Kanban — a durable, multi-agent shared board. Workers self-claim, heartbeat, retry; crashed workers are auto-reclaimed. This page reads ~/.hermes/kanban.db 1:1; mutations go through the hermes kanban CLI.',
+      intro: 'Hermes Kanban — a durable, multi-agent shared board. Workers self-claim, heartbeat, retry; crashed workers are auto-reclaimed. This page reads and mutates through the Hermes Agent API; missing upstream endpoints show as unavailable.',
       newTask: 'New task',
       refresh: 'Refresh',
       board: 'Board',
@@ -284,6 +284,7 @@ export default function KanbanPage() {
   const [boardCounts, setBoardCounts] = useState<KanbanBoard['counts'] | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>('');
+  const [unavailable, setUnavailable] = useState(false);
   const [busy, setBusy] = useState<string>(''); // task id currently being mutated
   const [actionErr, setActionErr] = useState<string>('');
 
@@ -370,6 +371,7 @@ export default function KanbanPage() {
       const r = await deckApi.kanbanSnapshot(board);
       setTasks(r.tasks || []);
       setBoardCounts(r.board?.counts || null);
+      setUnavailable(Boolean(r.unavailableReason));
       setErr('');
     } catch (e) {
       const detail = e instanceof ApiError ? `${e.status} ${e.message}` : (e instanceof Error ? e.message : String(e));
@@ -691,6 +693,14 @@ export default function KanbanPage() {
           <div style={{ fontSize: 12, color: 'var(--red)' }}>
             {t.loadFailed}: {err}
             <Btn size="sm" variant="ghost" onClick={refresh} style={{ marginLeft: 12 }}>{t.retryLoad}</Btn>
+          </div>
+        </Card>
+      )}
+
+      {unavailable && !err && !loading && (
+        <Card>
+          <div style={{ fontSize: 12, color: 'var(--yellow)' }}>
+            Kanban unavailable: Hermes Agent does not expose the kanban API yet.
           </div>
         </Card>
       )}

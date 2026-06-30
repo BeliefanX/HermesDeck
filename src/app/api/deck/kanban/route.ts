@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getBoardSnapshot, createTask, type CreateTaskInput } from '@/lib/server/hermes';
 import { guardMutating, guardRequestBody, readLimitedJson, requireAuth } from '@/lib/server/csrf';
+import { isKnownUnavailableError, statusForUnexpectedError } from '../_unavailable';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,9 +23,12 @@ export async function GET(req: Request) {
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (!isKnownUnavailableError(err)) {
+      return NextResponse.json({ error: 'kanban_fetch_failed', detail: msg.slice(0, 240) }, { status: statusForUnexpectedError(err) });
+    }
     return NextResponse.json(
-      { error: 'kanban_snapshot_failed', detail: msg.slice(0, 240) },
-      { status: 502 },
+      { tasks: [], unavailableReason: msg.slice(0, 240) },
+      { headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=60' } },
     );
   }
 }

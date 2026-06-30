@@ -182,6 +182,7 @@ export default function HomePage() {
       titleTopSources: '热门来源 · 14 天',
       tokenView: '令牌视图',
       noTokenUsage: '窗口期内无令牌用量。',
+      tokenAnalyticsUnavailable: '令牌分析暂不可用：Hermes Agent 尚未提供令牌分析 API。',
       noSourceRecords: '窗口期内无来源记录。',
       sessionsPlain: (n: number) => `${n} 个会话`,
       dayNames: ['一', '二', '三', '四', '五', '六', '日'],
@@ -328,6 +329,7 @@ export default function HomePage() {
       titleTopSources: 'Top sources · 14d',
       tokenView: 'token view',
       noTokenUsage: 'No token usage in window.',
+      tokenAnalyticsUnavailable: 'Token analytics unavailable: Hermes Agent does not expose token analytics yet.',
       noSourceRecords: 'No source records in window.',
       sessionsPlain: (n: number) => `${n} sessions`,
       dayNames: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -542,6 +544,14 @@ export default function HomePage() {
         <Card>
           <div style={{ color: 'var(--red)', fontSize: 13, lineHeight: 1.5 }}>
             Dashboard data load failed: {loadError}
+          </div>
+        </Card>
+      )}
+
+      {tokens?.unavailableReason && (
+        <Card>
+          <div style={{ color: 'var(--yellow)', fontSize: 12, lineHeight: 1.5 }}>
+            {t.tokenAnalyticsUnavailable}
           </div>
         </Card>
       )}

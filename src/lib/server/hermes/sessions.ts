@@ -110,16 +110,9 @@ function isDefaultProfile(profile?: string): boolean {
   return !profile || profile === 'default';
 }
 
-function profileIdForTrustedRow(row: HermesSessionRow, requestedProfile?: string, _responseHasProfileMetadata = false): string {
+function profileIdForTrustedRow(row: HermesSessionRow, requestedProfile?: string): string {
   const explicitProfile = explicitProfileFor(row);
-  if (!explicitProfile) {
-    if (isDefaultProfile(requestedProfile)) return 'default';
-    throw new SessionProfileRoutingError(
-      PROFILE_ROUTING_UNAVAILABLE,
-      'Hermes Agent did not include session profile metadata for a profile-scoped session list.',
-      502,
-    );
-  }
+  if (!explicitProfile) return requestedProfile || 'default';
   if (requestedProfile && explicitProfile !== requestedProfile) {
     throw new SessionProfileRoutingError(
       SESSION_PROFILE_MISMATCH,
@@ -130,10 +123,10 @@ function profileIdForTrustedRow(row: HermesSessionRow, requestedProfile?: string
   return explicitProfile;
 }
 
-function normalizeSession(row: HermesSessionRow, requestedProfile?: string, responseHasProfileMetadata = false): DeckSession | null {
+function normalizeSession(row: HermesSessionRow, requestedProfile?: string): DeckSession | null {
   const id = stringValue(row.id) || stringValue(row.session_id);
   if (!id) return null;
-  const profileId = profileIdForTrustedRow(row, requestedProfile, responseHasProfileMetadata);
+  const profileId = profileIdForTrustedRow(row, requestedProfile);
   const createdAt = isoTimestamp(row.started_at ?? row.created_at);
   const updatedAt = isoTimestamp(row.last_active ?? row.updated_at ?? row.ended_at ?? row.started_at ?? row.created_at);
   const messageCount = numberValue(row.message_count);
@@ -184,7 +177,6 @@ async function fetchSessionPage(profile: string | undefined, limit: number, offs
   }
   const responseProfile = !Array.isArray(payload) ? (stringValue(payload.profile_id) || stringValue(payload.profile)) : undefined;
   const trustedProfile = responseProfile || profile;
-  const responseHasProfileMetadata = !!responseProfile;
   if (profile && responseProfile && responseProfile !== profile) {
     throw new SessionProfileRoutingError(
       SESSION_PROFILE_MISMATCH,
@@ -201,7 +193,7 @@ async function fetchSessionPage(profile: string | undefined, limit: number, offs
         : [];
   const sessions = rows
     .filter(isRecord)
-    .map((row) => normalizeSession(row as HermesSessionRow, trustedProfile, responseHasProfileMetadata))
+    .map((row) => normalizeSession(row as HermesSessionRow, trustedProfile))
     .filter((session): session is DeckSession => session !== null);
   const hasMore = !Array.isArray(payload) && payload.has_more === true;
   return { sessions, hasMore };

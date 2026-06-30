@@ -195,7 +195,7 @@ export const deckApi = {
   },
   runs: (profileId?: string, signal?: AbortSignal) => {
     const qs = profileId ? `?profile=${encodeURIComponent(profileId)}` : '';
-    return request<{ runs: DeckRun[] }>(`/api/deck/runs${qs}`, { signal, timeoutMs: 30_000 });
+    return request<{ runs: DeckRun[]; unavailableReason?: string }>(`/api/deck/runs${qs}`, { signal, timeoutMs: 30_000 });
   },
   cronJobs: (profileId?: string, signal?: AbortSignal) => {
     const qs = profileId ? `?profile=${encodeURIComponent(profileId)}` : '';

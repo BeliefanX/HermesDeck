@@ -38,8 +38,8 @@ export default function RunsPage() {
 function RunsPageInner() {
   const t = useT({
     zh: {
-      introA: '每一次「用户提问 → 助手回复」都会记录为一次运行，数据来自 Hermes 的 ',
-      introB: '：状态、耗时、工具调用与错误摘要全部直接读自消息日志。点击行可查看完整时间线。',
+      introA: '每一次「用户提问 → 助手回复」都会记录为一次运行，数据来自 ',
+      introB: '：状态、耗时、工具调用与错误摘要由 Hermes Agent API 提供。点击行可查看完整时间线。',
       kickerRuns: '运行 · 最近 80 条',
       kickerSuccess: '成功',
       kickerFailed: '失败',
@@ -61,13 +61,14 @@ function RunsPageInner() {
       subForProfile: (id: string) => `仅当前 Agent · ${id}`,
       noMatch: '未匹配到任何运行',
       noRunsYet: '还没有任何 agent 轮次记录。发送一条聊天消息即可创建第一次运行。',
+      runsUnavailable: '运行时间线暂不可用：Hermes Agent 尚未提供运行列表 API。',
       adjustFilters: '调整筛选条件或清空搜索。',
       untitled: '未命名运行',
       tools: '个工具',
     },
     en: {
-      introA: 'Every user prompt → assistant reply is one run. Derived from Hermes’ ',
-      introB: ': status, duration, tool calls and error summary all read straight from the message log. Click a row for the full timeline.',
+      introA: 'Every user prompt → assistant reply is one run. Derived from ',
+      introB: ': status, duration, tool calls and error summary come from the Hermes Agent API. Click a row for the full timeline.',
       kickerRuns: 'RUNS · RECENT 80',
       kickerSuccess: 'SUCCESS',
       kickerFailed: 'FAILED',
@@ -89,6 +90,7 @@ function RunsPageInner() {
       subForProfile: (id: string) => `active Agent only · ${id}`,
       noMatch: 'No runs match',
       noRunsYet: 'No agent turns recorded yet. Send a chat message to create your first run.',
+      runsUnavailable: 'Run timelines unavailable: Hermes Agent does not expose the runs API yet.',
       adjustFilters: 'Adjust filters or clear the search.',
       untitled: 'untitled run',
       tools: 'tool(s)',
@@ -100,6 +102,7 @@ function RunsPageInner() {
   const [runs, setRuns] = useState<DeckRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const [unavailable, setUnavailable] = useState(false);
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | DeckRun['status']>('all');
   // Keep "5m ago" labels live — this page fetches once and has no other ticker.
@@ -122,8 +125,14 @@ function RunsPageInner() {
     const ac = new AbortController();
     setLoading(true);
     setErr('');
+    setUnavailable(false);
     deckApi.runs(scope === 'active' ? activeProfile : undefined, ac.signal)
-      .then((r) => { if (!ac.signal.aborted) setRuns(r.runs || []); })
+      .then((r) => {
+        if (!ac.signal.aborted) {
+          setRuns(r.runs || []);
+          setUnavailable(Boolean(r.unavailableReason));
+        }
+      })
       .catch((e) => {
         if (ac.signal.aborted) return;
         if (e instanceof Error && (e.name === 'AbortError' || e.name === 'TimeoutError')) return;
@@ -154,7 +163,7 @@ function RunsPageInner() {
   return (
     <Page intro={
       <>
-        {t.introA}<Kbd>state.db</Kbd>{t.introB}
+        {t.introA}<Kbd>Hermes Agent API</Kbd>{t.introB}
       </>
     }>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
@@ -172,6 +181,14 @@ function RunsPageInner() {
         <Card style={{ borderColor: 'var(--status-red-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--red)' }}>
             <AlertCircle size={15} /> {t.loadFailed} {err}
+          </div>
+        </Card>
+      )}
+
+      {unavailable && !err && (
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--yellow)' }}>
+            <AlertCircle size={15} /> {t.runsUnavailable}
           </div>
         </Card>
       )}

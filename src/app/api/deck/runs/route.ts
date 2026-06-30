@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getRuns } from '@/lib/server/hermes';
 import { profileScopeForUser, requireActiveUser } from '@/lib/server/rbac';
 import type { DeckRun } from '@/lib/types';
+import { isKnownUnavailableError, statusForUnexpectedError } from '../_unavailable';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,9 +31,12 @@ export async function GET(req: Request) {
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (!isKnownUnavailableError(err)) {
+      return NextResponse.json({ error: 'runs_failed', detail: msg.slice(0, 200) }, { status: statusForUnexpectedError(err) });
+    }
     return NextResponse.json(
-      { runs: [], error: 'runs_fetch_failed', detail: msg.slice(0, 200) },
-      { status: 502 },
+      { runs: [], unavailableReason: msg.slice(0, 200) },
+      { headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=60' } },
     );
   }
 }

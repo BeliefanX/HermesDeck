@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { listMarkdownFiles } from '@/lib/server/hermes';
 import { requireAuth } from '@/lib/server/csrf';
+import { isKnownUnavailableError, statusForUnexpectedError } from '../../../_unavailable';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,9 @@ export async function GET(req: Request, ctx: RouteCtx) {
     return NextResponse.json(r, { headers: { 'Cache-Control': 'private, max-age=3, stale-while-revalidate=10' } });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: 'kanban_markdown_list_failed', detail: msg.slice(0, 240) }, { status: 502 });
+    if (!isKnownUnavailableError(err)) {
+      return NextResponse.json({ error: 'kanban_markdown_failed', detail: msg.slice(0, 240) }, { status: statusForUnexpectedError(err) });
+    }
+    return NextResponse.json({ root: null, entries: [], unavailableReason: msg.slice(0, 240) }, { headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=60' } });
   }
 }
