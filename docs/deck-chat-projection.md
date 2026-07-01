@@ -64,7 +64,7 @@ Projection 是 named-Agent continuation 的 proof source：
 
 ## RBAC boundary
 
-Projection 带 `ownerUserId/ownerRole`。Stream Hub 和 routes 仍以 Deck session cookie/RBAC 为准；普通用户只能读取、proof、continue、写入 `ownerUserId` 等于自己 Deck user id 的 projected sessions/messages/stats，且仍必须有对应 Agent assignment。Admin/super_admin 可显式绕过 projection owner filter/proof/write check，但仍受 route-level Agent auth/catalog 约束；catalog 仍必须来自 API Server。Deck 不返回可能串台的 unlabeled upstream session rows。
+Projection 带 `ownerUserId/ownerRole`。Stream Hub 和 routes 仍以 Deck session cookie/RBAC 为准；普通用户只能读取、proof、continue、写入 `ownerUserId` 等于自己 Deck user id 的 projected sessions/messages/stats，且仍必须有对应 Agent assignment。Admin/super_admin 可显式绕过 projection owner filter/proof/write check，但仍受 route-level Agent auth/catalog 约束；catalog 仍必须来自 API Server。Shared/default API base 上的 unlabeled upstream session rows 仍 fail closed；专用 named-Agent API base 可作为 Deck server-side routing proof。
 
 ## Operational notes
 

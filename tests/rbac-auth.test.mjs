@@ -857,7 +857,7 @@ test('profile-scoped Hermes sessions accept response-envelope profile metadata',
   }
 });
 
-test('profile-scoped Hermes sessions reject unlabeled rows even from a dedicated profile API base', async () => {
+test('profile-scoped Hermes sessions stamp unlabeled rows from a dedicated profile API base', async () => {
   const home = makeHome();
   const hermesRoot = join(home, '.hermes');
   mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
@@ -872,10 +872,10 @@ test('profile-scoped Hermes sessions reject unlabeled rows even from a dedicated
     process.env.HERMES_HOME = hermesRoot;
     await withMockedHermesFetch(async () => ({ data: [{ id: 'sensgift-unlabeled', title: 'Dedicated profile legacy row' }] }), async (calls) => {
       const sessions = await loadHermesSessionsModule();
-      await assert.rejects(
-        () => sessions.getSessions('sensgift'),
-        (err) => err?.code === 'profile_routing_unavailable' && err?.status === 502,
-      );
+      const rows = await sessions.getSessions('sensgift');
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].id, 'sensgift-unlabeled');
+      assert.equal(rows[0].profileId, 'sensgift');
       assert.equal(calls[0].startsWith('http://127.0.0.1:18648/api/sessions?'), true);
     });
   } finally {
@@ -886,11 +886,11 @@ test('profile-scoped Hermes sessions reject unlabeled rows even from a dedicated
   }
 });
 
-test('profile-scoped Hermes sessions reject empty unlabeled pages without envelope proof', async () => {
+test('profile-scoped Hermes sessions reject unlabeled rows from the shared default API base', async () => {
   const home = makeHome();
   const hermesRoot = join(home, '.hermes');
   mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
-  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=18648\nAPI_SERVER_KEY=sensgift-secret\n');
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=6117\nAPI_SERVER_KEY=sensgift-secret\n');
 
   const oldHome = process.env.HOME;
   const oldUserprofile = process.env.USERPROFILE;
@@ -899,7 +899,7 @@ test('profile-scoped Hermes sessions reject empty unlabeled pages without envelo
     process.env.HOME = home;
     process.env.USERPROFILE = home;
     process.env.HERMES_HOME = hermesRoot;
-    await withMockedHermesFetch(async () => ({ data: [] }), async () => {
+    await withMockedHermesFetch(async () => ({ data: [{ id: 'shared-unlabeled' }] }), async () => {
       const sessions = await loadHermesSessionsModule();
       await assert.rejects(
         () => sessions.getSessions('sensgift'),
@@ -907,6 +907,62 @@ test('profile-scoped Hermes sessions reject empty unlabeled pages without envelo
       );
       await assert.rejects(
         () => sessions.getSessionsForStats('sensgift'),
+        (err) => err?.code === 'profile_routing_unavailable' && err?.status === 502,
+      );
+    });
+  } finally {
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+  }
+});
+
+test('profile-scoped Hermes sessions reject loopback alias rows from the shared default API base', async () => {
+  const home = makeHome();
+  const hermesRoot = join(home, '.hermes');
+  mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'HERMES_API_BASE=http://localhost:6117\nAPI_SERVER_KEY=sensgift-secret\n');
+
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMES_HOME = hermesRoot;
+    await withMockedHermesFetch(async () => ({ data: [{ id: 'loopback-alias-unlabeled' }] }), async () => {
+      const sessions = await loadHermesSessionsModule();
+      await assert.rejects(
+        () => sessions.getSessions('sensgift'),
+        (err) => err?.code === 'profile_routing_unavailable' && err?.status === 502,
+      );
+    });
+  } finally {
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+  }
+});
+
+test('profile-scoped Hermes sessions reject IPv6 loopback alias rows from the shared default API base', async () => {
+  const home = makeHome();
+  const hermesRoot = join(home, '.hermes');
+  mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'HERMES_API_BASE=http://[::1]:6117\nAPI_SERVER_KEY=sensgift-secret\n');
+
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMES_HOME = hermesRoot;
+    await withMockedHermesFetch(async () => ({ data: [{ id: 'ipv6-loopback-alias-unlabeled' }] }), async () => {
+      const sessions = await loadHermesSessionsModule();
+      await assert.rejects(
+        () => sessions.getSessions('sensgift'),
         (err) => err?.code === 'profile_routing_unavailable' && err?.status === 502,
       );
     });
@@ -2127,11 +2183,13 @@ test('chat resume cursor advances only after replayed events are consumed and ga
   assert.match(hookSource, /lastSeq: inf\.lastSeq/);
 });
 
-test('profile-scoped session rows require upstream profile proof for named profiles', () => {
+test('profile-scoped session rows require upstream proof or server-owned dedicated profile API routing', () => {
   const sessionsSource = readFileSync(hermesSessionsModulePath, 'utf8');
 
   assert.match(sessionsSource, /function profileIdForTrustedRow\([\s\S]*responseHasProfileMetadata = false/);
-  assert.match(sessionsSource, /!isDefaultProfile\(requestedProfile\)[\s\S]*!responseHasProfileMetadata/);
+  assert.match(sessionsSource, /!isDefaultProfile\(requestedProfile\)[\s\S]*!responseHasProfileMetadata[\s\S]*!responseScopedByDedicatedApiBase/);
+  assert.match(sessionsSource, /getHermesApiBase\(profile\)/);
+  assert.match(sessionsSource, /getHermesApiBase\('default'\)/);
   assert.match(sessionsSource, /Hermes Agent did not include session profile metadata for a profile-scoped session list/);
 });
 

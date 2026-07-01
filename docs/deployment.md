@@ -107,7 +107,7 @@ server {
 - Agent catalog endpoint：`/v1/profiles` 或 `/api/profiles` 至少一个可用。
 - Models：`/v1/models` 可用且返回 selectable models。
 - Cron：`/api/jobs?include_disabled=true&profile=<id>` 必须返回 Agent routing proof；无 proof 时这类敏感 upstream data fail closed。
-- Sessions/stats：named-Agent session/stat lists 必须先成功取得 routing-proven API rows，再合并 Deck projection；routing error 时返回 `profile_routing_unavailable`/502。
+- Sessions/stats：named-Agent session/stat lists 必须先成功取得 API sessions，再合并 Deck projection；API response metadata 或 Deck server-owned 非 default 专用 Agent API base 可证明 profileless rows 的 scope；shared/default base 与 explicit mismatch fail closed。
 
 ## Notifications / Web Push
 

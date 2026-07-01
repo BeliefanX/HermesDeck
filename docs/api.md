@@ -81,11 +81,11 @@ type ChatStreamRequest = {
 
 ## Sessions, messages, runs, stats
 
-- `GET /api/deck/sessions?profile=<id>`：先成功取得 Agent-scoped API sessions，再融合 Deck projection 中的 in-flight/proof 状态。普通用户只能看到 owner 为自己 Deck user id 的 projected rows；admin/super_admin 可跨 owner 查看，但仍受 Agent auth/catalog 约束。routing errors fail closed as `profile_routing_unavailable`/502；Deck 不返回可能串台的 unlabeled upstream session rows。
+- `GET /api/deck/sessions?profile=<id>`：先成功取得 Agent-scoped API sessions，再融合 Deck projection 中的 in-flight/proof 状态。普通用户只能看到 owner 为自己 Deck user id 的 projected rows；admin/super_admin 可跨 owner 查看，但仍受 Agent auth/catalog 约束。API response metadata 可证明 scope；legacy profileless rows 只有在 Deck server-side 使用非 default 的专用 Agent API base 时才会 stamped。shared/default API base 或 explicit mismatch fail closed as `profile_routing_unavailable`/502 or `session_profile_mismatch`/403。
 - `GET /api/deck/sessions/[id]/messages?profile=<id>`：返回 session messages；projection 可返回刷新后仍存在的 draft assistant、tool-call、tool-result rows。普通用户读取他人 projection 会 403。
 - `DELETE /api/deck/sessions/[id]?profile=<id>`：删除/移除该 session 的 Deck 与 upstream 可删除状态；必须有 Agent 权限。
 - `GET /api/deck/runs?profile=<id>`、`GET /api/deck/runs/[id]`：运行列表与详情。
-- `GET /api/deck/stats?profile=<id>`：dashboard stats；成功取得 API sessions 后合并 viewer-scoped projection。routing errors fail closed as `profile_routing_unavailable`/502。
+- `GET /api/deck/stats?profile=<id>`：dashboard stats；成功取得 API sessions 后合并 viewer-scoped projection；sessions 的 dedicated-base/profile-metadata proof 规则相同，routing errors fail closed。
 - `GET /api/deck/tokens?days=<n>&profile=<id>`：token/cost 聚合，timeout 较长。
 
 ## Notifications

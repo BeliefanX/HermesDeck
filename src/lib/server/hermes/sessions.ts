@@ -1,5 +1,5 @@
 import type { DeckSession } from '@/lib/types';
-import { hermesApiGet, PROFILE_ID_RE } from './core.ts';
+import { getHermesApiBase, hermesApiGet, PROFILE_ID_RE } from './core.ts';
 
 const PAGE_LIMIT = 200;
 const SESSION_LIST_MAX = 1000;
@@ -110,14 +110,35 @@ function isDefaultProfile(profile?: string): boolean {
   return !profile || profile === 'default';
 }
 
+function normalizedApiBase(base: string): string | null {
+  try {
+    const url = new URL(base);
+    const host = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname.toLowerCase()) ? 'loopback' : url.hostname.toLowerCase();
+    const port = url.port || (url.protocol === 'https:' ? '443' : '80');
+    const path = url.pathname.replace(/\/+$/, '') || '/';
+    return `${url.protocol}//${host}:${port}${path}`;
+  } catch {
+    return base.replace(/\/+$/, '');
+  }
+}
+
+function scopedByDedicatedProfileApiBase(profile?: string): boolean {
+  if (!profile || isDefaultProfile(profile)) return false;
+  const profileBase = getHermesApiBase(profile);
+  const defaultBase = getHermesApiBase('default');
+  if (!profileBase || !defaultBase) return false;
+  return normalizedApiBase(profileBase) !== normalizedApiBase(defaultBase);
+}
+
 function profileIdForTrustedRow(
   row: HermesSessionRow,
   requestedProfile?: string,
   responseHasProfileMetadata = false,
+  responseScopedByDedicatedApiBase = false,
 ): string {
   const explicitProfile = explicitProfileFor(row);
   if (!explicitProfile) {
-    if (requestedProfile && !isDefaultProfile(requestedProfile) && !responseHasProfileMetadata) {
+    if (requestedProfile && !isDefaultProfile(requestedProfile) && !responseHasProfileMetadata && !responseScopedByDedicatedApiBase) {
       throw new SessionProfileRoutingError(
         PROFILE_ROUTING_UNAVAILABLE,
         'Hermes Agent did not include session profile metadata for a profile-scoped session list.',
@@ -140,10 +161,11 @@ function normalizeSession(
   row: HermesSessionRow,
   requestedProfile?: string,
   responseHasProfileMetadata = false,
+  responseScopedByDedicatedApiBase = false,
 ): DeckSession | null {
   const id = stringValue(row.id) || stringValue(row.session_id);
   if (!id) return null;
-  const profileId = profileIdForTrustedRow(row, requestedProfile, responseHasProfileMetadata);
+  const profileId = profileIdForTrustedRow(row, requestedProfile, responseHasProfileMetadata, responseScopedByDedicatedApiBase);
   const createdAt = isoTimestamp(row.started_at ?? row.created_at);
   const updatedAt = isoTimestamp(row.last_active ?? row.updated_at ?? row.ended_at ?? row.started_at ?? row.created_at);
   const messageCount = numberValue(row.message_count);
@@ -194,6 +216,7 @@ async function fetchSessionPage(profile: string | undefined, limit: number, offs
   }
   const responseProfile = !Array.isArray(payload) ? (stringValue(payload.profile_id) || stringValue(payload.profile)) : undefined;
   const responseHasProfileMetadata = Boolean(responseProfile);
+  const responseScopedByDedicatedApiBase = scopedByDedicatedProfileApiBase(profile);
   const trustedProfile = responseProfile || profile;
   if (profile && responseProfile && responseProfile !== profile) {
     throw new SessionProfileRoutingError(
@@ -210,7 +233,7 @@ async function fetchSessionPage(profile: string | undefined, limit: number, offs
         ? payload.sessions
         : [];
   const recordRows = rows.filter(isRecord);
-  if (profile && !isDefaultProfile(profile) && !responseHasProfileMetadata && recordRows.length === 0) {
+  if (profile && !isDefaultProfile(profile) && !responseHasProfileMetadata && !responseScopedByDedicatedApiBase && recordRows.length === 0) {
     throw new SessionProfileRoutingError(
       PROFILE_ROUTING_UNAVAILABLE,
       'Hermes Agent did not include session profile metadata for a profile-scoped session list.',
@@ -218,7 +241,7 @@ async function fetchSessionPage(profile: string | undefined, limit: number, offs
     );
   }
   const sessions = recordRows
-    .map((row) => normalizeSession(row as HermesSessionRow, trustedProfile, responseHasProfileMetadata))
+    .map((row) => normalizeSession(row as HermesSessionRow, trustedProfile, responseHasProfileMetadata, responseScopedByDedicatedApiBase))
     .filter((session): session is DeckSession => session !== null);
   const hasMore = !Array.isArray(payload) && payload.has_more === true;
   return { sessions, hasMore };
