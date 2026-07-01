@@ -75,6 +75,7 @@ function ChatPageInner() {
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [active, setActive] = useState<string>('');
   const [messages, setMessages] = useState<Record<string, DeckMessage[]>>({});
+  const messagesBySessionRef = useRef(messages);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [responseIds, setResponseIds] = useState<Record<string, string>>({});
   const [input, setInput] = useState('');
@@ -234,8 +235,14 @@ function ChatPageInner() {
   const activeSession = useMemo(() => sessions.find((s) => s.id === active), [sessions, active]);
 
   useEffect(() => {
+    messagesBySessionRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
     if (!hydrated || !profile || !active) return;
     let alive = true;
+    const cached = messagesBySessionRef.current[active];
+    setMessagesLoading(!cached?.length);
     deckApi.messages(active, profile)
       .then((r) => {
         if (!alive || !r.messages.length) return;
@@ -246,6 +253,9 @@ function ChatPageInner() {
       })
       .catch((err) => {
         if (alive) setError(`Messages failed to load: ${apiErrorDetail(err)}`);
+      })
+      .finally(() => {
+        if (alive) setMessagesLoading(false);
       });
     return () => { alive = false; };
   }, [active, hydrated, profile, setMessages]);
