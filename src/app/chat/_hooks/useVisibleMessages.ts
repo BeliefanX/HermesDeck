@@ -6,6 +6,10 @@ export function isProjectedDraftMessage(m: DeckMessage): boolean {
   return m.role === 'assistant' && m.metadata?.projectionStatus === 'draft';
 }
 
+export function isPendingApprovalMessage(m: DeckMessage): boolean {
+  return m.role === 'assistant' && m.metadata?.projectionKind === 'approval' && m.metadata?.approvalStatus === 'pending';
+}
+
 function hasText(m: DeckMessage): boolean {
   return !!(m.content && m.content.trim());
 }
@@ -19,6 +23,7 @@ function hasAttachments(m: DeckMessage): boolean {
 }
 
 function isEmptyAssistantTextTarget(m: DeckMessage): boolean {
+  if (isPendingApprovalMessage(m)) return false;
   return m.role === 'assistant' && !hasText(m) && !hasToolCalls(m) && !hasAttachments(m);
 }
 
@@ -38,7 +43,7 @@ function latestTypingTargetIndex(activeMessages: DeckMessage[], busy: boolean): 
 }
 
 export function selectVisibleMessages(activeMessages: DeckMessage[], showToolDetails: boolean, busy: boolean): DeckMessage[] {
-  const typingTargetIdx = latestTypingTargetIndex(activeMessages, busy);
+  const typingTargetIdx = activeMessages.some(isPendingApprovalMessage) ? -1 : latestTypingTargetIndex(activeMessages, busy);
   return activeMessages.filter((m, idx) => {
     const emptyNonToolRow = !hasText(m) && !hasToolCalls(m) && !hasAttachments(m) && m.role !== 'tool';
 

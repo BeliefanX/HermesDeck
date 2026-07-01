@@ -100,6 +100,13 @@ export type ClearProjectedResponseChainInput = {
   staleResponseId?: string;
 };
 
+export type ProjectedApprovalInput = {
+  sessionId: string;
+  profileId: string;
+  runId: string;
+  viewer?: ProjectionViewer;
+};
+
 export type RecordProjectedRunEventInput = {
   sessionId: string;
   profileId: string;
@@ -457,6 +464,70 @@ function findAssistantDraft(session: ProjectedSession): ProjectedMessage | undef
   return undefined;
 }
 
+function findApprovalMessage(session: ProjectedSession, runId: string): ProjectedMessage | undefined {
+  return session.messages.find((message) => (
+    message.role === 'assistant'
+    && message.metadata?.projectionKind === 'approval'
+    && message.metadata?.runId === runId
+    && message.metadata?.approvalStatus === 'pending'
+  ));
+}
+
+function approvalText(payload: Record<string, unknown>): string {
+  const command = stringValue(payload.command);
+  const description = stringValue(payload.description);
+  return `Approval required${description ? `: ${description}` : ''}${command ? `\n\n${command}` : ''}`;
+}
+
+function upsertApprovalMessage(session: ProjectedSession, input: { runId: string; payload: Record<string, unknown>; now: string }): boolean {
+  const choices = Array.isArray(input.payload.choices) ? input.payload.choices.filter((x) => typeof x === 'string') : ['once', 'session', 'always', 'deny'];
+  const metadata = {
+    observedFrom: 'deck-stream',
+    projectionKind: 'approval',
+    approvalStatus: 'pending',
+    runId: input.runId,
+    command: stringValue(input.payload.command),
+    description: stringValue(input.payload.description),
+    patternKey: stringValue(input.payload.pattern_key),
+    choices,
+  };
+  const existing = findApprovalMessage(session, input.runId);
+  if (existing) {
+    existing.content = approvalText(input.payload);
+    existing.metadata = metadata;
+    existing.updatedAt = input.now;
+    return true;
+  }
+  const draft = findAssistantDraft(session);
+  if (draft && !draft.content && !(draft.toolCalls?.length) && !(draft.attachments?.length)) {
+    session.messages = session.messages.filter((message) => message !== draft);
+  }
+  session.messages.push({
+    id: `approval_${input.runId}`,
+    role: 'assistant',
+    content: approvalText(input.payload),
+    createdAt: input.now,
+    metadata,
+  });
+  session.messages.push({
+    id: messageId('a'),
+    role: 'assistant',
+    content: '',
+    createdAt: input.now,
+    metadata: { observedFrom: 'deck-stream', projectionStatus: 'draft' },
+  });
+  return true;
+}
+
+function resolveApprovalMessage(session: ProjectedSession, input: { runId: string; choice?: string; now: string }): boolean {
+  const existing = findApprovalMessage(session, input.runId);
+  if (!existing) return false;
+  existing.metadata = { ...(existing.metadata || {}), approvalStatus: 'resolved', choice: input.choice };
+  existing.content = `${existing.content}\n\nResolved${input.choice ? `: ${input.choice}` : ''}`;
+  existing.updatedAt = input.now;
+  return true;
+}
+
 type ProjectedToolSlot = {
   message: ProjectedMessage;
   name: string;
@@ -621,6 +692,7 @@ function insertToolResultMessage(session: ProjectedSession, input: {
 }
 
 function isProjectableRunEvent(type: string, payload: Record<string, unknown>, item: Record<string, unknown>): boolean {
+  if (type === 'approval.request' || type === 'approval.responded') return Boolean(stringValue(payload.run_id));
   if (type === 'response.output_item.added') return isFunctionCallItemType(item.type);
   if (isToolArgsDelta(type)) return false;
   if (isToolArgsDone(type)) {
@@ -798,7 +870,13 @@ export function recordProjectedRunEvent(input: RecordProjectedRunEventInput): vo
     const now = nowIso();
     let changed = false;
 
-    if (innerType === 'response.output_item.added' && isFunctionCallItemType(item.type)) {
+    if (innerType === 'approval.request') {
+      const runId = stringValue(payload.run_id);
+      if (runId) changed = upsertApprovalMessage(session, { runId, payload, now });
+    } else if (innerType === 'approval.responded') {
+      const runId = stringValue(payload.run_id);
+      if (runId) changed = resolveApprovalMessage(session, { runId, choice: stringValue(payload.choice), now });
+    } else if (innerType === 'response.output_item.added' && isFunctionCallItemType(item.type)) {
       const ids = toolCallIds(item, `tc_${Date.now()}`);
       const fn = safeRecord(item.function);
       const name = stringValue(item.name) || stringValue(fn?.name) || 'tool';
@@ -1093,6 +1171,36 @@ export function hasProjectedSession(sessionId: string, profileId: string, viewer
   const canonicalId = resolveAlias(store, sessionId.trim());
   const session = store.sessions[canonicalId];
   return !!session && session.profileId === normalizeProfile(profileId) && canWriteProjectedSession(session, viewer);
+}
+
+export function hasPendingProjectedApproval(input: ProjectedApprovalInput): boolean {
+  const store = readStore();
+  const canonicalId = resolveAlias(store, input.sessionId.trim());
+  const session = store.sessions[canonicalId];
+  return !!session
+    && session.profileId === normalizeProfile(input.profileId)
+    && canWriteProjectedSession(session, input.viewer)
+    && !!findApprovalMessage(session, input.runId.trim());
+}
+
+export function resolvePendingProjectedApproval(input: ProjectedApprovalInput & { choice?: string }): boolean {
+  const profile = normalizeProfile(input.profileId);
+  const sessionId = input.sessionId.trim();
+  const runId = input.runId.trim();
+  if (!sessionId || !runId) return false;
+  return !!mutateStore((store) => {
+    const canonicalId = resolveAlias(store, sessionId);
+    const session = store.sessions[canonicalId];
+    if (!session || session.profileId !== profile) return false;
+    assertCanWriteProjectedSession(session, input.viewer);
+    const now = nowIso();
+    const changed = resolveApprovalMessage(session, { runId, choice: input.choice, now });
+    if (changed) {
+      session.updatedAt = now;
+      session.messageCount = session.messages.length;
+    }
+    return changed;
+  });
 }
 
 export function getProjectedContinuation(

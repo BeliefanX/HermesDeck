@@ -54,7 +54,7 @@ function runProjectionHook(fn: (() => void) | undefined): void {
   fn();
 }
 
-// Hermes /v1/responses currently rejects request bodies > 10MB. We pre-check
+// Hermes API currently rejects large request bodies. We pre-check
 // here so the user sees a useful error rather than the upstream's truncated
 // 413 with the full URL in the message.
 export const HERMES_REQUEST_BODY_BYTE_LIMIT = 10_000_000;
@@ -313,11 +313,12 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
           },
         ]
       : enrichedMessage;
-    const apiBody: Record<string, unknown> = { input: inputForApi, stream: true };
+    const apiBody: Record<string, unknown> = { input: inputForApi };
     if (model) apiBody.model = model;
     if (reasoningEffort && reasoningEffort !== 'auto') apiBody.reasoning = { effort: reasoningEffort };
     if (previousResponseId) apiBody.previous_response_id = previousResponseId;
     else if (conversationHistory) apiBody.conversation_history = conversationHistory;
+    if (clientSessionId && canForwardClientSessionId) apiBody.session_id = clientSessionId;
     apiBody.metadata = {
       ...((apiBody.metadata && typeof apiBody.metadata === 'object') ? apiBody.metadata as Record<string, unknown> : {}),
       profileId: profile,
@@ -368,13 +369,26 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
     }
 
     const fetchSignal = combineAbortSignals([AbortSignal.timeout(timeoutMs), stream.abort.signal]);
-    const response = await fetch(`${apiBase.replace(/\/+$/, '')}/v1/responses`, {
+    const base = apiBase.replace(/\/+$/, '');
+    const startResponse = await fetch(`${base}/v1/runs`, {
       method: 'POST', headers: reqHeaders, body: apiBodyJson, signal: fetchSignal,
+    });
+    if (!startResponse.ok) {
+      const rawBody = await startResponse.text().catch(() => '');
+      const safe = redactSecrets(rawBody.slice(0, 480));
+      throw new Error(`Hermes API Server /v1/runs failed: ${startResponse.status} ${safe}`);
+    }
+    const startJson = await startResponse.json().catch(() => ({})) as Record<string, unknown>;
+    const runId = typeof startJson.run_id === 'string' ? startJson.run_id : '';
+    if (!runId) throw new Error('Hermes API Server /v1/runs did not return run_id');
+
+    const response = await fetch(`${base}/v1/runs/${encodeURIComponent(runId)}/events`, {
+      method: 'GET', headers: reqHeaders, signal: fetchSignal,
     });
     if (!response.ok || !response.body) {
       const rawBody = await response.text().catch(() => '');
       const safe = redactSecrets(rawBody.slice(0, 480));
-      throw new Error(`Hermes API Server /v1/responses failed: ${response.status} ${safe}`);
+      throw new Error(`Hermes API Server /v1/runs events failed: ${response.status} ${safe}`);
     }
     const sessionId = response.headers.get('X-Hermes-Session-Id')
       || (canForwardClientSessionId ? clientSessionId : stream.sessionId)
@@ -423,6 +437,7 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
       try {
         const obj = JSON.parse(raw);
         const type = String(obj.type || obj.event || '');
+        if (runId && !obj.run_id) obj.run_id = runId;
         const candidateResponseId = responsesApiResponseId(obj?.response?.id)
           || (type.startsWith('response.') ? responsesApiResponseId(obj.id) : undefined);
         if (candidateResponseId && !responseId) responseId = candidateResponseId;

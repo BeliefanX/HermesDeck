@@ -145,6 +145,8 @@ export const deckApi = {
     }),
   messages: (sessionId: string, profileId = 'default', signal?: AbortSignal) =>
     request<{ messages: DeckMessage[] }>(`/api/deck/sessions/${encodeURIComponent(sessionId)}/messages?profile=${encodeURIComponent(profileId)}`, { signal }),
+  chatApproval: (body: { profileId: string; sessionId: string; runId: string; choice: 'once' | 'session' | 'always' | 'deny' }) =>
+    request<{ ok: true }>('/api/deck/chat/approval', { method: 'POST', body: JSON.stringify(body), timeoutMs: 30_000 }),
   deleteSession: (sessionId: string, profileId = 'default') =>
     request<{ ok: boolean; removed: number }>(`/api/deck/sessions/${encodeURIComponent(sessionId)}?profile=${encodeURIComponent(profileId)}`, { method: 'DELETE' }),
   tools: (signal?: AbortSignal) => request<{ tools: ToolSummary[] }>('/api/deck/tools', { signal }),

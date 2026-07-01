@@ -1,7 +1,8 @@
 'use client';
 import { memo, useState } from 'react';
-import { Bot, CheckCircle2, ChevronDown, Network, Wrench } from 'lucide-react';
+import { Bot, CheckCircle2, ChevronDown, Network, ShieldAlert, Wrench } from 'lucide-react';
 import type { DeckMessage } from '@/lib/types';
+import { deckApi } from '@/lib/api';
 import { MessageContent } from '@/components/MessageContent';
 import { MessageActions } from '@/components/MessageActions';
 import { AttachmentChip } from '@/components/AttachmentChip';
@@ -18,6 +19,8 @@ export const ChatMessageRow = memo(function ChatMessageRow({
   m,
   isLast,
   busy,
+  profile,
+  sessionId,
   hasUserMessage,
   resolvedToolName,
   attachmentsAria,
@@ -27,6 +30,8 @@ export const ChatMessageRow = memo(function ChatMessageRow({
   m: DeckMessage;
   isLast: boolean;
   busy: boolean;
+  profile: string;
+  sessionId: string;
   hasUserMessage: boolean;
   resolvedToolName?: string;
   attachmentsAria: string;
@@ -37,6 +42,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
   const showRegenerate = isLastAssistant && !busy && !!m.content && hasUserMessage;
   const showTyping = m.role === 'assistant' && !m.content && !m.toolCalls?.length && (busy || isProjectedDraftMessage(m));
   const isTool = m.role === 'tool';
+  const isApproval = m.role === 'assistant' && m.metadata?.projectionKind === 'approval';
   const isToolCall = m.role === 'assistant' && (m.toolCalls?.length || 0) > 0 && !m.content;
   const isSubagentRow =
     (isToolCall && (m.toolCalls || []).some((c) => isSubagentTool(c.name)))
@@ -61,7 +67,9 @@ export const ChatMessageRow = memo(function ChatMessageRow({
             })}
           </div>
         )}
-        {isToolCall ? (
+        {isApproval ? (
+          <ApprovalBlock message={m} profile={profile} sessionId={sessionId} />
+        ) : isToolCall ? (
           <ToolCallSummary calls={m.toolCalls || []} />
         ) : isTool ? (
           <ToolResultSummary toolName={resolvedToolName} content={m.content} />
@@ -71,7 +79,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
           <span className="msg-typing"><span /><span /><span /></span>
         ) : null}
       </div>
-      {m.content && !showTyping && !isTool && !isToolCall && (
+      {m.content && !showTyping && !isTool && !isToolCall && !isApproval && (
         <MessageActions
           content={m.content}
           canRegenerate={showRegenerate}
@@ -96,6 +104,39 @@ function parseToolPayload(raw: string): { value: unknown; formatted: string; isJ
     return { value: null, formatted: raw, isJson: false };
   }
 }
+
+const ApprovalBlock = memo(function ApprovalBlock({ message, profile, sessionId }: { message: DeckMessage; profile: string; sessionId: string }) {
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+  const runId = typeof message.metadata?.runId === 'string' ? message.metadata.runId : '';
+  const pending = message.metadata?.approvalStatus === 'pending' && !done;
+  const choices = Array.isArray(message.metadata?.choices)
+    ? message.metadata.choices.filter((x): x is 'once' | 'session' | 'always' | 'deny' => x === 'once' || x === 'session' || x === 'always' || x === 'deny')
+    : ['once', 'session', 'always', 'deny'] as const;
+  const labels = { once: 'Approve once', session: 'Session', always: 'Always', deny: 'Deny' } as const;
+  const choose = async (choice: 'once' | 'session' | 'always' | 'deny') => {
+    if (!runId || !sessionId || busy) return;
+    setBusy(choice); setError('');
+    try { await deckApi.chatApproval({ profileId: profile, sessionId, runId, choice }); setDone(true); }
+    catch (err) { setError(err instanceof Error ? err.message : String(err)); }
+    finally { setBusy(''); }
+  };
+  return (
+    <div className="tool-block" style={{ borderColor: 'var(--status-yellow-border)' }}>
+      <div className="tool-block-head">
+        <ShieldAlert size={12} />
+        <span className="tool-block-title">Approval required</span>
+        {!pending && <span className="muted">resolved</span>}
+      </div>
+      <pre className="tool-call-args">{message.content}</pre>
+      {pending && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+        {choices.map((choice) => <button key={choice} disabled={!!busy} onClick={() => choose(choice)}>{labels[choice]}</button>)}
+      </div>}
+      {error && <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 6 }}>{error}</div>}
+    </div>
+  );
+});
 
 const ToolCallSummary = memo(function ToolCallSummary({ calls }: { calls: Array<{ id?: string; name?: string; arguments?: string }> }) {
   const [open, setOpen] = useState(false);

@@ -315,6 +315,8 @@ export function ChatLayoutView(p: ChatLayoutViewProps) {
                     m={m}
                     isLast={isLast}
                     busy={p.busy}
+                    profile={p.profile}
+                    sessionId={p.active}
                     hasUserMessage={hasUserMessage}
                     resolvedToolName={resolvedToolName}
                     attachmentsAria={p.t.attachmentsAria}

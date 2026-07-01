@@ -17,6 +17,7 @@ const tokenRoutePath = resolve('src/app/api/deck/tokens/route.ts');
 const statsRoutePath = resolve('src/app/api/deck/stats/route.ts');
 const modelPreferencesRoutePath = resolve('src/app/api/deck/model-preferences/route.ts');
 const chatStreamRoutePath = resolve('src/app/api/deck/chat/stream/route.ts');
+const chatApprovalRoutePath = resolve('src/app/api/deck/chat/approval/route.ts');
 const chatResumeRoutePath = resolve('src/app/api/deck/chat/resume/route.ts');
 const chatStreamModulePath = resolve('src/lib/server/hermes/chat-stream.ts');
 const clientSseModulePath = resolve('src/lib/client-sse.ts');
@@ -1463,7 +1464,7 @@ test('Deck chat projection uses a lock, atomic writes and prunes stale sessions'
   }
 });
 
-test('chat stream proves named Agent API routability before upstream responses call', async () => {
+test('chat stream proves named Agent API routability before upstream runs call', async () => {
   const home = makeHome();
   const hermesRoot = join(home, '.hermes');
   const dataDir = join(home, '.hermesdeck-data');
@@ -1514,7 +1515,7 @@ test('chat stream proves named Agent API routability before upstream responses c
       globalThis.fetch = async (url, init = {}) => {
         calls.push({ url: String(url), method: init.method || 'GET' });
         if (String(url) === 'http://127.0.0.1:18643/health') return Response.json(healthBody);
-        if (String(url).endsWith('/v1/responses')) return Response.json({ unexpected: true });
+        if (String(url).endsWith('/v1/runs')) return Response.json({ unexpected: true });
         return new Response('not found', { status: 404 });
       };
 
@@ -1524,18 +1525,21 @@ test('chat stream proves named Agent API routability before upstream responses c
       assert.equal(payload.error, 'profile_routing_unavailable');
       assert.match(payload.detail, /not routable|\/health/);
       assert.deepEqual(calls.map((call) => call.url), ['http://127.0.0.1:18643/health']);
-      assert.equal(calls.some((call) => call.url.endsWith('/v1/responses')), false, `${caseName} must not call upstream responses`);
+      assert.equal(calls.some((call) => call.url.endsWith('/v1/runs')), false, `${caseName} must not call upstream runs`);
     }
 
     const calls = [];
     globalThis.fetch = async (url, init = {}) => {
       calls.push({ url: String(url), method: init.method || 'GET', auth: init.headers?.Authorization });
       if (String(url) === 'http://127.0.0.1:18643/health') return Response.json({ ok: true });
-      if (String(url) === 'http://127.0.0.1:18643/v1/responses') {
+      if (String(url) === 'http://127.0.0.1:18643/v1/runs') {
+        return Response.json({ run_id: 'run_coder', status: 'started' }, { status: 202 });
+      }
+      if (String(url) === 'http://127.0.0.1:18643/v1/runs/run_coder/events') {
         const body = new ReadableStream({
           start(controller) {
             setTimeout(() => {
-              controller.enqueue(new TextEncoder().encode('data: {"type":"response.output_text.delta","delta":"ok"}\n\n'));
+              controller.enqueue(new TextEncoder().encode('data: {"type":"message.delta","delta":"ok"}\n\n'));
               controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
               controller.close();
             }, 10);
@@ -1550,8 +1554,8 @@ test('chat stream proves named Agent API routability before upstream responses c
     assert.equal(okRes.status, 200);
     assert.equal(okRes.headers.get('content-type')?.startsWith('text/event-stream'), true);
     assert.equal(calls.some((call) => call.url === 'http://127.0.0.1:18643/health'), true);
-    assert.equal(calls.some((call) => call.url === 'http://127.0.0.1:18643/v1/responses' && call.method === 'POST'), true);
-    assert.equal(calls.find((call) => call.url === 'http://127.0.0.1:18643/v1/responses')?.auth, 'Bearer coder-secret');
+    assert.equal(calls.some((call) => call.url === 'http://127.0.0.1:18643/v1/runs' && call.method === 'POST'), true);
+    assert.equal(calls.find((call) => call.url === 'http://127.0.0.1:18643/v1/runs')?.auth, 'Bearer coder-secret');
     const sseText = await okRes.text();
     assert.match(sseText, /event: hub|event: done/);
     const hubSessionId = /"sessionId":"([^"]+)"/.exec(sseText)?.[1];
@@ -1621,6 +1625,7 @@ test('default-profile chat stream does not continue from unproven restored clien
         sessionId: init.headers?.['X-Hermes-Session-Id'],
         body: init.body ? JSON.parse(String(init.body)) : undefined,
       });
+      if (String(url).endsWith('/v1/runs')) return Response.json({ run_id: 'run_default_new', status: 'started' }, { status: 202 });
       const body = new ReadableStream({
         start(controller) {
           controller.enqueue(new TextEncoder().encode('data: {"type":"response.output_text.delta","delta":"ok","id":"resp_default_new"}\n\n'));
@@ -1639,13 +1644,13 @@ test('default-profile chat stream does not continue from unproven restored clien
     }, { cookie: cookieHeader(token) }));
     assert.equal(res.status, 200);
     const sseText = await res.text();
-    assert.equal(upstreamCalls.length, 1);
-    assert.equal(upstreamCalls[0].url, 'http://127.0.0.1:18701/v1/responses');
-    assert.equal(upstreamCalls[0].sessionId?.startsWith('deck_'), true);
-    assert.notEqual(upstreamCalls[0].sessionId, staleSessionId);
-    assert.equal('previous_response_id' in upstreamCalls[0].body, false);
+    const postCalls = upstreamCalls.filter((call) => call.url.endsWith('/v1/runs'));
+    assert.equal(postCalls.length, 1);
+    assert.equal(postCalls[0].sessionId?.startsWith('deck_'), true);
+    assert.notEqual(postCalls[0].sessionId, staleSessionId);
+    assert.equal('previous_response_id' in postCalls[0].body, false);
     assert.equal(upstreamCalls.some((call) => call.url.endsWith('/health')), false);
-    const hubSessionId = /"sessionId":"([^"]+)"/.exec(sseText)?.[1] || upstreamCalls[0].sessionId;
+    const hubSessionId = /"sessionId":"([^"]+)"/.exec(sseText)?.[1] || postCalls[0].sessionId;
     const hub = await import(`${pathToFileURL(streamHubModulePath).href}?case=${Date.now()}-${importNonce++}`);
     const activeStream = hubSessionId ? hub.getActiveStream(hubSessionId) : undefined;
     if (activeStream?.evictTimer) clearTimeout(activeStream.evictTimer);
@@ -1857,6 +1862,7 @@ test('server-canonical projection response id overrides stale client continuatio
         sessionId: init.headers?.['X-Hermes-Session-Id'],
         body: init.body ? JSON.parse(String(init.body)) : undefined,
       });
+      if (String(url).endsWith('/v1/runs')) return Response.json({ run_id: 'run_canonical', status: 'started' }, { status: 202 });
       const body = new ReadableStream({
         start(controller) {
           controller.enqueue(new TextEncoder().encode('data: {"type":"response.output_item.done","item":{"id":"fc_tool_item","type":"function_call","name":"tool","arguments":"{}"}}\n\n'));
@@ -1878,10 +1884,11 @@ test('server-canonical projection response id overrides stale client continuatio
     }, { cookie: cookieHeader(token) }));
     assert.equal(res.status, 200);
     const sseText = await res.text();
-    assert.equal(upstreamCalls.length, 1);
-    assert.equal(upstreamCalls[0].sessionId, 'deck-visible-session');
-    assert.equal(upstreamCalls[0].body.previous_response_id, 'resp_server_canonical');
-    assert.equal('conversation_history' in upstreamCalls[0].body, false);
+    const postCalls = upstreamCalls.filter((call) => call.url.endsWith('/v1/runs'));
+    assert.equal(postCalls.length, 1);
+    assert.equal(postCalls[0].sessionId, 'deck-visible-session');
+    assert.equal(postCalls[0].body.previous_response_id, 'resp_server_canonical');
+    assert.equal('conversation_history' in postCalls[0].body, false);
     assert.match(sseText, /"responseId":"resp_new_server"/);
     assert.doesNotMatch(sseText, /"responseId":"fc_tool_item"/);
 
@@ -2003,6 +2010,7 @@ test('chat stream strips client-supplied conversation_history for unproven new s
         sessionId: init.headers?.['X-Hermes-Session-Id'],
         body: init.body ? JSON.parse(String(init.body)) : undefined,
       });
+      if (String(url).endsWith('/v1/runs')) return Response.json({ run_id: 'run_untrusted_history', status: 'started' }, { status: 202 });
       const body = new ReadableStream({
         start(controller) {
           controller.enqueue(new TextEncoder().encode('data: {"type":"response.completed","response":{"id":"resp_untrusted_history_reply"}}\n\n'));
@@ -2030,15 +2038,16 @@ test('chat stream strips client-supplied conversation_history for unproven new s
     }, { cookie: cookieHeader(token) }));
     assert.equal(res.status, 200);
     const sseText = await res.text();
-    assert.equal(upstreamCalls.length, 1);
-    assert.match(upstreamCalls[0].sessionId, /^deck_/);
-    assert.equal(upstreamCalls[0].body.previous_response_id, undefined);
-    assert.equal('conversation_history' in upstreamCalls[0].body, false);
-    assert.doesNotMatch(JSON.stringify(upstreamCalls[0].body), /CLIENT POISON/);
+    const postCalls = upstreamCalls.filter((call) => call.url.endsWith('/v1/runs'));
+    assert.equal(postCalls.length, 1);
+    assert.match(postCalls[0].sessionId, /^deck_/);
+    assert.equal(postCalls[0].body.previous_response_id, undefined);
+    assert.equal('conversation_history' in postCalls[0].body, false);
+    assert.doesNotMatch(JSON.stringify(postCalls[0].body), /CLIENT POISON/);
     assert.match(sseText, /"responseId":"resp_untrusted_history_reply"/);
 
     const hub = await import(`${pathToFileURL(streamHubModulePath).href}?case=${Date.now()}-${importNonce++}`);
-    const activeStream = hub.getActiveStream(upstreamCalls[0].sessionId);
+    const activeStream = hub.getActiveStream(postCalls[0].sessionId);
     if (activeStream?.evictTimer) clearTimeout(activeStream.evictTimer);
   } finally {
     globalThis.fetch = originalFetch;
@@ -2117,12 +2126,14 @@ test('stale previous response 404 clears projected response chain so retry start
         sessionId: init.headers?.['X-Hermes-Session-Id'],
         body: init.body ? JSON.parse(String(init.body)) : undefined,
       });
-      if (upstreamCalls.length === 1) {
+      const isRunPost = String(url).endsWith('/v1/runs');
+      if (isRunPost && upstreamCalls.filter((call) => call.url.endsWith('/v1/runs')).length === 1) {
         return new Response(JSON.stringify({ error: 'Previous response not found: resp_missing_upstream' }), {
           status: 404,
           headers: { 'Content-Type': 'application/json' },
         });
       }
+      if (isRunPost) return Response.json({ run_id: 'run_after_repair', status: 'started' }, { status: 202 });
       const body = new ReadableStream({
         start(controller) {
           controller.enqueue(new TextEncoder().encode('data: {"type":"response.completed","response":{"id":"resp_after_repair"}}\n\n'));
@@ -2144,7 +2155,8 @@ test('stale previous response 404 clears projected response chain so retry start
     assert.equal(failed.status, 200);
     const failedSse = await failed.text();
     assert.match(failedSse, /Previous response not found: resp_missing_upstream/);
-    assert.equal(upstreamCalls[0].body.previous_response_id, 'resp_missing_upstream');
+    const firstPost = upstreamCalls.filter((call) => call.url.endsWith('/v1/runs'))[0];
+    assert.equal(firstPost.body.previous_response_id, 'resp_missing_upstream');
 
     let stored = JSON.parse(readFileSync(join(dataDir, 'chat-projection.v1.json'), 'utf8'));
     assert.equal(stored.sessions['deck-stale-response-session'].responseId, undefined);
@@ -2167,9 +2179,10 @@ test('stale previous response 404 clears projected response chain so retry start
     }, { cookie: cookieHeader(token) }));
     assert.equal(retry.status, 200);
     const retrySse = await retry.text();
-    assert.equal(upstreamCalls.length, 2);
-    assert.equal(upstreamCalls[1].body.previous_response_id, undefined);
-    assert.deepEqual(upstreamCalls[1].body.conversation_history, [
+    const postCalls = upstreamCalls.filter((call) => call.url.endsWith('/v1/runs'));
+    assert.equal(postCalls.length, 2);
+    assert.equal(postCalls[1].body.previous_response_id, undefined);
+    assert.deepEqual(postCalls[1].body.conversation_history, [
       { role: 'user', content: 'first' },
       { role: 'assistant', content: 'first answer' },
       { role: 'user', content: 'continue with stale server id' },
@@ -2181,6 +2194,83 @@ test('stale previous response 404 clears projected response chain so retry start
     const hub = await import(`${pathToFileURL(streamHubModulePath).href}?case=${Date.now()}-${importNonce++}`);
     const activeStream = hub.getActiveStream('deck-stale-response-session');
     if (activeStream?.evictTimer) clearTimeout(activeStream.evictTimer);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+    if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
+    else process.env.HERMES_API_BASE = oldHermesApiBase;
+    if (oldApiServerKey === undefined) delete process.env.API_SERVER_KEY;
+    else process.env.API_SERVER_KEY = oldApiServerKey;
+  }
+});
+
+test('chat approval route requires authenticated pending projected session ownership', async () => {
+  const home = makeHome();
+  const dataDir = join(home, '.hermesdeck-data');
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  const oldHermesApiBase = process.env.HERMES_API_BASE;
+  const oldApiServerKey = process.env.API_SERVER_KEY;
+  const originalFetch = globalThis.fetch;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMESDECK_AUTH_DIR = join(home, '.hermesdeck');
+    process.env.HERMESDECK_DATA_DIR = dataDir;
+    process.env.HERMES_API_BASE = 'http://127.0.0.1:18706';
+    process.env.API_SERVER_KEY = 'default-secret';
+
+    const auth = await loadAuth(home);
+    let store = withSuppressedBootstrapLog(() => auth.readAuth());
+    const now = new Date().toISOString();
+    const userA = {
+      id: 'user_approval_owner', username: 'approval-owner', role: 'user', status: 'active',
+      ...auth.createPasswordRecord('approval-owner-password-123'), assignedProfileIds: ['default'], preferences: { profiles: {} },
+      createdAt: now, updatedAt: now, approvedAt: now, approvedBy: Object.values(store.users)[0].id,
+    };
+    const userB = {
+      id: 'user_approval_other', username: 'approval-other', role: 'user', status: 'active',
+      ...auth.createPasswordRecord('approval-other-password-123'), assignedProfileIds: ['default'], preferences: { profiles: {} },
+      createdAt: now, updatedAt: now, approvedAt: now, approvedBy: Object.values(store.users)[0].id,
+    };
+    store = { ...store, users: { ...store.users, [userA.id]: userA, [userB.id]: userB } };
+    writeStore(home, store);
+    const tokenA = auth.issueSessionToken(userA.id);
+    const tokenB = auth.issueSessionToken(userB.id);
+
+    const projection = await import(`${pathToFileURL(deckChatProjectionModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    const viewerA = { userId: userA.id, role: userA.role };
+    projection.startProjectedTurn({ sessionId: 'approval-session', profileId: 'default', ownerUserId: userA.id, ownerRole: userA.role, message: 'needs approval' });
+    projection.recordProjectedRunEvent({
+      sessionId: 'approval-session', profileId: 'default', viewer: viewerA, type: 'approval.request',
+      payload: { type: 'approval.request', run_id: 'run_approval_owner', command: 'echo ok', choices: ['once', 'deny'] },
+    });
+
+    const upstreamCalls = [];
+    globalThis.fetch = async (url, init = {}) => {
+      upstreamCalls.push({ url: String(url), method: init.method || 'GET', body: init.body ? JSON.parse(String(init.body)) : undefined });
+      return Response.json({ ok: true });
+    };
+    const route = await loadRouteModule(chatApprovalRoutePath);
+    const body = { profileId: 'default', sessionId: 'approval-session', runId: 'run_approval_owner', choice: 'once', all: true, resolve_all: true };
+
+    const wrongSession = await route.POST(jsonRouteRequest('/api/deck/chat/approval', 'POST', { ...body, sessionId: 'other-session' }, { cookie: cookieHeader(tokenA) }));
+    assert.equal(wrongSession.status, 403);
+    const wrongUser = await route.POST(jsonRouteRequest('/api/deck/chat/approval', 'POST', body, { cookie: cookieHeader(tokenB) }));
+    assert.equal(wrongUser.status, 403);
+    assert.deepEqual(upstreamCalls, []);
+
+    const ok = await route.POST(jsonRouteRequest('/api/deck/chat/approval', 'POST', body, { cookie: cookieHeader(tokenA) }));
+    assert.equal(ok.status, 200);
+    assert.deepEqual(upstreamCalls, [{ url: 'http://127.0.0.1:18706/v1/runs/run_approval_owner/approval', method: 'POST', body: { choice: 'once' } }]);
+    assert.equal(projection.hasPendingProjectedApproval({ sessionId: 'approval-session', profileId: 'default', runId: 'run_approval_owner', viewer: viewerA }), false);
   } finally {
     globalThis.fetch = originalFetch;
     process.env.HOME = oldHome;

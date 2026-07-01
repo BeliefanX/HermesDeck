@@ -584,6 +584,36 @@ export function useChatStream(params: UseChatStreamParams) {
     }
   }, [profile, setMessages]);
 
+  const upsertApprovalToMessages = useCallback((sid: string, p: Record<string, unknown>) => {
+    const runId = typeof p.run_id === 'string' ? p.run_id : '';
+    if (!runId) return;
+    const content = `Approval required${typeof p.description === 'string' && p.description ? `: ${p.description}` : ''}${typeof p.command === 'string' && p.command ? `\n\n${p.command}` : ''}`;
+    setMessages((m) => {
+      const list = m[sid] || [];
+      const metadata = {
+        observedFrom: 'deck-stream', projectionKind: 'approval', approvalStatus: 'pending', runId,
+        command: typeof p.command === 'string' ? p.command : undefined,
+        description: typeof p.description === 'string' ? p.description : undefined,
+        choices: Array.isArray(p.choices) ? p.choices.filter((x) => typeof x === 'string') : ['once', 'session', 'always', 'deny'],
+      };
+      if (list.some((x) => x.metadata?.projectionKind === 'approval' && x.metadata?.runId === runId && x.metadata?.approvalStatus === 'pending')) {
+        return { ...m, [sid]: list.map((x) => x.metadata?.projectionKind === 'approval' && x.metadata?.runId === runId ? { ...x, content, metadata } : x) };
+      }
+      return { ...m, [sid]: [...list, { id: `approval_${runId}`, role: 'assistant', content, createdAt: new Date().toISOString(), metadata }] };
+    });
+  }, [setMessages]);
+
+  const resolveApprovalInMessages = useCallback((sid: string, p: Record<string, unknown>) => {
+    const runId = typeof p.run_id === 'string' ? p.run_id : '';
+    if (!runId) return;
+    setMessages((m) => ({
+      ...m,
+      [sid]: (m[sid] || []).map((x) => x.metadata?.projectionKind === 'approval' && x.metadata?.runId === runId
+        ? { ...x, content: `${x.content}\n\nResolved${typeof p.choice === 'string' ? `: ${p.choice}` : ''}`, metadata: { ...x.metadata, approvalStatus: 'resolved', choice: p.choice } }
+        : x),
+    }));
+  }, [setMessages]);
+
   const openSession = useCallback(async (s: LocalSession) => {
     const requestProfile = profile;
     openSessionAbortRef.current?.abort();
@@ -729,6 +759,8 @@ export function useChatStream(params: UseChatStreamParams) {
           const innerPayload = (ev?.payload && typeof ev.payload === 'object')
             ? (ev.payload as Record<string, unknown>)
             : {};
+          if (innerType === 'approval.request') upsertApprovalToMessages(sid, innerPayload);
+          if (innerType === 'approval.responded') resolveApprovalInMessages(sid, innerPayload);
           applyToolEventToMessages(sid, innerType, innerPayload);
           // Pluck token usage off the final response event so the context
           // window panel can show the measured input size for this turn.
@@ -799,7 +831,7 @@ export function useChatStream(params: UseChatStreamParams) {
         clearInflight();
       },
     };
-  }, [applyToolEventToMessages, handleEvent, profile, pushTimeline, setError, setMessages, setResponseIds, setSessions, setUsage, t]);
+  }, [applyToolEventToMessages, handleEvent, profile, pushTimeline, resolveApprovalInMessages, setError, setMessages, setResponseIds, setSessions, setUsage, t, upsertApprovalToMessages]);
 
   const recoverTransportDrop = useCallback(async (init: {
     hubKey: string;
