@@ -72,6 +72,7 @@ function ChatPageInner() {
   const { activeProfile: profile, profiles, hydrated: profileHydrated } = useActiveProfile();
   const [tools, setTools] = useState<ToolSummary[]>([]);
   const [sessions, setSessions] = useState<LocalSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
   const [active, setActive] = useState<string>('');
   const [messages, setMessages] = useState<Record<string, DeckMessage[]>>({});
   const [responseIds, setResponseIds] = useState<Record<string, string>>({});
@@ -175,6 +176,7 @@ function ChatPageInner() {
   useEffect(() => {
     if (!hydrated || !profile) return;
     let alive = true;
+    setSessionsLoading(true);
     deckApi.sessions(profile)
       .then((r) => {
         if (!alive) return;
@@ -217,6 +219,9 @@ function ChatPageInner() {
       .catch((err) => {
         if (!alive) return;
         setError(`Session list failed to load: ${apiErrorDetail(err)}`);
+      })
+      .finally(() => {
+        if (alive) setSessionsLoading(false);
       });
     return () => { alive = false; };
   }, [profile, hydrated, setMetaStoreRaw]);
@@ -271,14 +276,9 @@ function ChatPageInner() {
   }, [active, busy, hasActiveServerDraft, hydrated, profile, setMessages]);
 
   useEffect(() => {
-    if (!hydrated || !activeSession) return;
-    if (activeSession.model) setObservedModel(activeSession.model, activeSession.source || 'session');
-    const actualReasoning = activeSession.reasoningEffort?.trim().toLowerCase();
-    if (actualReasoning && actualReasoning !== 'auto') {
-      reasoningTouchedRef.current = false;
-      setReasoningEffort(actualReasoning);
-    }
-  }, [activeSession, hydrated, reasoningTouchedRef, setObservedModel, setReasoningEffort]);
+    if (!hydrated || !activeSession?.model) return;
+    setObservedModel(activeSession.model, activeSession.source || 'session');
+  }, [activeSession, hydrated, setObservedModel]);
 
   const { toolNameByCallId, visibleMessages, hiddenToolCount } = useVisibleMessages(
     activeMessages, showToolDetails, busy,
@@ -496,6 +496,7 @@ function ChatPageInner() {
       showArchived={showArchived}
       search={search}
       collapsedFolders={collapsedFolders}
+      loading={!profileHydrated || (!!profile && (!hydrated || sessionsLoading))}
       actions={sessionListActions}
     />
   );

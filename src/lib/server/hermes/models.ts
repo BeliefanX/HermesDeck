@@ -1,5 +1,6 @@
 import type { DeckModelsResponse, ModelInfo } from '@/lib/types';
 import { apiHeaders, getHermesApiBase, HERMES_API_BASE, makeKeyedCache } from './core';
+import { readProfileRuntimeConfig } from './runtime-config';
 
 const BASE_REASONING_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const;
 const HERMES_AGENT_PLACEHOLDER_MODEL = 'hermes agent';
@@ -149,10 +150,19 @@ async function fetchApiModels(profile = 'default'): Promise<ApiModelItem[]> {
 }
 
 async function getModelsUncached(profile = 'default'): Promise<DeckModelsResponse> {
-  const [apiModelItems, profileRuntime] = await Promise.all([
+  const [apiModelItems, apiProfileRuntime, configRuntime] = await Promise.all([
     fetchApiModels(profile),
     fetchProfileRuntime(profile).catch(() => null),
+    readProfileRuntimeConfig(profile).catch(() => null),
   ]);
+  const profileRuntime: ApiProfileRuntime | null = apiProfileRuntime || configRuntime
+    ? {
+      id: profile,
+      model: apiProfileRuntime?.model || configRuntime?.model,
+      provider: apiProfileRuntime?.provider || configRuntime?.provider,
+      reasoningEffort: apiProfileRuntime?.reasoningEffort || configRuntime?.reasoningEffort,
+    }
+    : null;
   const modelItems = apiModelItems
     .filter((item) => !isHermesAgentPlaceholder(item.provider || 'hermes', item.id, profile));
 

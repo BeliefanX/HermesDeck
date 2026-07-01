@@ -2,6 +2,7 @@ import type { DeckProfile } from '@/lib/types';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { apiHeaders, defaultHermesRoot, getHermesApiBase, HERMES_API_BASE, makeCache, PROFILE_ID_RE, redactSecrets } from './core.ts';
+import { readProfileRuntimeConfig } from './runtime-config';
 
 const ADMIN_CATALOG_LOCAL_PROFILE_LIMIT = 64;
 
@@ -11,6 +12,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stringValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function modelValue(raw: Record<string, unknown>): string | undefined {
+  const agent = isRecord(raw.agent) ? raw.agent : undefined;
+  return stringValue(raw.model)
+    || stringValue(raw.current_model)
+    || stringValue(raw.currentModel)
+    || stringValue(raw.default_model)
+    || stringValue(raw.defaultModel)
+    || stringValue(agent?.model)
+    || undefined;
+}
+
+function reasoningValue(raw: Record<string, unknown>): string | undefined {
+  const agent = isRecord(raw.agent) ? raw.agent : undefined;
+  const value = stringValue(raw.resolved_reasoning_effort)
+    || stringValue(raw.resolvedReasoningEffort)
+    || stringValue(raw.current_reasoning_effort)
+    || stringValue(raw.currentReasoningEffort)
+    || stringValue(raw.reasoning_effort)
+    || stringValue(raw.reasoningEffort)
+    || stringValue(raw.default_reasoning_effort)
+    || stringValue(raw.defaultReasoningEffort)
+    || stringValue(agent?.reasoning_effort)
+    || stringValue(agent?.reasoningEffort);
+  const normalized = value.toLowerCase();
+  return normalized && normalized !== 'auto' ? normalized : undefined;
 }
 
 function coerceProfileId(value: unknown): string {
@@ -63,7 +91,8 @@ function normalizeApiProfile(raw: unknown): DeckProfile | null {
     id,
     name: stringValue(raw.name) || id,
     active,
-    model: stringValue(raw.model),
+    model: modelValue(raw),
+    reasoningEffort: reasoningValue(raw),
     gateway: stringValue(raw.gateway),
     alias: stringValue(raw.alias) || undefined,
     toolsets,
@@ -86,6 +115,21 @@ function normalizeActiveProfile(profiles: DeckProfile[]): DeckProfile[] {
     : sorted.find((profile) => profile.active)?.id || sorted[0]?.id || '';
 
   return sorted.map((profile) => ({ ...profile, active: profile.id === activeId }));
+}
+
+async function enrichProfileRuntime(profile: DeckProfile): Promise<DeckProfile> {
+  if (profile.model && profile.reasoningEffort) return profile;
+  const config = await readProfileRuntimeConfig(profile.id).catch(() => null);
+  if (!config) return profile;
+  return {
+    ...profile,
+    model: profile.model || config.model,
+    reasoningEffort: profile.reasoningEffort || config.reasoningEffort,
+  };
+}
+
+async function enrichProfilesRuntime(profiles: DeckProfile[]): Promise<DeckProfile[]> {
+  return Promise.all(profiles.map(enrichProfileRuntime));
 }
 
 export class AssignedProfilesUnavailableError extends Error {
@@ -183,7 +227,7 @@ export async function getAssignedRoutableProfiles(ids: readonly unknown[]): Prom
   }
 
   if (!profiles.length) throw new AssignedProfilesUnavailableError(details);
-  return normalizeActiveProfile(profiles);
+  return normalizeActiveProfile(await enrichProfilesRuntime(profiles));
 }
 
 async function getLocalRoutableProfilesForAdminCatalogFallback(): Promise<DeckProfile[]> {
@@ -194,7 +238,7 @@ async function getLocalRoutableProfilesForAdminCatalogFallback(): Promise<DeckPr
     if (!proof.ok) continue;
     profiles.push({ id, name: id, active: false, toolsets: [] });
   }
-  return normalizeActiveProfile(profiles);
+  return normalizeActiveProfile(await enrichProfilesRuntime(profiles));
 }
 
 function extractApiProfiles(payload: unknown): unknown[] {
@@ -277,7 +321,7 @@ async function getStrictProfilesUncached(): Promise<DeckProfile[]> {
     // catalog. Never stop at the first singleton response: choose the richest
     // API-backed catalog so admin/super_admin can see all Agents.
     const best = candidates.reduce((winner, item) => (item.length > winner.length ? item : winner), candidates[0]!);
-    return normalizeActiveProfile(best);
+    return normalizeActiveProfile(await enrichProfilesRuntime(best));
   }
 
   const bothStrictCatalogRoutesMissing = failures.length === 2

@@ -42,6 +42,8 @@ export interface DeckProfile {
   alias?: string;
   active: boolean;
   model?: string;
+  /** Default/effective reasoning effort for this Agent, when Hermes exposes it. */
+  reasoningEffort?: string;
   gateway?: string;
   toolsets: string[];
   hermesHome?: string;

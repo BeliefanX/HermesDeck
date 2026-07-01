@@ -629,6 +629,10 @@ async function loadHermesCronModule() {
   return import(`${pathToFileURL(hermesCronModulePath).href}?case=${Date.now()}-${importNonce++}`);
 }
 
+async function loadHermesModelsModule() {
+  return import(`${pathToFileURL(modelsModulePath).href}?case=${Date.now()}-${importNonce++}`);
+}
+
 async function loadHermesProfilesModule() {
   return import(`${pathToFileURL(profilesModulePath).href}?case=${Date.now()}-${importNonce++}`);
 }
@@ -1002,6 +1006,99 @@ test('profile-scoped Hermes cron accepts unlabeled jobs from a dedicated profile
       );
     });
   } finally {
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+  }
+});
+
+test('model catalog resolves config default when Hermes API exposes only profile placeholders', async () => {
+  const home = makeHome();
+  const hermesRoot = join(home, '.hermes');
+  mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=18648\nAPI_SERVER_KEY=sensgift-secret\n');
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', 'config.yaml'), [
+    'agent:',
+    '  model:',
+    '    provider: openai-codex',
+    '    default: gpt-5.5',
+    '  reasoning_effort: high',
+    '',
+  ].join('\n'));
+
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  const originalFetch = globalThis.fetch;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMES_HOME = hermesRoot;
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      if (href === 'http://127.0.0.1:18648/v1/models') {
+        return Response.json({ data: [{ id: 'sensgift', owned_by: 'hermes' }] });
+      }
+      if (href.endsWith('/v1/profiles') || href.endsWith('/api/profiles')) {
+        return new Response('missing', { status: 404 });
+      }
+      return Response.json({ ok: true });
+    };
+
+    const models = await loadHermesModelsModule();
+    const payload = await models.getModels('sensgift');
+    assert.equal(payload.default.model, 'gpt-5.5');
+    assert.equal(payload.default.provider, 'openai-codex');
+    assert.equal(payload.reasoningEffort, 'high');
+    assert.equal(payload.providers.some((provider) => provider.models.some((model) => model.id === 'sensgift')), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+  }
+});
+
+test('local fallback profile catalog includes non-secret runtime model metadata', async () => {
+  const home = makeHome();
+  const hermesRoot = join(home, '.hermes');
+  mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=18648\nAPI_SERVER_KEY=sensgift-secret\n');
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', 'config.yaml'), [
+    'agent:',
+    '  model:',
+    '    provider: openai-codex',
+    '    default: gpt-5.5',
+    '  reasoning_effort: high',
+    '',
+  ].join('\n'));
+
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  const originalFetch = globalThis.fetch;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMES_HOME = hermesRoot;
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      if (href.endsWith('/v1/profiles') || href.endsWith('/api/profiles')) {
+        return new Response('missing', { status: 404 });
+      }
+      if (href === 'http://127.0.0.1:18648/health') return Response.json({ ok: true });
+      return Response.json({ ok: true, profile_id: 'default' });
+    };
+
+    const profiles = await loadHermesProfilesModule();
+    const rows = await profiles.getStrictProfiles();
+    const sensgift = rows.find((profile) => profile.id === 'sensgift');
+    assert.equal(sensgift?.model, 'gpt-5.5');
+    assert.equal(sensgift?.reasoningEffort, 'high');
+  } finally {
+    globalThis.fetch = originalFetch;
     process.env.HOME = oldHome;
     process.env.USERPROFILE = oldUserprofile;
     if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
@@ -3111,7 +3208,8 @@ test('model preference route and chat stream enforce profile access and use stor
   assert.match(modelsSource, /fetchApiModels\(profile\)/);
   assert.match(modelsSource, /getHermesApiBase\(profile\)/);
   assert.match(modelsSource, /apiHeaders\(profile\)/);
-  assert.doesNotMatch(modelsSource, /localModelCatalogForProfile|config\.yaml|state\.db|execFileAsync|spawn\(|runPythonOr/);
+  assert.match(modelsSource, /readProfileRuntimeConfig\(profile\)/);
+  assert.doesNotMatch(modelsSource, /localModelCatalogForProfile|state\.db|execFileAsync|spawn\(|runPythonOr/);
   assert.match(modelsSource, /extractModelItems/);
   assert.match(modelsSource, /if \(!modelItems\.length\) \{[\s\S]*providers: \[\],[\s\S]*orphanModels: \[\],[\s\S]*reasoningEffort,[\s\S]*reasoningLevels,[\s\S]*\}/);
   assert.match(clientApiSource, /\/api\/deck\/model-preferences/);

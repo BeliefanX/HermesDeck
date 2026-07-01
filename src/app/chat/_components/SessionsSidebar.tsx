@@ -179,7 +179,7 @@ function renderSessionItem({
 
 export function SessionListView({
   sessionGroups, t, active, openMenu, menuAnchor, metaStore, showArchived, search,
-  collapsedFolders, actions,
+  collapsedFolders, loading, actions,
 }: {
   sessionGroups: SessionGroups;
   t: ChatT;
@@ -190,11 +190,29 @@ export function SessionListView({
   showArchived: boolean;
   search: string;
   collapsedFolders: Record<string, boolean>;
+  loading?: boolean;
   actions: SessionListActions;
 }) {
   const renderItem = (s: LocalSession) => renderSessionItem({
     s, t, active, openMenu, menuAnchor, metaStore, showArchived, actions,
   });
+  if (loading) {
+    return (
+      <div className="session-list" role="status" aria-busy="true">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="session-item" aria-hidden>
+            <div className="row" style={{ alignItems: 'center', gap: 8 }}>
+              <span className="skel" style={{ width: 26, height: 18, borderRadius: 5, flexShrink: 0 }} />
+              <span className="skel" style={{ width: `${68 - (i % 3) * 12}%`, height: 13 }} />
+            </div>
+            <div className="session-meta" style={{ marginTop: 8 }}>
+              <span className="skel" style={{ width: `${42 + (i % 2) * 14}%`, height: 10 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="session-list" role="list">
       {sessionGroups.pinned.length > 0 && (

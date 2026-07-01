@@ -33,7 +33,6 @@ export function useChatModels(profile: string) {
 
   const setObservedModel = useCallback((modelId: string, provider = 'observed') => {
     const id = modelId.trim();
-    setSelectedModelState(id);
     if (!id) return;
     setModelOptions((cur) => {
       if (cur.some((option) => option.id === id)) return cur;

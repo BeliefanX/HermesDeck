@@ -1,19 +1,23 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Check, ChevronDown, Settings2, X } from 'lucide-react';
 import { useActiveProfile } from '@/lib/profile-context';
+import { deckApi } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import type { DeckProfile } from '@/lib/types';
 
 const POPOVER_GAP = 6;
 const POPOVER_PAD = 8;
+type ProfileRuntimeDefault = { model?: string; reasoningEffort?: string };
 
 export function ProfileChip() {
   const { activeProfile, profiles, loading, catalogError, setActiveProfile } = useActiveProfile();
   const [open, setOpen] = useState(false);
+  const [profileDefaults, setProfileDefaults] = useState<Record<string, ProfileRuntimeDefault>>({});
   const [isMobile, setIsMobile] = useState(false);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
+  const defaultsRequestedRef = useRef(new Set<string>());
 
   const t = useT({
     zh: {
@@ -21,6 +25,7 @@ export function ProfileChip() {
       switch: '切换 Agent',
       activeSuffix: ' · 当前',
       sessions: (n: number) => `${n} 个会话`,
+      reasoning: (v: string) => `推理 ${v}`,
       manage: '管理 Agents…',
       empty: '暂无可用 Agent；请联系管理员分配。',
       catalogUnavailable: 'Agent 目录暂不可用。管理员仍可继续使用当前 Agent；Agent 分配会保持关闭，直到目录恢复。',
@@ -33,6 +38,7 @@ export function ProfileChip() {
       switch: 'Switch Agent',
       activeSuffix: ' · active',
       sessions: (n: number) => `${n} session${n === 1 ? '' : 's'}`,
+      reasoning: (v: string) => `reasoning ${v}`,
       manage: 'Manage Agents…',
       empty: 'No assigned Agents. Contact an admin to request access.',
       catalogUnavailable: 'Agent catalog unavailable. Admins can keep using the current Agent; Agent assignment stays disabled until the catalog recovers.',
@@ -62,7 +68,39 @@ export function ProfileChip() {
     return () => { document.body.style.overflow = prev; };
   }, [open, isMobile]);
 
-  const activeMeta = profiles.find((p) => p.id === activeProfile);
+  useEffect(() => {
+    if (!open || profiles.length === 0) return;
+    const missing = profiles.filter((profile) => {
+      if (defaultsRequestedRef.current.has(profile.id)) return false;
+      const cached = profileDefaults[profile.id];
+      return (!profile.model && !cached?.model) || (!profile.reasoningEffort && !cached?.reasoningEffort);
+    });
+    if (missing.length === 0) return;
+    const ac = new AbortController();
+    missing.forEach((profile) => {
+      defaultsRequestedRef.current.add(profile.id);
+      deckApi.models(profile.id, ac.signal)
+        .then((models) => {
+          if (ac.signal.aborted) return;
+          const next = {
+            model: models.default?.model,
+            reasoningEffort: models.reasoningEffort,
+          };
+          if (!next.model && !next.reasoningEffort) return;
+          setProfileDefaults((cur) => ({ ...cur, [profile.id]: next }));
+        })
+        .catch(() => { /* metadata is optional; the switcher still works */ });
+    });
+    return () => ac.abort();
+  }, [open, profiles, profileDefaults]);
+
+  const profilesWithDefaults = useMemo(() => profiles.map((profile) => ({
+    ...profile,
+    model: profile.model || profileDefaults[profile.id]?.model,
+    reasoningEffort: profile.reasoningEffort || profileDefaults[profile.id]?.reasoningEffort,
+  })), [profiles, profileDefaults]);
+
+  const activeMeta = profilesWithDefaults.find((p) => p.id === activeProfile);
   const displayName = activeMeta?.name || (catalogError && activeProfile ? activeProfile : (loading ? t.loading : t.label));
 
   return (
@@ -86,7 +124,7 @@ export function ProfileChip() {
       {open && !isMobile && (
         <ProfilePopover
           anchor={anchorRef.current}
-          profiles={profiles}
+          profiles={profilesWithDefaults}
           activeProfile={activeProfile}
           loading={loading}
           catalogError={catalogError}
@@ -98,7 +136,7 @@ export function ProfileChip() {
 
       {open && isMobile && (
         <ProfileSheet
-          profiles={profiles}
+          profiles={profilesWithDefaults}
           activeProfile={activeProfile}
           loading={loading}
           catalogError={catalogError}
@@ -113,6 +151,7 @@ export function ProfileChip() {
 
 type T = ReturnType<typeof useT<{
   label: string; switch: string; activeSuffix: string; sessions: (n: number) => string;
+  reasoning: (v: string) => string;
   manage: string; empty: string; catalogUnavailable: string; loading: string; sheetTitle: string; close: string;
 }>>;
 
@@ -287,6 +326,10 @@ function ProfileList({
     <>
       {profiles.map((p) => {
         const active = p.id === activeProfile;
+        const details = [p.model, p.reasoningEffort ? t.reasoning(p.reasoningEffort) : ''].filter(Boolean).join(' · ');
+        const metaText = typeof p.sessionCount === 'number' && p.sessionCount > 0
+          ? [details, t.sessions(p.sessionCount)].filter(Boolean).join(' · ')
+          : details;
         return (
           <button
             key={p.id}
@@ -309,19 +352,18 @@ function ProfileList({
                 {p.name}
                 {active && <span style={{ color: 'var(--muted-2)', fontWeight: 400 }}>{t.activeSuffix}</span>}
               </span>
-              <span style={{
-                fontSize: 10.5,
-                color: 'var(--muted-2)',
-                fontFamily: 'var(--font-mono)',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}>
-                {p.model || '—'}
-                {typeof p.sessionCount === 'number' && p.sessionCount > 0
-                  ? ` · ${t.sessions(p.sessionCount)}`
-                  : ''}
-              </span>
+              {metaText && (
+                <span style={{
+                  fontSize: 10.5,
+                  color: 'var(--muted-2)',
+                  fontFamily: 'var(--font-mono)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
+                  {metaText}
+                </span>
+              )}
             </span>
           </button>
         );
