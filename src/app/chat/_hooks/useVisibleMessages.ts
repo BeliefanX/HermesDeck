@@ -43,8 +43,8 @@ function latestTypingTargetIndex(activeMessages: DeckMessage[], busy: boolean): 
 }
 
 export function selectVisibleMessages(activeMessages: DeckMessage[], showToolDetails: boolean, busy: boolean): DeckMessage[] {
-  const typingTargetIdx = activeMessages.some(isPendingApprovalMessage) ? -1 : latestTypingTargetIndex(activeMessages, busy);
-  return activeMessages.filter((m, idx) => {
+  const typingTargetIdx = latestTypingTargetIndex(activeMessages, busy);
+  const visible = activeMessages.filter((m, idx) => {
     const emptyNonToolRow = !hasText(m) && !hasToolCalls(m) && !hasAttachments(m) && m.role !== 'tool';
 
     if (!showToolDetails && hiddenByToolDetails(m)) return false;
@@ -56,6 +56,15 @@ export function selectVisibleMessages(activeMessages: DeckMessage[], showToolDet
 
     return true;
   });
+  const typingVisibleIdx = visible.findIndex((m) => isEmptyAssistantTextTarget(m) && (busy || isProjectedDraftMessage(m)));
+  if (typingVisibleIdx <= 0) return visible;
+  const pendingAfterTyping = visible.slice(typingVisibleIdx + 1).filter(isPendingApprovalMessage);
+  if (!pendingAfterTyping.length) return visible;
+  return [
+    ...visible.slice(0, typingVisibleIdx),
+    ...pendingAfterTyping,
+    ...visible.slice(typingVisibleIdx).filter((m) => !pendingAfterTyping.includes(m)),
+  ];
 }
 
 /**
@@ -66,9 +75,8 @@ export function selectVisibleMessages(activeMessages: DeckMessage[], showToolDet
  *      nothing.
  *
  * Special case: keep exactly one empty assistant during `busy` or server
- * projection polling — that's the live typing target. Tool-call streaming can
- * leave older draft placeholders before visible tool rows; those would render
- * as duplicate loading bubbles if we kept every draft.
+ * projection polling — that's the live typing target. Pending approval cards
+ * stay visible and are placed before that loading bubble.
  *
  * Also returns a call_id → tool_name index built from assistant tool_call rows
  * so role='tool' result rows can surface their originating tool name.

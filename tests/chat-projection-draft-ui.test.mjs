@@ -113,5 +113,5 @@ test('server projection preserves function-call aliases and normalizes tool outp
   assert.match(projection, /toolCallId: input\.callId \|\| visibleId/);
   assert.match(projection, /function normalizeToolOutput\(output: unknown\): string/);
   assert.match(projection, /return typeof rec\.text === 'string' \? rec\.text : '';/);
-  assert.match(projection, /content: normalizeToolOutput\(output\)/);
+  assert.match(projection, /const content = normalizeToolOutput\(output\)/);
 });

@@ -6,6 +6,7 @@ const chatStream = readFileSync(new URL('../src/lib/server/hermes/chat-stream.ts
 const projection = readFileSync(new URL('../src/lib/server/deck-chat-projection.ts', import.meta.url), 'utf8');
 const messageRow = readFileSync(new URL('../src/app/chat/_components/MessageRow.tsx', import.meta.url), 'utf8');
 const visibleMessages = readFileSync(new URL('../src/app/chat/_hooks/useVisibleMessages.ts', import.meta.url), 'utf8');
+const globalsCss = readFileSync(new URL('../src/app/globals.css', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8');
 const approvalRoute = readFileSync(new URL('../src/app/api/deck/chat/approval/route.ts', import.meta.url), 'utf8');
 const { selectVisibleMessages } = await import('../src/app/chat/_hooks/useVisibleMessages.ts');
@@ -17,6 +18,12 @@ test('chat stream uses approval-capable /v1/runs protocol', () => {
   assert.doesNotMatch(chatStream, /fetch\(`\$\{[^`]+\}\/v1\/responses/);
 });
 
+test('stream events carry the API run id before approval projection', () => {
+  assert.match(chatStream, /if \(runId && !obj\.run_id\) obj\.run_id = runId;/);
+  assert.match(chatStream, /hooks\?\.onRunEvent\?\.\(\{[\s\S]*payload: obj,[\s\S]*\}\)/);
+  assert.match(projection, /const approvalRunId = isRunId\(payload\.run_id\) \? payload\.run_id\.trim\(\) : '';/);
+});
+
 test('approval events project to visible pending assistant messages and resolve', () => {
   assert.match(projection, /type === 'approval\.request'/);
   assert.match(projection, /upsertApprovalMessage/);
@@ -26,18 +33,25 @@ test('approval events project to visible pending assistant messages and resolve'
   assert.match(visibleMessages, /isPendingApprovalMessage/);
 });
 
-test('pending approval suppresses ordinary typing placeholders', () => {
+test('pending approval is shown above the active typing placeholder', () => {
   const rows = [
     { id: 'u', role: 'user', content: 'run' },
     { id: 'draft', role: 'assistant', content: '', metadata: { projectionStatus: 'draft' } },
     { id: 'approval', role: 'assistant', content: 'Approval required', metadata: { projectionKind: 'approval', approvalStatus: 'pending', runId: 'run_1' } },
   ];
-  assert.deepEqual(selectVisibleMessages(rows, false, true).map((m) => m.id), ['u', 'approval']);
+  assert.deepEqual(selectVisibleMessages(rows, false, true).map((m) => m.id), ['u', 'approval', 'draft']);
 });
 
-test('approval UI calls a protected Deck BFF route with all four choices', () => {
+test('approval UI calls a protected Deck BFF route with styled choices and collapse-on-resolve', () => {
   assert.match(messageRow, /ApprovalBlock/);
   for (const label of ['Approve once', 'Session', 'Always', 'Deny']) assert.match(messageRow, new RegExp(label));
+  assert.match(messageRow, /className=\{`approval-choice/);
+  assert.match(messageRow, /choice === 'deny' \? 'deny' : 'approve'/);
+  assert.match(globalsCss, /\.approval-choice\{[^}]*border:1px solid/);
+  assert.match(globalsCss, /\.approval-choice\.approve/);
+  assert.match(globalsCss, /\.approval-choice\.deny/);
+  assert.match(messageRow, /\{pending && <pre className="tool-call-args">/);
+  assert.match(messageRow, /setDone\(true\)/);
   assert.match(messageRow, /sessionId/);
   assert.match(messageRow, /metadata\?\.choices/);
   assert.match(api, /chatApproval/);

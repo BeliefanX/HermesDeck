@@ -479,6 +479,10 @@ function approvalText(payload: Record<string, unknown>): string {
   return `Approval required${description ? `: ${description}` : ''}${command ? `\n\n${command}` : ''}`;
 }
 
+function isRunId(value: unknown): value is string {
+  return typeof value === 'string' && /^run_[\w.-]+$/.test(value.trim());
+}
+
 function upsertApprovalMessage(session: ProjectedSession, input: { runId: string; payload: Record<string, unknown>; now: string }): boolean {
   const choices = Array.isArray(input.payload.choices) ? input.payload.choices.filter((x) => typeof x === 'string') : ['once', 'session', 'always', 'deny'];
   const metadata = {
@@ -489,6 +493,7 @@ function upsertApprovalMessage(session: ProjectedSession, input: { runId: string
     command: stringValue(input.payload.command),
     description: stringValue(input.payload.description),
     patternKey: stringValue(input.payload.pattern_key),
+    actionUnavailable: input.payload.action_unavailable === true,
     choices,
   };
   const existing = findApprovalMessage(session, input.runId);
@@ -578,6 +583,29 @@ function normalizeToolOutput(output: unknown): string {
     if (parts.length) return parts.join('\n');
   }
   return sanitizeText(output);
+}
+
+function parseJsonRecord(value: string): Record<string, unknown> | null {
+  try { return safeRecord(JSON.parse(value)); }
+  catch { return null; }
+}
+
+function pendingApprovalPayloadFromToolOutput(output: unknown, normalized: string): Record<string, unknown> | null {
+  const candidates: unknown[] = [output, normalized];
+  if (Array.isArray(output)) {
+    for (const part of output) {
+      const rec = safeRecord(part);
+      if (typeof rec?.text === 'string') candidates.push(rec.text);
+    }
+  }
+  for (const candidate of candidates) {
+    const rec = safeRecord(candidate) || (typeof candidate === 'string' ? parseJsonRecord(candidate) : null);
+    if (!rec) continue;
+    const status = stringValue(rec.status);
+    const approvalPending = rec.approval_pending === true || rec.approval_pending === 'true';
+    if (status === 'pending_approval' || approvalPending) return rec;
+  }
+  return null;
 }
 
 function getProjectedToolSlot(session: ProjectedSession, id: string): ProjectedToolSlot | undefined {
@@ -926,10 +954,20 @@ export function recordProjectedRunEvent(input: RecordProjectedRunEventInput): vo
         const slot = getProjectedToolSlot(session, itemId);
         const output = item.output ?? item.content;
         if (itemId && output != null) {
+          const content = normalizeToolOutput(output);
+          const approvalPayload = pendingApprovalPayloadFromToolOutput(output, content);
+          if (approvalPayload) {
+            const approvalRunId = isRunId(payload.run_id) ? payload.run_id.trim() : '';
+            changed = upsertApprovalMessage(session, {
+              runId: approvalRunId || `tool_${itemId}`,
+              payload: approvalRunId ? approvalPayload : { ...approvalPayload, choices: [], action_unavailable: true },
+              now,
+            }) || changed;
+          }
           changed = insertToolResultMessage(session, {
             itemId,
             toolName: slot?.name || stringValue(item.name) || 'tool',
-            content: normalizeToolOutput(output),
+            content,
             now,
           }) || changed;
         }
@@ -945,12 +983,22 @@ export function recordProjectedRunEvent(input: RecordProjectedRunEventInput): vo
       const slot = getProjectedToolSlot(session, itemId);
       const output = payload.output ?? payload.result ?? payload.content;
       if (itemId && output != null) {
+        const content = normalizeToolOutput(output);
+        const approvalPayload = pendingApprovalPayloadFromToolOutput(output, content);
+        if (approvalPayload) {
+          const approvalRunId = isRunId(payload.run_id) ? payload.run_id.trim() : '';
+          changed = upsertApprovalMessage(session, {
+            runId: approvalRunId || `tool_${itemId}`,
+            payload: approvalRunId ? approvalPayload : { ...approvalPayload, choices: [], action_unavailable: true },
+            now,
+          }) || changed;
+        }
         changed = insertToolResultMessage(session, {
           itemId,
           toolName: slot?.name || stringValue(payload.tool_name) || stringValue(item.name) || 'tool',
-          content: normalizeToolOutput(output),
+          content,
           now,
-        });
+        }) || changed;
       }
     }
 

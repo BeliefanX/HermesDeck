@@ -115,6 +115,7 @@ const ApprovalBlock = memo(function ApprovalBlock({ message, profile, sessionId 
     ? message.metadata.choices.filter((x): x is 'once' | 'session' | 'always' | 'deny' => x === 'once' || x === 'session' || x === 'always' || x === 'deny')
     : ['once', 'session', 'always', 'deny'] as const;
   const labels = { once: 'Approve once', session: 'Session', always: 'Always', deny: 'Deny' } as const;
+  const actionUnavailable = message.metadata?.actionUnavailable === true || choices.length === 0;
   const choose = async (choice: 'once' | 'session' | 'always' | 'deny') => {
     if (!runId || !sessionId || busy) return;
     setBusy(choice); setError('');
@@ -123,15 +124,18 @@ const ApprovalBlock = memo(function ApprovalBlock({ message, profile, sessionId 
     finally { setBusy(''); }
   };
   return (
-    <div className="tool-block" style={{ borderColor: 'var(--status-yellow-border)' }}>
+    <div className="tool-block approval-block">
       <div className="tool-block-head">
         <ShieldAlert size={12} />
-        <span className="tool-block-title">Approval required</span>
+        <span className="tool-block-title">{pending ? 'Approval required' : 'Approval resolved'}</span>
         {!pending && <span className="muted">resolved</span>}
       </div>
-      <pre className="tool-call-args">{message.content}</pre>
-      {pending && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-        {choices.map((choice) => <button key={choice} disabled={!!busy} onClick={() => choose(choice)}>{labels[choice]}</button>)}
+      {pending && <pre className="tool-call-args">{message.content}</pre>}
+      {pending && !actionUnavailable && <div className="approval-actions">
+        {choices.map((choice) => <button key={choice} type="button" className={`approval-choice ${choice === 'deny' ? 'deny' : 'approve'}`} disabled={!!busy} onClick={() => choose(choice)}>{busy === choice ? 'Submitting…' : labels[choice]}</button>)}
+      </div>}
+      {pending && actionUnavailable && <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+        This approval was returned by a nested tool run and cannot be resolved from this Deck card. Start a fresh turn after approving in the original channel, or rerun with a safer command path.
       </div>}
       {error && <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 6 }}>{error}</div>}
     </div>

@@ -1172,6 +1172,15 @@ p{line-height:1.6}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .tool-block-body{padding:4px 10px 10px;display:flex;flex-direction:column;gap:8px}
+.approval-block{border-color:var(--status-yellow-border)!important}
+.approval-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.approval-choice{min-height:30px;padding:5px 11px;border-radius:var(--r-1);border:1px solid var(--line);background:var(--panel-2);color:var(--strong-text);font-size:12px;font-weight:550;box-shadow:0 1px 0 var(--highlight-top) inset;cursor:pointer;transition:background .16s ease,border-color .16s ease,transform .16s ease}
+.approval-choice:active{transform:translateY(1px)}
+.approval-choice:hover{background:var(--panel-3);border-color:var(--line-strong)}
+.approval-choice:focus-visible{outline:none;box-shadow:var(--ring)}
+.approval-choice.approve{border-color:var(--status-green-border);background:var(--status-green-bg)}
+.approval-choice.deny{border-color:var(--status-red-border);color:var(--red);background:var(--status-red-bg)}
+.approval-choice:disabled{opacity:.55;cursor:not-allowed;transform:none}
 .tool-call-entry{display:flex;flex-direction:column;gap:4px}
 .tool-call-name{
   font-family:var(--mono,ui-monospace,SFMono-Regular,monospace);
