@@ -1810,6 +1810,56 @@ test('server-canonical projection response id overrides stale client continuatio
   }
 });
 
+test('projected messages resolve browser aliases after canonical session id reconciliation', async () => {
+  const home = makeHome();
+  const dataDir = join(home, '.hermesdeck-data');
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMESDECK_DATA_DIR = dataDir;
+    const projection = await import(`${pathToFileURL(deckChatProjectionModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    const viewer = { userId: 'user_alias_kevin', role: 'user' };
+    projection.startProjectedTurn({
+      sessionId: 'deck_generated_alias_session',
+      profileId: 'sensgift',
+      ownerUserId: viewer.userId,
+      ownerRole: viewer.role,
+      message: 'alias probe',
+    });
+    projection.reconcileProjectedSessionId('browser_visible_alias_session', 'deck_generated_alias_session', 'sensgift', viewer);
+    projection.reconcileProjectedSessionId('deck_generated_alias_session', 'backend_canonical_alias_session', 'sensgift', viewer);
+    projection.finalizeProjectedTurn({
+      sessionId: 'backend_canonical_alias_session',
+      profileId: 'sensgift',
+      viewer,
+      content: 'alias ok',
+      responseId: 'resp_alias_ok',
+    });
+
+    const messages = projection.getProjectedMessages('browser_visible_alias_session', 'sensgift', { viewer });
+    assert.deepEqual(messages.map((message) => message.role), ['user', 'assistant']);
+    assert.equal(messages[1].content, 'alias ok');
+
+    const storePath = join(dataDir, 'chat-projection.v1.json');
+    const stored = JSON.parse(readFileSync(storePath, 'utf8'));
+    assert.equal(stored.aliases.browser_visible_alias_session, 'backend_canonical_alias_session');
+    assert.equal(stored.aliases.deck_generated_alias_session, 'backend_canonical_alias_session');
+
+    delete stored.aliases.browser_visible_alias_session;
+    writeFileSync(storePath, JSON.stringify(stored, null, 2));
+    const legacyMessages = projection.getProjectedMessages('browser_visible_alias_session', 'sensgift', { viewer });
+    assert.equal(legacyMessages[1].content, 'alias ok');
+  } finally {
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+  }
+});
+
 test('chat stream strips client-supplied conversation_history for unproven new sessions', async () => {
   const home = makeHome();
   const dataDir = join(home, '.hermesdeck-data');

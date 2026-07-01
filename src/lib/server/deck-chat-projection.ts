@@ -413,6 +413,12 @@ function resolveAlias(store: ProjectionStore, sessionId: string): string {
     seen.add(cur);
     cur = store.aliases[cur];
   }
+  if (store.sessions[cur]) return cur;
+  // ponytail: small projection store; scan embedded aliases to recover old rows
+  // written before alias chains were retargeted during canonical-id reconcile.
+  for (const [id, session] of Object.entries(store.sessions)) {
+    if (Array.isArray(session.aliases) && session.aliases.includes(sessionId)) return id;
+  }
   return cur;
 }
 
@@ -749,6 +755,9 @@ export function reconcileProjectedSessionId(oldSessionId: string, newSessionId: 
     }
     assertCanWriteProjectedSession(session, viewer);
     const aliases = new Set([...(session.aliases || []), oldId, canonicalOld].filter((id) => id && id !== nextId));
+    for (const [alias, target] of Object.entries(store.aliases)) {
+      if (alias !== nextId && (target === oldId || target === canonicalOld || target === canonicalNew)) aliases.add(alias);
+    }
     session.id = nextId;
     session.aliases = [...aliases];
     session.updatedAt = nowIso();
@@ -762,6 +771,9 @@ export function reconcileProjectedSessionId(oldSessionId: string, newSessionId: 
     }
     delete store.sessions[canonicalOld];
     store.sessions[nextId] = session;
+    for (const alias of session.aliases || []) {
+      if (alias && alias !== nextId) store.aliases[alias] = nextId;
+    }
     store.aliases[oldId] = nextId;
     store.aliases[canonicalOld] = nextId;
   });
