@@ -33,6 +33,7 @@ export function useChatScroll({ active, activeMessages, input, taRef }: ScrollPa
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   // Tracks the deadline of an in-flight programmatic smooth scroll.
   const smoothScrollUntilRef = useRef(0);
+  const settleCleanupRef = useRef<(() => void) | null>(null);
 
   const scrollToBottom = useCallback((smooth = true) => {
     const el = messagesRef.current;
@@ -114,17 +115,8 @@ export function useChatScroll({ active, activeMessages, input, taRef }: ScrollPa
     };
   }, [active]);
 
-  // Reset stick-to-bottom whenever switching sessions; jump to bottom instantly.
-  // Mark "just switched" so the next async-load of messages snaps without
-  // animation, AND fires multiple delayed passes — code highlighters, KaTeX,
-  // mermaid and images all extend scrollHeight well after the initial RAF.
-  // We additionally watch the messages container with a ResizeObserver for the
-  // first ~2s so any async layout growth re-snaps to the new bottom.
-  //
-  // Critically: every scheduled snap re-checks userScrolledAwayRef before
-  // firing. If the user starts scrolling up during the post-switch settle
-  // period, the timers/RO become no-ops instead of yanking them back down.
-  useEffect(() => {
+  const settleToBottom = useCallback(() => {
+    settleCleanupRef.current?.();
     stickToBottomRef.current = true;
     userScrolledAwayRef.current = false;
     justSwitchedRef.current = true;
@@ -160,13 +152,38 @@ export function useChatScroll({ active, activeMessages, input, taRef }: ScrollPa
         justSwitchedRef.current = false;
       }, 2200);
     }
-    return () => {
+    const cleanup = () => {
       cancelAnimationFrame(firstSnap);
       timers.forEach(clearTimeout);
       if (stopRo) clearTimeout(stopRo);
       try { ro?.disconnect(); } catch {}
     };
-  }, [active, scrollToBottom]);
+    settleCleanupRef.current = cleanup;
+    return cleanup;
+  }, [scrollToBottom]);
+
+  // Reset stick-to-bottom whenever switching sessions; jump to bottom instantly.
+  // Mark "just switched" so the next async-load of messages snaps without
+  // animation, AND fires multiple delayed passes — code highlighters, KaTeX,
+  // mermaid and images all extend scrollHeight well after the initial RAF.
+  // We additionally watch the messages container with a ResizeObserver for the
+  // first ~2s so any async layout growth re-snaps to the new bottom.
+  //
+  // Critically: every scheduled snap re-checks userScrolledAwayRef before
+  // firing. If the user starts scrolling up during the post-switch settle
+  // period, the timers/RO become no-ops instead of yanking them back down.
+  useEffect(() => {
+    const cleanup = settleToBottom();
+    return () => {
+      cleanup();
+      if (settleCleanupRef.current === cleanup) settleCleanupRef.current = null;
+    };
+  }, [active, settleToBottom]);
+
+  useEffect(() => () => {
+    settleCleanupRef.current?.();
+    settleCleanupRef.current = null;
+  }, []);
 
   // Smooth-follow during streaming: any time messages change AND we should
   // stick to bottom, animate to bottom on the next frame. Right after a
@@ -223,5 +240,6 @@ export function useChatScroll({ active, activeMessages, input, taRef }: ScrollPa
     justSwitchedRef,
     showJumpToBottom,
     scrollToBottom: userScrollToBottom,
+    settleToBottom,
   };
 }

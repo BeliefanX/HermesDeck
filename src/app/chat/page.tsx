@@ -295,7 +295,7 @@ function ChatPageInner() {
     activeMessages, showToolDetails, busy,
   );
 
-  const { messagesRef, stickToBottomRef, showJumpToBottom, scrollToBottom } = useChatScroll({
+  const { messagesRef, stickToBottomRef, showJumpToBottom, scrollToBottom, settleToBottom } = useChatScroll({
     active, activeMessages, input, taRef,
   });
 
@@ -393,7 +393,8 @@ function ChatPageInner() {
   const openSessionMobile = useCallback((s: LocalSession) => {
     openSession(s);
     enterThread();
-  }, [openSession, enterThread]);
+    settleToBottom();
+  }, [openSession, enterThread, settleToBottom]);
   const newChatMobile = useCallback(() => {
     newChat();
     enterThread();
