@@ -54,6 +54,7 @@ interface UseChatStreamParams {
   setInput: React.Dispatch<React.SetStateAction<string>>;
   setAttachments: React.Dispatch<React.SetStateAction<AttachmentItem[]>>;
   setTimeline: React.Dispatch<React.SetStateAction<TimelineItem[]>>;
+  setMessagesLoading: React.Dispatch<React.SetStateAction<boolean>>;
   /** Stores the token usage observed from each session's latest completed turn. */
   setUsage: React.Dispatch<React.SetStateAction<Record<string, TurnUsage>>>;
   // Refs the parent owns
@@ -277,7 +278,7 @@ export function useChatStream(params: UseChatStreamParams) {
     profile, active, messages, responseIds, busy, input, attachments,
     selectedModel, reasoningEffort, defaultReasoning, hydrated,
     setSessions, setMessages, setResponseIds, setActive,
-    setBusy, setError, setInput, setAttachments, setTimeline,
+    setBusy, setError, setInput, setAttachments, setTimeline, setMessagesLoading,
     setUsage,
     abortRef, taRef, stickToBottomRef, t,
   } = params;
@@ -313,8 +314,9 @@ export function useChatStream(params: UseChatStreamParams) {
     deltaRef.current = null;
     clearInflight();
     setBusy(false);
+    setMessagesLoading(false);
     clearTimeline();
-  }, [abortRef, clearTimeline, profile, setBusy]);
+  }, [abortRef, clearTimeline, profile, setBusy, setMessagesLoading]);
 
   const handleEvent = useCallback((eventType: string, payload: unknown) => {
     if (eventType !== 'run-event') return;
@@ -596,7 +598,9 @@ export function useChatStream(params: UseChatStreamParams) {
     // one we're opening (newChat already does this; openSession used not to).
     if (s.id !== active) clearTimeline();
     const cached = messages[s.id];
-    if (!cached || (s.messageCount || 0) > cached.length) {
+    const needsFetch = !cached || (s.messageCount || 0) > cached.length;
+    setMessagesLoading(needsFetch && !cached?.length);
+    if (needsFetch) {
       try {
         const r = await deckApi.messages(s.id, profile, ac.signal);
         if (seq !== openSessionSeqRef.current || ac.signal.aborted || profileRef.current !== requestProfile) return;
@@ -604,9 +608,13 @@ export function useChatStream(params: UseChatStreamParams) {
       } catch (err) {
         if (ac.signal.aborted || seq !== openSessionSeqRef.current) return;
         setError(`Messages failed to load: ${apiErrorDetail(err)}`);
+      } finally {
+        if (seq === openSessionSeqRef.current && !ac.signal.aborted && profileRef.current === requestProfile) {
+          setMessagesLoading(false);
+        }
       }
     }
-  }, [abortRef, active, clearTimeline, messages, profile, setActive, setError, setMessages]);
+  }, [abortRef, active, clearTimeline, messages, profile, setActive, setError, setMessages, setMessagesLoading]);
 
   // Build the SSE callbacks shared by streamChat and resumeChatStreamClient.
   // Captures `sid` + the IDs the run uses for live state mutation.
@@ -1278,9 +1286,10 @@ export function useChatStream(params: UseChatStreamParams) {
     openSessionAbortRef.current?.abort();
     setActive('');
     setError('');
+    setMessagesLoading(false);
     clearTimeline();
     setTimeout(() => taRef.current?.focus(), 60);
-  }, [abortRef, clearTimeline, setActive, setError, taRef]);
+  }, [abortRef, clearTimeline, setActive, setError, setMessagesLoading, taRef]);
 
   const regenerate = useCallback(async () => {
     if (busy) return;

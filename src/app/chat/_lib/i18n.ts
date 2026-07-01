@@ -113,6 +113,7 @@ export function useChatT() {
       // Empty state
       newConversationKicker: '新对话',
       startSession: '开启 Hermes 会话',
+      loadingConversation: '正在加载会话…',
       emptyHint1: '选择一个 Agent 并发送消息。HermesDeck 会在本地保存会话，并通过 ',
       emptyHint2: ' 串接后续问答。',
       // Tool hidden bar
@@ -300,6 +301,7 @@ export function useChatT() {
       newChatBtn: 'New chat',
       newConversationKicker: 'NEW CONVERSATION',
       startSession: 'Start a Hermes session',
+      loadingConversation: 'Loading conversation…',
       emptyHint1: 'Pick an Agent and send a message. HermesDeck stores sessions locally and chains follow-ups via ',
       emptyHint2: '.',
       hiddenSuffix: ' tool calls / subagent internals hidden',

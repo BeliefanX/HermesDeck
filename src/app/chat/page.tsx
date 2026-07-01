@@ -75,6 +75,7 @@ function ChatPageInner() {
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [active, setActive] = useState<string>('');
   const [messages, setMessages] = useState<Record<string, DeckMessage[]>>({});
+  const [messagesLoading, setMessagesLoading] = useState(false);
   const [responseIds, setResponseIds] = useState<Record<string, string>>({});
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -300,7 +301,7 @@ function ChatPageInner() {
     profile, active, messages, responseIds, busy, input, attachments,
     selectedModel, reasoningEffort, defaultReasoning, hydrated,
     setSessions, setMessages, setResponseIds, setActive,
-    setBusy, setError, setInput, setAttachments, setTimeline,
+    setBusy, setError, setInput, setAttachments, setTimeline, setMessagesLoading,
     setUsage: setUsageBySession,
     abortRef, taRef, stickToBottomRef, t,
   });
@@ -561,6 +562,7 @@ function ChatPageInner() {
       profile={profile}
       sessions={sessions}
       activeMessages={activeMessages}
+      messagesLoading={messagesLoading}
       visibleMessages={visibleMessages}
       hiddenToolCount={hiddenToolCount}
       responseIds={responseIds}

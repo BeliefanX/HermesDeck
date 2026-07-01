@@ -36,6 +36,7 @@ interface ChatLayoutViewProps {
   profile: string;
   sessions: DeckSession[];
   activeMessages: DeckMessage[];
+  messagesLoading: boolean;
   visibleMessages: DeckMessage[];
   hiddenToolCount: number;
   responseIds: Record<string, string>;
@@ -258,7 +259,27 @@ export function ChatLayoutView(p: ChatLayoutViewProps) {
           />
 
           <div className="messages" ref={p.messagesRef}>
-            {p.activeMessages.length === 0 && (
+            {p.messagesLoading && p.activeMessages.length === 0 && (
+              <div
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+                style={{
+                  margin: 'auto',
+                  width: 'min(520px, 100%)',
+                  padding: '28px 24px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                }}
+              >
+                <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center' }}>{p.t.loadingConversation}</div>
+                <div className="skel" style={{ width: '76%', height: 16 }} />
+                <div className="skel" style={{ width: '100%', height: 44 }} />
+                <div className="skel" style={{ width: '64%', height: 16, alignSelf: 'flex-end' }} />
+              </div>
+            )}
+            {!p.messagesLoading && p.activeMessages.length === 0 && (
               <EmptyState t={p.t} suggestions={p.SUGGESTIONS} onSendSuggestion={(s) => p.send(s)} />
             )}
             {!p.showToolDetails && p.hiddenToolCount > 0 && (
