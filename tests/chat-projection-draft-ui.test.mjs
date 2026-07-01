@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const visibleMessages = readFileSync(new URL('../src/app/chat/_hooks/useVisibleMessages.ts', import.meta.url), 'utf8');
+const { selectVisibleMessages } = await import('../src/app/chat/_hooks/useVisibleMessages.ts');
 const messageRow = readFileSync(new URL('../src/app/chat/_components/MessageRow.tsx', import.meta.url), 'utf8');
 const chatPage = readFileSync(new URL('../src/app/chat/page.tsx', import.meta.url), 'utf8');
 const projection = readFileSync(new URL('../src/lib/server/deck-chat-projection.ts', import.meta.url), 'utf8');
@@ -13,8 +14,21 @@ const messagesRoute = readFileSync(new URL('../src/app/api/deck/sessions/[id]/me
 test('server-projected draft assistant rows survive refresh as visible typing placeholders', () => {
   assert.match(visibleMessages, /export function isProjectedDraftMessage/);
   assert.match(visibleMessages, /projectionStatus === 'draft'/);
-  assert.match(visibleMessages, /isProjectedDraftMessage\(m\) && !hasToolCalls/);
+  assert.match(visibleMessages, /latestTypingTargetIndex/);
+  assert.match(visibleMessages, /return idx === typingTargetIdx/);
   assert.match(messageRow, /busy \|\| isProjectedDraftMessage\(m\)/);
+});
+
+test('visible message filtering keeps only the latest empty assistant typing target', () => {
+  const rows = [
+    { id: 'u1', role: 'user', content: 'run tools' },
+    { id: 'old-draft', role: 'assistant', content: '', metadata: { projectionStatus: 'draft' } },
+    { id: 'tool-call', role: 'assistant', content: '', toolCalls: [{ id: 'call_1', name: 'delegate_task' }] },
+    { id: 'latest-empty', role: 'assistant', content: '' },
+  ];
+
+  const visible = selectVisibleMessages(rows, true, true);
+  assert.deepEqual(visible.map((m) => m.id), ['u1', 'tool-call', 'latest-empty']);
 });
 
 test('active projected drafts are hydrated from the server and polled to final content', () => {
@@ -43,7 +57,7 @@ test('Deck chat projection reads are profile-scoped for shared assigned agents',
   assert.match(projection, /export type ProjectionViewer/);
   assert.match(projection, /canViewProjectedSession/);
   assert.match(projection, /canWriteProjectedSession/);
-  assert.match(projection, /void viewer;/);
+  assert.match(projection, /canWriteProjectedSession\(session, viewer\)/);
   assert.match(projection, /hasProjectedSession\(sessionId: string, profileId: string, viewer\?: ProjectionViewer\)/);
   assert.match(projection, /projectedResponseIdMatches\(sessionId: string, profileId: string, responseId: string, viewer\?: ProjectionViewer\)/);
   assert.doesNotMatch(projection, /return !session\.ownerUserId \|\| session\.ownerUserId === viewer\.userId/);
