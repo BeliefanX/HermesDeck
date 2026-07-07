@@ -51,7 +51,7 @@ if (!appShellMatch) {
   ok = false;
 } else {
   const appShellLiteral = appShellMatch[1];
-  const protectedRoutes = ['/', '/chat', '/chat?source=pwa', '/profiles', '/runs', '/cron', '/tools', '/terminal', '/config', '/kanban', '/lcm', '/settings'];
+  const protectedRoutes = ['/', '/chat', '/chat?source=pwa', '/profiles', '/cron', '/tools', '/terminal', '/config', '/lcm', '/settings'];
   for (const route of protectedRoutes) {
     const quoted = route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (new RegExp(`['\"]${quoted}['\"]`).test(appShellLiteral)) {

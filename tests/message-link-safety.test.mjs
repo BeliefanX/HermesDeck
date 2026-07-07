@@ -11,7 +11,7 @@ test('safeMarkdownHref permits normal web links and app-relative chat deep links
   assert.equal(safeMarkdownHref('http://example.com'), 'http://example.com');
   assert.equal(safeMarkdownHref('mailto:kevin@example.com'), 'mailto:kevin@example.com');
   assert.equal(safeMarkdownHref('/chat?session=sensgift-owned'), '/chat?session=sensgift-owned');
-  assert.equal(safeMarkdownHref('runs/abc'), 'runs/abc');
+  assert.equal(safeMarkdownHref('docs/abc'), 'docs/abc');
   assert.equal(safeMarkdownHref('#section'), '#section');
 });
 

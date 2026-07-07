@@ -3,8 +3,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import {
-  BookOpen, Bot, CalendarClock, FileCog, Globe, Home, KanbanSquare, Menu, MessageSquare, Moon, PanelLeftClose, PanelLeftOpen,
-  Radio, Search, Settings, Sun, Terminal, Wrench, X,
+  BookOpen, Bot, CalendarClock, FileCog, Globe, Home, Menu, MessageSquare, Moon, PanelLeftClose, PanelLeftOpen,
+  Search, Settings, Sun, Terminal, Wrench, X,
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 import { BrandMark } from './BrandMark';
@@ -17,7 +17,7 @@ import { useDeckSession } from '@/lib/use-deck-session';
 const SIDEBAR_KEY = 'hermesdeck-sidebar-collapsed';
 
 type IconType = ComponentType<{ size?: number | string; className?: string }>;
-type NavKey = 'home' | 'chat' | 'profiles' | 'config' | 'runs' | 'cron' | 'kanban' | 'tools' | 'lcm' | 'terminal' | 'settings';
+type NavKey = 'home' | 'chat' | 'profiles' | 'config' | 'cron' | 'tools' | 'lcm' | 'terminal' | 'settings';
 type NavItem = { href: string; key: NavKey; icon: IconType };
 
 const NAV: NavItem[] = [
@@ -25,9 +25,7 @@ const NAV: NavItem[] = [
   { href: '/chat',     key: 'chat',     icon: MessageSquare },
   { href: '/profiles', key: 'profiles', icon: Bot },
   { href: '/config',   key: 'config',   icon: FileCog },
-  { href: '/runs',     key: 'runs',     icon: Radio },
   { href: '/cron',     key: 'cron',     icon: CalendarClock },
-  { href: '/kanban',   key: 'kanban',   icon: KanbanSquare },
   { href: '/tools',    key: 'tools',    icon: Wrench },
   { href: '/lcm',      key: 'lcm',      icon: BookOpen },
   { href: '/terminal', key: 'terminal', icon: Terminal },
@@ -103,9 +101,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       navChat:     { label: '对话',     kicker: '会话列表' },
       navProfiles: { label: 'Agents',     kicker: 'Agent · 模型' },
       navConfig:   { label: 'Agent 配置', kicker: 'SOUL · 记忆 · YAML' },
-      navRuns:     { label: '运行',     kicker: '运行时间线' },
       navCron:     { label: '定时任务', kicker: 'Scheduled Tasks' },
-      navKanban:   { label: '看板',     kicker: '多 Agent 任务' },
       navTools:    { label: '工具',     kicker: '工具集 · MCP' },
       navLcm:      { label: 'LCM',      kicker: '上下文管理' },
       navTerminal: { label: '终端',     kicker: '安全运维控制台' },
@@ -116,7 +112,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       apiOffline: '离线',
       apiChecking: '检测中',
       apiLabel: 'API',
-      footerHint: '配置、运行与工具事件均为一等公民。',
+      footerHint: '对话、配置与工具事件均为一等公民。',
       expandSidebar: '展开侧栏',
       collapseSidebar: '收起侧栏',
       primaryNav: '主导航',
@@ -125,7 +121,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       moreNav: '更多',
       moreSheetLabel: '更多导航',
       close: '关闭',
-      searchPlaceholder: '搜索会话、配置、工具、运行……',
+      searchPlaceholder: '搜索会话、配置、工具……',
       cmdPaletteAriaLabel: '打开命令面板',
       cmdPaletteTitle: '打开命令面板（⌘K）',
       lightMode: '切换到浅色模式',
@@ -138,9 +134,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       navChat:     { label: 'Chat',     kicker: 'CONVERSATIONS' },
       navProfiles: { label: 'Agents', kicker: 'AGENTS · MODELS' },
       navConfig:   { label: 'Agent Config', kicker: 'SOUL · MEMORY · YAML' },
-      navRuns:     { label: 'Runs',     kicker: 'RUN TIMELINE' },
       navCron:     { label: 'Scheduled Tasks', kicker: 'CRON JOBS' },
-      navKanban:   { label: 'Kanban',   kicker: 'MULTI-AGENT BOARD' },
       navTools:    { label: 'Tools',    kicker: 'TOOLSETS · MCP' },
       navLcm:      { label: 'LCM',      kicker: 'LOSSLESS CONTEXT' },
       navTerminal: { label: 'Terminal', kicker: 'SAFE OPS CONSOLE' },
@@ -151,7 +145,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       apiOffline: 'offline',
       apiChecking: 'checking…',
       apiLabel: 'API',
-      footerHint: 'Agents, runs and tool events are first-class.',
+      footerHint: 'Agents, chat and tool events are first-class.',
       expandSidebar: 'Expand sidebar',
       collapseSidebar: 'Collapse sidebar',
       primaryNav: 'Primary navigation',
@@ -160,7 +154,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       moreNav: 'More',
       moreSheetLabel: 'More navigation',
       close: 'Close',
-      searchPlaceholder: 'Search sessions, Agents, tools, runs…',
+      searchPlaceholder: 'Search sessions, Agents, tools…',
       cmdPaletteAriaLabel: 'Open command palette',
       cmdPaletteTitle: 'Open command palette (⌘K)',
       lightMode: 'Switch to light mode',

@@ -86,7 +86,7 @@ function ChatPageInner() {
   const [showTimeline, setShowTimeline] = useState(true);
 
   // Per-turn overrides surfaced in the composer. Both are forwarded to the
-  // Hermes /v1/responses endpoint via the chat-stream BFF.
+  // Hermes /v1/runs endpoint via the chat-stream BFF.
   const {
     modelOptions, selectedModel, setSelectedModel, setObservedModel,
     reasoningEffort, setReasoningEffort,
@@ -404,8 +404,8 @@ function ChatPageInner() {
     enterThread();
   }, [newChat, enterThread]);
 
-  // Honour /chat?session=<id> deep links (dashboard rows, run detail, command
-  // palette all link here). The persisted `active` from localStorage is the
+  // Honour /chat?session=<id> deep links (session rows and command palette
+  // entries link here). The persisted `active` from localStorage is the
   // default; an explicit ?session= param wins once that id shows up in the
   // freshly-loaded session list.
   const deepLinkAppliedRef = useRef('');

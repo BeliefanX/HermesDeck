@@ -8,7 +8,7 @@ This file documents UI/design constraints only. Runtime architecture, API-only d
 ## Product stance
 
 - HermesDeck is a Hermes Agent control deck, not a marketing site.
-- Primary surfaces are cockpit/workbench pages: dashboard, chat, profiles, runs, tools, config, terminal, settings, kanban and LCM.
+- Primary surfaces are cockpit/workbench pages: dashboard, chat, profiles, tools, config, cron, terminal, settings and LCM.
 - Navigation is persistent app chrome: desktop side rail/top command bar, mobile app bar/bottom nav.
 - PWA/mobile priorities: safe areas, no horizontal scroll, stable chat scrollport, two-level mobile chat, 44px coarse-pointer hit targets.
 

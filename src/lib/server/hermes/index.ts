@@ -26,39 +26,11 @@ export {
   type LcmPluginInfo,
   type LcmConfigSnapshot,
 } from './lcm';
-export { getRuns, getRunDetail } from './runs';
 export { CronProfileRoutingError, getCronJobs } from './cron';
 export { getTokenStats } from './tokens';
 export { listTerminalActions, runTerminalAction } from './terminal';
 export { createChatStream, resumeChatStream, type ChatStreamBody, type ChatStreamProjectionHooks } from './chat-stream';
 export { ActiveStreamAuthorizationError, getActiveStream } from './stream-hub';
-export {
-  getBoards,
-  getBoardSnapshot,
-  getTaskDetail,
-  createTask,
-  applyTaskAction,
-  assignTask,
-  commentTask,
-  setActiveBoard,
-  getTaskLog,
-  linkTasks,
-  unlinkTasks,
-  getDiagnostics,
-  watchBoardEvents,
-  getStats,
-  getAssignees,
-  getTaskContext,
-  editTask,
-  listMarkdownFiles,
-  readMarkdownFile,
-  writeMarkdownFile,
-  type CreateTaskInput,
-  type TaskAction,
-  type EditTaskInput,
-  type WatchHandle,
-} from './kanban';
-
 export function newId(prefix = 'local'): string {
   return `${prefix}_${randomUUID()}`;
 }

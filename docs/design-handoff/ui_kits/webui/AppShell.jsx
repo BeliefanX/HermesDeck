@@ -6,7 +6,7 @@ const NAV = [
   { id: 'chat',     icon: 'message',  label: 'Chat',     kicker: 'CONVERSATIONS' },
   { id: 'profiles', icon: 'bot',      label: 'Profiles', kicker: 'EXECUTION CONTEXTS' },
   { id: 'models',   icon: 'cpu',      label: 'Models',   kicker: 'MODEL CATALOG' },
-  { id: 'runs',     icon: 'radio',    label: 'Runs',     kicker: 'RUN TIMELINE' },
+
   { id: 'tools',    icon: 'wrench',   label: 'Tools',    kicker: 'TOOLSETS · MCP' },
   { id: 'terminal', icon: 'terminal', label: 'Terminal', kicker: 'SAFE OPS CONSOLE' },
   { id: 'settings', icon: 'settings', label: 'Settings', kicker: 'SETTINGS' },

@@ -32,7 +32,7 @@ function taskGroupForName(name: string, category?: string): ToolSummary['taskGro
   if (/\b(slack|telegram|discord|mail|message|lark|feishu|im)\b/.test(haystack)) return 'messaging';
   if (/\b(deploy|vercel|cloudflare|aws|docker|terminal|shell)\b/.test(haystack)) return 'devops';
   if (/\b(image|video|audio|music|spotify|media|presentation|deck)\b/.test(haystack)) return 'media';
-  if (/\b(agent|skill|memory|kanban|task|plan)\b/.test(haystack)) return 'agents';
+  if (/\b(agent|skill|memory|task|plan)\b/.test(haystack)) return 'agents';
   return 'unknown';
 }
 

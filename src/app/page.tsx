@@ -6,7 +6,7 @@ import type { DeckHealth, DeckSession, DeckStats, ToolSummary, TokenStats } from
 import { sourceMeta, sourceTone, shortTitle, relTime } from '@/lib/format';
 import {
   MessageSquare, Terminal, Bot, ChevronRight, Activity, Wrench, Sparkles, Plug, Boxes,
-  HeartPulse, Database, Hash, Cpu, BarChart3, Server, Layers, Radio,
+  HeartPulse, Database, Hash, Cpu, BarChart3, Server, Radio,
   ArrowDownRight, ArrowUpRight, DollarSign, Zap, TrendingUp, CalendarDays, Flame, Clock,
   GitBranch,
 } from 'lucide-react';
@@ -127,8 +127,6 @@ export default function HomePage() {
       tileSwitchProfile: '切换 Agent',
       tileCapabilities: '能力',
       tileCapabilitiesSub: '工具 · 技能 · MCP',
-      tileRunTimeline: '运行时间线',
-      tileRunTimelineSub: 'SSE 事件流',
       tileSafeTerminal: '安全终端',
       tileSafeTerminalSub: '允许列表命令',
       tileSettings: '设置',
@@ -191,7 +189,7 @@ export default function HomePage() {
     en: {
       kickerCommandDeck: 'COMMAND DECK',
       heroTitle: 'Hermes control deck',
-      heroDescPre: 'Multi-session chat workbench. Agents, Runs, Tools and the safe terminal in one console. All data sourced from Hermes-native ',
+      heroDescPre: 'Multi-session chat workbench. Agents, Tools and the safe terminal in one console. All data sourced from Hermes-native ',
       heroDescMid: ' and API Server — zero hard-coding in the frontend.',
       openChat: 'Open chat',
       openTerminal: 'Open terminal',
@@ -969,7 +967,6 @@ export default function HomePage() {
             <ActionTile href="/chat" icon={<MessageSquare size={14} />} title={t.tileNewChat} sub={t.tileNewChatSub} />
             <ActionTile href="/profiles" icon={<Bot size={14} />} title={t.tileSwitchProfile} sub={t.contexts(profiles.length)} />
             <ActionTile href="/tools" icon={<Wrench size={14} />} title={t.tileCapabilities} sub={t.tileCapabilitiesSub} />
-            <ActionTile href="/runs" icon={<Layers size={14} />} title={t.tileRunTimeline} sub={t.tileRunTimelineSub} />
             <ActionTile href="/terminal" icon={<Terminal size={14} />} title={t.tileSafeTerminal} sub={t.tileSafeTerminalSub} />
             <ActionTile href="/settings" icon={<Server size={14} />} title={t.tileSettings} sub={t.tileSettingsSub} />
           </div>

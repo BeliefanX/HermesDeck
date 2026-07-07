@@ -92,7 +92,7 @@ export default function SettingsPage() {
       confirmClear: '确认清除 HermesDeck 本地缓存？将清除草稿、会话索引和 response 链路缓存；服务器同步的置顶 / 文件夹 / 标签会保留。主题、语言与当前 Agent 会保留。此操作无法撤销。',
       notifications: '通知',
       notificationTitle: '浏览器通知',
-      notificationDesc: '聊天、Kanban 任务或定时任务完成后，HermesDeck 可通过 PWA Web Push / 页面打开时通知发送系统提醒。消息正文不会写入通知内容。',
+      notificationDesc: '聊天或定时任务完成后，HermesDeck 可通过 PWA Web Push / 页面打开时通知发送系统提醒。消息正文不会写入通知内容。',
       notificationUnavailable: '服务器未配置 VAPID，通知暂不可用。',
       notificationUnsupported: '此浏览器不支持 Service Worker Push 通知。',
       permission: '权限',
@@ -102,7 +102,6 @@ export default function SettingsPage() {
       sendTest: '发送测试',
       notifyChatDone: '聊天完成',
       notifyChatFailed: '聊天失败',
-      notifyKanbanDone: 'Kanban 任务完成',
       notifyCronDone: '定时任务完成',
       saved: '已保存',
       testSent: '测试通知已发送',
@@ -145,7 +144,7 @@ export default function SettingsPage() {
       confirmClear: 'Clear HermesDeck local cache? This removes drafts, the session index and response chain caches; server-synced pins, folders and tags are kept. Your theme, language and active Agent are kept. This cannot be undone.',
       notifications: 'NOTIFICATIONS',
       notificationTitle: 'Browser notifications',
-      notificationDesc: 'HermesDeck can send PWA Web Push / page-open system notifications when chat replies, Kanban tasks or scheduled jobs complete. Message bodies are not included in notification text.',
+      notificationDesc: 'HermesDeck can send PWA Web Push / page-open system notifications when chat replies or scheduled jobs complete. Message bodies are not included in notification text.',
       notificationUnavailable: 'Server VAPID keys are not configured, so notifications are unavailable.',
       notificationUnsupported: 'This browser does not support Service Worker Push notifications.',
       permission: 'Permission',
@@ -155,7 +154,6 @@ export default function SettingsPage() {
       sendTest: 'Send test',
       notifyChatDone: 'Chat completed',
       notifyChatFailed: 'Chat failed',
-      notifyKanbanDone: 'Kanban task completed',
       notifyCronDone: 'Scheduled job completed',
       saved: 'Saved',
       testSent: 'Test notification sent',
@@ -593,12 +591,6 @@ export default function SettingsPage() {
             onClick={() => saveNotificationPreference({ chatFailed: !(notificationState?.preferences.chatFailed !== false) })}
           >
             {t.notifyChatFailed}
-          </Chip>
-          <Chip
-            active={notificationState?.preferences.kanbanTaskCompleted !== false}
-            onClick={() => saveNotificationPreference({ kanbanTaskCompleted: !(notificationState?.preferences.kanbanTaskCompleted !== false) })}
-          >
-            {t.notifyKanbanDone}
           </Chip>
           <Chip
             active={notificationState?.preferences.cronJobCompleted !== false}

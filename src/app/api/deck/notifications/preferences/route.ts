@@ -26,7 +26,6 @@ export async function PUT(req: NextRequest) {
   const preferences = saveUserNotificationPreferences(auth.user.id, {
     chatCompleted: parsed.value.chatCompleted,
     chatFailed: parsed.value.chatFailed,
-    kanbanTaskCompleted: parsed.value.kanbanTaskCompleted,
     cronJobCompleted: parsed.value.cronJobCompleted,
   });
   return NextResponse.json({ ok: true, preferences });

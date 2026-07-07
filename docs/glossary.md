@@ -18,7 +18,7 @@ The Hermes runtime isolation/config unit behind an Agent (`default` or `~/.herme
 
 ## Hermes Agent API Server
 
-The runtime source of truth for Deck. Agents/catalog, models, chat runs/events, cron proof and other runtime data must come through API endpoints. If the API cannot provide required runtime proof for sensitive upstream data, Deck fails closed. Default fallback API base is `http://127.0.0.1:8642`; Deck's `6117` UI port is not the Agent API port.
+The runtime source of truth for Deck. Agents/catalog, models, chat `/v1/runs` events, cron proof and other runtime data must come through API endpoints. If the API cannot provide required runtime proof for sensitive upstream data, Deck fails closed. Default fallback API base is `http://127.0.0.1:8642`; Deck's `6117` UI port is not the Agent API port.
 
 ## BFF
 
@@ -98,7 +98,7 @@ Browser Push API delivery through HermesDeck's Service Worker. Current backgroun
 
 ## Page-open notification
 
-Browser `Notification` created by an active page. Current Kanban task completion and Cron job completion notifications are page-open only: they work while the relevant page is loaded and has permission, but they do not run from a closed tab/PWA background watcher.
+Browser `Notification` created by an active page. Current Cron job completion notifications are page-open only: they work while the relevant page is loaded and has permission, but they do not run from a closed tab/PWA background watcher.
 
 ## Runtime cache
 

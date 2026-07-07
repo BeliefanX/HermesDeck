@@ -16,7 +16,7 @@ Partial/stale prototype of the HermesDeck WebUI. Treat it as design reference on
 - ✅ Dashboard (Command Deck)
 - ✅ Chat (sessions list + thread + timeline)
 - ✅ Terminal (Safe Ops)
-- ⚠️ Agents / Models / Runs / Tools / Settings — prototype coverage is partial and may lag current source. Check `src/app/*` for current product behavior.
+- ⚠️ Agents / Models / Tools / Settings — prototype coverage is partial and may lag current source. Check `src/app/*` for current product behavior.
 
 ## Caveats
 

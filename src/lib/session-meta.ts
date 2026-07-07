@@ -9,7 +9,7 @@
  * Deck-side approximation of Hermes's `/goal` slash command. Hermes runs the
  * goal-pinning logic inside the gateway loop (gateway/run.py) and drives the
  * Ralph continuation loop from there — neither of which is reachable through
- * the api_server `/v1/responses` path that HermesDeck talks to. We provide a
+ * the API Server `/v1/runs` chat path that HermesDeck talks to. We provide a
  * UX-equivalent: when set + unpaused, every outgoing user message gets a
  * `[GOAL] ...` prefix so the model sees the standing target each turn.
  */

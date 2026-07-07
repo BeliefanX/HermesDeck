@@ -1,4 +1,4 @@
-import type { DeckAuthSession, DeckHealth, DeckProfile, DeckSession, DeckMessage, ToolSummary, TerminalAction, TerminalRunRequest, TerminalRunResult, DeckModelsResponse, DeckModelPreferenceResponse, DeckNotificationConfigResponse, DeckNotificationPreferences, TokenStats, DeckStats, DeckRun, DeckRunDetail, DeckCronJob, LiveTerminalSession, LiveTerminalListResponse, LiveTerminalWindow, LiveTerminalCreateRequest, LiveTerminalTmuxRequest, SkillContent, KanbanBoard, KanbanBoardSnapshot, KanbanTaskDetail, KanbanDiagnostic, KanbanStats, KanbanAssignee, KanbanTaskLog, KanbanTaskContext, KanbanMarkdownListResult, KanbanMarkdownFile, LcmDashboard } from './types';
+import type { DeckAuthSession, DeckHealth, DeckProfile, DeckSession, DeckMessage, ToolSummary, TerminalAction, TerminalRunRequest, TerminalRunResult, DeckModelsResponse, DeckModelPreferenceResponse, DeckNotificationConfigResponse, DeckNotificationPreferences, TokenStats, DeckStats, DeckCronJob, LiveTerminalSession, LiveTerminalListResponse, LiveTerminalWindow, LiveTerminalCreateRequest, LiveTerminalTmuxRequest, SkillContent, LcmDashboard } from './types';
 import type { MetaStore } from './session-meta';
 import type { ConfigFileKey, DeckConfigBundle, SaveConfigResult } from './config-files';
 
@@ -206,15 +206,10 @@ export const deckApi = {
     if (profileId) params.set('profile', profileId);
     return request<TokenStats>(`/api/deck/tokens?${params.toString()}`, { signal, timeoutMs: 30_000 });
   },
-  runs: (profileId?: string, signal?: AbortSignal) => {
-    const qs = profileId ? `?profile=${encodeURIComponent(profileId)}` : '';
-    return request<{ runs: DeckRun[]; unavailableReason?: string }>(`/api/deck/runs${qs}`, { signal, timeoutMs: 30_000 });
-  },
   cronJobs: (profileId?: string, signal?: AbortSignal) => {
     const qs = profileId ? `?profile=${encodeURIComponent(profileId)}` : '';
     return request<{ jobs: DeckCronJob[] }>(`/api/deck/cron${qs}`, { signal, timeoutMs: 30_000 });
   },
-  runDetail: (id: string, signal?: AbortSignal) => request<DeckRunDetail>(`/api/deck/runs/${encodeURIComponent(id)}`, { signal }),
   terminalActions: (signal?: AbortSignal) => request<{ actions: TerminalAction[] }>('/api/deck/terminal/actions', { signal }),
   terminalRun: (body: TerminalRunRequest) => request<TerminalRunResult>('/api/deck/terminal/run', { method: 'POST', body: JSON.stringify(body), timeoutMs: 60_000 }),
 
@@ -225,102 +220,4 @@ export const deckApi = {
   liveResize: (id: string, cols: number, rows: number) => request<{ ok: boolean }>(`/api/deck/term/sessions/${encodeURIComponent(id)}/resize`, { method: 'POST', body: JSON.stringify({ cols, rows }) }),
   liveWindows: (id: string) => request<{ windows: LiveTerminalWindow[] }>(`/api/deck/term/sessions/${encodeURIComponent(id)}/windows`),
   liveTmux: (id: string, body: LiveTerminalTmuxRequest) => request<{ ok: boolean }>(`/api/deck/term/sessions/${encodeURIComponent(id)}/tmux`, { method: 'POST', body: JSON.stringify(body) }),
-
-  // ── Kanban ─────────────────────────────────────────────────────────
-  kanbanBoards: (signal?: AbortSignal) => request<{ boards: KanbanBoard[] }>('/api/deck/kanban/boards', { signal }),
-  kanbanBoardActivate: (slug: string) => request<{ ok: boolean; active: string }>('/api/deck/kanban/boards', { method: 'POST', body: JSON.stringify({ slug }) }),
-  kanbanSnapshot: (board = 'default', signal?: AbortSignal) =>
-    request<KanbanBoardSnapshot>(`/api/deck/kanban?board=${encodeURIComponent(board)}`, { signal }),
-  kanbanTaskDetail: (board: string, id: string, signal?: AbortSignal) =>
-    request<KanbanTaskDetail>(`/api/deck/kanban/${encodeURIComponent(id)}?board=${encodeURIComponent(board)}`, { signal }),
-  kanbanTaskCreate: (board: string, body: {
-    title: string; body?: string; assignee?: string; priority?: number;
-    workspaceKind?: 'scratch' | 'worktree' | 'session'; workspacePath?: string;
-    tenant?: string; parents?: string[]; skills?: string[];
-  }) =>
-    request<{ ok: boolean; id: string }>(
-      `/api/deck/kanban?board=${encodeURIComponent(board)}`,
-      { method: 'POST', body: JSON.stringify(body), timeoutMs: 30_000 },
-    ),
-  kanbanTaskAction: (board: string, id: string, op: 'block' | 'unblock' | 'complete' | 'archive' | 'reclaim', extra?: { reason?: string; summary?: string }) =>
-    request<{ ok: boolean }>(
-      `/api/deck/kanban/${encodeURIComponent(id)}?board=${encodeURIComponent(board)}`,
-      { method: 'PATCH', body: JSON.stringify({ op, ...extra }), timeoutMs: 30_000 },
-    ),
-  kanbanTaskAssign: (board: string, id: string, profile: string | null) =>
-    request<{ ok: boolean }>(
-      `/api/deck/kanban/${encodeURIComponent(id)}?board=${encodeURIComponent(board)}`,
-      { method: 'PATCH', body: JSON.stringify({ op: 'assign', profile }), timeoutMs: 20_000 },
-    ),
-  kanbanTaskComment: (board: string, id: string, body: string, author?: string) =>
-    request<{ ok: boolean }>(
-      `/api/deck/kanban/${encodeURIComponent(id)}?board=${encodeURIComponent(board)}`,
-      { method: 'PATCH', body: JSON.stringify({ op: 'comment', body, author }), timeoutMs: 20_000 },
-    ),
-  kanbanTaskLog: (board: string, id: string, tail?: number, signal?: AbortSignal) => {
-    const tailQs = typeof tail === 'number' && tail > 0 ? `&tail=${tail}` : '';
-    return request<KanbanTaskLog>(
-      `/api/deck/kanban/${encodeURIComponent(id)}/log?board=${encodeURIComponent(board)}${tailQs}`,
-      { signal, timeoutMs: 20_000 },
-    );
-  },
-  kanbanTaskContext: (board: string, id: string, signal?: AbortSignal) =>
-    request<KanbanTaskContext>(
-      `/api/deck/kanban/${encodeURIComponent(id)}/context?board=${encodeURIComponent(board)}`,
-      { signal, timeoutMs: 20_000 },
-    ),
-  kanbanTaskLink: (board: string, parentId: string, childId: string) =>
-    request<{ ok: boolean }>(
-      `/api/deck/kanban/${encodeURIComponent(parentId)}?board=${encodeURIComponent(board)}`,
-      { method: 'PATCH', body: JSON.stringify({ op: 'link', childId }), timeoutMs: 20_000 },
-    ),
-  kanbanTaskUnlink: (board: string, parentId: string, childId: string) =>
-    request<{ ok: boolean }>(
-      `/api/deck/kanban/${encodeURIComponent(parentId)}?board=${encodeURIComponent(board)}`,
-      { method: 'PATCH', body: JSON.stringify({ op: 'unlink', childId }), timeoutMs: 20_000 },
-    ),
-  kanbanTaskEdit: (board: string, id: string, body: { result: string; summary?: string; metadata?: unknown }) =>
-    request<{ ok: boolean }>(
-      `/api/deck/kanban/${encodeURIComponent(id)}?board=${encodeURIComponent(board)}`,
-      { method: 'PATCH', body: JSON.stringify({ op: 'edit', ...body }), timeoutMs: 20_000 },
-    ),
-  kanbanDiagnostics: (board = 'default', opts?: { severity?: string; task?: string }, signal?: AbortSignal) => {
-    const params = new URLSearchParams({ board });
-    if (opts?.severity) params.set('severity', opts.severity);
-    if (opts?.task) params.set('task', opts.task);
-    return request<{ diagnostics: KanbanDiagnostic[] }>(
-      `/api/deck/kanban/diagnostics?${params.toString()}`,
-      { signal, timeoutMs: 12_000 },
-    );
-  },
-  kanbanStats: (board = 'default', signal?: AbortSignal) =>
-    request<KanbanStats>(`/api/deck/kanban/stats?board=${encodeURIComponent(board)}`, { signal, timeoutMs: 12_000 }),
-  kanbanAssignees: (board = 'default', signal?: AbortSignal) =>
-    request<{ assignees: KanbanAssignee[] }>(`/api/deck/kanban/assignees?board=${encodeURIComponent(board)}`, { signal, timeoutMs: 12_000 }),
-  /** Build the SSE event-stream URL. Use `new EventSource(url)` to subscribe;
-   *  the server emits `{type:'sync',lastId}` first, then `{type:'event',…}` per
-   *  new task event, plus an `event: end` frame when the upstream exits. */
-  kanbanEventsUrl: (board = 'default', lastId = 0, intervalSec = 1) => {
-    const p = new URLSearchParams({ board, lastId: String(lastId), interval: String(intervalSec) });
-    return `/api/deck/kanban/events?${p.toString()}`;
-  },
-
-  // ── Workspace markdown viewer/editor ─────────────────────────────────
-  kanbanMarkdownList: (board: string, id: string, signal?: AbortSignal) =>
-    request<KanbanMarkdownListResult>(
-      `/api/deck/kanban/${encodeURIComponent(id)}/markdown?board=${encodeURIComponent(board)}`,
-      { signal },
-    ),
-  kanbanMarkdownFile: (board: string, id: string, relPath: string, signal?: AbortSignal) => {
-    const p = new URLSearchParams({ board, path: relPath });
-    return request<KanbanMarkdownFile>(
-      `/api/deck/kanban/${encodeURIComponent(id)}/markdown/file?${p.toString()}`,
-      { signal },
-    );
-  },
-  kanbanMarkdownSave: (board: string, id: string, relPath: string, content: string, mtime?: number) =>
-    request<{ ok: boolean; path: string; size: number; mtime: number }>(
-      `/api/deck/kanban/${encodeURIComponent(id)}/markdown/file?board=${encodeURIComponent(board)}`,
-      { method: 'PUT', body: JSON.stringify({ path: relPath, content, mtime }) },
-    ),
 };

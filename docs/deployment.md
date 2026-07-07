@@ -115,7 +115,7 @@ server {
 - 配置 `HERMESDECK_VAPID_PUBLIC_KEY`、`HERMESDECK_VAPID_PRIVATE_KEY`、`HERMESDECK_VAPID_SUBJECT`（或可用 `HERMESDECK_PUBLIC_ORIGIN` 作为 subject fallback）。
 - Store 为 `notifications.v1.json` under Deck data/auth dir，按 Deck user 保存 preferences/subscriptions。
 - Service Worker 不缓存 `/api/*`；push notification click 只打开同源非 API URL。
-- Web Push 只覆盖 chat completed/failed；Kanban/Cron completion 是 page-open browser notifications。
+- Web Push 只覆盖 chat completed/failed；Cron completion 是 page-open browser notifications。
 
 ## PWA and HTTPS
 
@@ -134,9 +134,8 @@ Service Worker 策略：
 Notification support matrix:
 
 - Chat complete / failed：Web Push，页面关闭后仍可送达已订阅设备。
-- Kanban task complete：只有 Kanban 页面打开且浏览器通知权限为 granted 时提示。
 - Cron job complete：只有 Cron 页面打开且该页 polling 观察到完成状态变化时提示。
-- Kanban/Cron closed-page background notifications：未实现；需要未来安全 watcher/event API。
+- Cron closed-page background notifications：未实现；需要未来安全 watcher/event API。
 
 发布新版本后，`public/sw.js` 的 cache version 变化会清理旧 cache；不要依赖旧版本 cache 行为。
 

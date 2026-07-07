@@ -76,9 +76,8 @@ Named Agent 连接：backing `~/.hermes/profiles/<id>/.env` 必须提供 API bas
 Phase 1/2 当前实现：
 
 - **Chat complete / failed**：Web Push，可在页面关闭后送达。服务端在 chat projection final/error 写入后调用 `dispatchChatNotification`；push 发送失败不会让 chat stream 失败。
-- **Kanban task complete**：只在 Kanban 页面打开时提示。页面从 task event/status transition 解析完成事件后调用浏览器 `new Notification(...)`。
 - **Cron job complete**：只在 Cron 页面打开时提示。页面每 30 秒轮询 jobs，比对上一轮 baseline，发现 done/success 状态变化后调用浏览器 `new Notification(...)`。
-- **Kanban/Cron closed-page background notifications**：暂不支持；当前没有安全 always-on watcher/event API。
+- **Cron closed-page background notifications**：暂不支持；当前没有安全 always-on watcher/event API。
 
 运营设置：
 
@@ -91,7 +90,7 @@ Phase 1/2 当前实现：
 
 ## PWA cache
 
-当前 `public/sw.js`：`CACHE_VERSION='hermesdeck-pwa-v53'`。
+当前 `public/sw.js`：`CACHE_VERSION='hermesdeck-pwa-v54'`。
 
 - shell cache：只包含 `/offline`、manifest 和 icons。
 - runtime cache：只缓存同源 static `style/script/image/font`，LRU 上限 40。
@@ -106,7 +105,7 @@ Phase 1/2 当前实现：
 
 - Routes：`GET /api/deck/notifications/config`、`GET/PATCH /api/deck/notifications/preferences`、`GET/POST/DELETE /api/deck/notifications/subscription`、`POST /api/deck/notifications/test`。
 - Store：`notifications.v1.json` under `HERMESDECK_DATA_DIR`/`HERMESDECK_AUTH_DIR`/`~/.hermesdeck`，按 Deck user 保存 preferences/subscriptions。
-- Scope：当前实现只发送 background-capable chat completed/failed Web Push。Kanban/Cron completion 仍是 page-open browser notifications，除非后续有安全 watcher/event API。
+- Scope：当前实现只发送 background-capable chat completed/failed Web Push。Cron completion 仍是 page-open browser notifications，除非后续有安全 watcher/event API。
 - Push endpoint 只接受常见 browser push providers；Service Worker notification click 只打开同源非 `/api/*` URL。
 
 ## 安全 checklist

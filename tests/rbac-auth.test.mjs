@@ -49,8 +49,6 @@ const adminUserProfilesRoutePath = resolve('src/app/api/deck/admin/users/[id]/pr
 const deckProfilesRoutePath = resolve('src/app/api/deck/profiles/route.ts');
 const deckModelsRoutePath = resolve('src/app/api/deck/models/route.ts');
 const deckSessionsRoutePath = resolve('src/app/api/deck/sessions/route.ts');
-const runsRoutePath = resolve('src/app/api/deck/runs/route.ts');
-const kanbanBoardsRoutePath = resolve('src/app/api/deck/kanban/boards/route.ts');
 let importNonce = 0;
 
 function makeHome() {
@@ -693,66 +691,6 @@ function assertSafeUserPayload(user) {
   assert.equal('passwordSalt' in user, false);
   assert.equal('sessionSecret' in user, false);
 }
-
-test('runs route downgrades known-unavailable Hermes API gap only', async () => {
-  const home = makeHome();
-  const oldHome = process.env.HOME;
-  const oldUserprofile = process.env.USERPROFILE;
-  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
-  try {
-    const auth = await loadAuth(home);
-    const store = withSuppressedBootstrapLog(() => auth.readAuth());
-    const token = auth.issueSessionToken(Object.values(store.users)[0].id);
-    const route = await loadRouteModule(runsRoutePath);
-
-    const res = await route.GET(routeRequest('/api/deck/runs', { headers: { cookie: cookieHeader(token) } }));
-    assert.equal(res.status, 200);
-    const payload = await responseJson(res);
-    assert.deepEqual(payload.runs, []);
-    assert.match(payload.unavailableReason, /does not currently expose/i);
-  } finally {
-    process.env.HOME = oldHome;
-    process.env.USERPROFILE = oldUserprofile;
-    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
-    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
-  }
-});
-
-test('Kanban boards route downgrades known 404s but preserves unexpected upstream errors', async () => {
-  const home = makeHome();
-  const oldHome = process.env.HOME;
-  const oldUserprofile = process.env.USERPROFILE;
-  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
-  const oldHermesApiBase = process.env.HERMES_API_BASE;
-  const originalFetch = globalThis.fetch;
-  try {
-    process.env.HERMES_API_BASE = 'http://agent.local';
-    const auth = await loadAuth(home);
-    const store = withSuppressedBootstrapLog(() => auth.readAuth());
-    const token = auth.issueSessionToken(Object.values(store.users)[0].id);
-    const route = await loadRouteModule(kanbanBoardsRoutePath);
-    const req = () => routeRequest('/api/deck/kanban/boards', { headers: { cookie: cookieHeader(token) } });
-
-    globalThis.fetch = async () => new Response('missing', { status: 404 });
-    const unavailable = await route.GET(req());
-    assert.equal(unavailable.status, 200);
-    assert.deepEqual((await responseJson(unavailable)).boards, []);
-
-    globalThis.fetch = async () => new Response('boom', { status: 500 });
-    const failed = await route.GET(req());
-    assert.equal(failed.status, 500);
-    const payload = await responseJson(failed);
-    assert.equal(payload.error, 'kanban_boards_failed');
-  } finally {
-    globalThis.fetch = originalFetch;
-    process.env.HOME = oldHome;
-    process.env.USERPROFILE = oldUserprofile;
-    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
-    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
-    if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
-    else process.env.HERMES_API_BASE = oldHermesApiBase;
-  }
-});
 
 test('profile-scoped Hermes sessions fail closed when upstream omits profile metadata', async () => {
   const home = makeHome();
@@ -3492,13 +3430,14 @@ test('phase 6 UI gates local-management navigation by super_admin capability', (
   assert.match(paletteSource, /item\.id === 'p:terminal'[\s\S]*!canUseTerminal/);
   assert.match(paletteSource, /item\.id === 'p:config'[\s\S]*!canUseTerminal/);
   assert.match(paletteSource, /item\.id === 'p:lcm'[\s\S]*!canUseTerminal/);
-  assert.match(paletteSource, /id: 'p:kanban'/);
+  assert.doesNotMatch(paletteSource, /id: 'p:kanban'/);
+  assert.doesNotMatch(paletteSource, /id: 'p:runs'/);
   assert.match(paletteSource, /id: 'p:lcm'/);
   assert.match(paletteSource, /const loadSeqRef = useRef\(0\)/);
   assert.match(paletteSource, /const profileForLoad = activeProfile/);
   assert.match(paletteSource, /if \(loadSeqRef\.current !== seq\) return/);
   assert.match(paletteSource, /profileForLoad \? deckApi\.tools\(profileForLoad\) : Promise\.resolve\(\{ tools: \[\] \}\)/);
-  assert.match(paletteSource, /profileForLoad \? deckApi\.runs\(profileForLoad\) : Promise\.resolve\(\{ runs: \[\] \}\)/);
+  assert.doesNotMatch(paletteSource, /deckApi\.runs/);
 
   assert.match(dashboardSource, /useDeckSession\(\)/);
   assert.match(dashboardSource, /canUseTerminal[\s\S]*\/terminal/);
@@ -3814,7 +3753,7 @@ test('service worker shell excludes protected routes and navigation cache fallba
   const appShellMatch = swSource.match(/const\s+APP_SHELL\s*=\s*\[([\s\S]*?)\];/);
   assert.ok(appShellMatch);
   const appShell = appShellMatch[1];
-  for (const route of ['/', '/chat', '/chat?source=pwa', '/profiles', '/runs', '/cron', '/tools', '/terminal', '/config', '/kanban', '/lcm', '/settings']) {
+  for (const route of ['/', '/chat', '/chat?source=pwa', '/profiles', '/cron', '/tools', '/terminal', '/config', '/lcm', '/settings']) {
     const quoted = route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     assert.doesNotMatch(appShell, new RegExp(`['\"]${quoted}['\"]`), route);
   }
@@ -3844,13 +3783,11 @@ test('API-only runtime helpers no longer use direct runtime storage or Hermes CL
   const helperPaths = [
     'src/lib/server/hermes/sessions.ts',
     'src/lib/server/hermes/messages.ts',
-    'src/lib/server/hermes/runs.ts',
     'src/lib/server/hermes/stats.ts',
     'src/lib/server/hermes/tokens.ts',
     'src/lib/server/hermes/tools.ts',
     'src/lib/server/hermes/models.ts',
     'src/lib/server/hermes/health.ts',
-    'src/lib/server/hermes/kanban.ts',
   ];
   const combined = helperPaths.map((p) => readFileSync(resolve(p), 'utf8')).join('\n');
   assert.doesNotMatch(combined, /state\.db|sqlite3|pathlib\.Path\.home\(\)|execFileAsync\(['\"]hermes['\"]|spawn\(['\"]hermes['\"]|config\.yaml|profiles\/<id>|lcm\.db|kanban\.db|hermes kanban|runPython|node:fs|homedir\(\)|HERMES_DASHBOARD_BASE/);
@@ -3861,7 +3798,6 @@ test('API-only runtime helpers no longer use direct runtime storage or Hermes CL
   assert.match(readFileSync(resolve('src/lib/server/hermes/sessions.ts'), 'utf8'), /\/api\/sessions\?/);
   assert.match(readFileSync(resolve('src/lib/server/hermes/messages.ts'), 'utf8'), /\/api\/sessions\/\$\{encodeURIComponent\(trimmedSessionId\)\}\/messages/);
   assert.match(readFileSync(resolve('src/lib/server/hermes/stats.ts'), 'utf8'), /getSessionsForStats/);
-  assert.match(readFileSync(resolve('src/lib/server/hermes/kanban.ts'), 'utf8'), /Hermes Agent API[\s\S]*\/api\/kanban/);
   assert.match(readFileSync(resolve('src/lib/server/hermes/lcm.ts'), 'utf8'), /read-only adapter over hermes-lcm's existing on-disk SQLite state/);
   assert.doesNotMatch(readFileSync(resolve('src/lib/server/hermes/health.ts'), 'utf8'), /9120|\/api\/sessions|Dashboard sidecar|HERMES_DASHBOARD_BASE/);
 });

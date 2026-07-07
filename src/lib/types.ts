@@ -132,48 +132,6 @@ export interface DeckMessage {
   toolCalls?: Array<{ id?: string; name?: string; arguments?: string }>;
 }
 
-/** A single agent turn — one user prompt → assistant reply (with optional
- *  tool calls in between). Derived from Hermes state.db rather than from a
- *  dedicated runs table, because Hermes records execution as messages. */
-export interface DeckRun {
-  id: string;
-  sessionId: string;
-  sessionTitle?: string;
-  profileId: string;
-  status: 'success' | 'failed' | 'running' | 'cancelled';
-  model?: string;
-  source?: string;
-  /** ISO timestamp the user message arrived. */
-  startedAt?: string;
-  /** ISO timestamp of the final assistant / tool message. */
-  endedAt?: string;
-  /** Duration in ms; undefined when still running. */
-  durationMs?: number;
-  /** Count of tool invocations during this run. */
-  toolCallCount: number;
-  /** Distinct tool names invoked. */
-  toolNames: string[];
-  /** Truncated user prompt (first 120 chars). */
-  promptPreview?: string;
-  /** Truncated assistant reply (first 120 chars). */
-  replyPreview?: string;
-  /** Error / failure message extracted from the trailing message, if any. */
-  errorSummary?: string;
-}
-
-export interface DeckRunDetail extends DeckRun {
-  /** Ordered timeline of messages that made up this run. */
-  events: Array<{
-    id: string;
-    role: 'user' | 'assistant' | 'tool' | 'system' | (string & {});
-    content: string;
-    createdAt?: string;
-    toolName?: string;
-    toolCallId?: string;
-    toolCalls?: Array<{ id?: string; name?: string; arguments?: string }>;
-  }>;
-}
-
 export interface ToolSummary {
   name: string;
   kind: 'toolset' | 'skill' | 'mcp' | 'unknown';
@@ -269,7 +227,6 @@ export interface DeckModelPreferenceResponse {
 export interface DeckNotificationPreferences {
   chatCompleted: boolean;
   chatFailed: boolean;
-  kanbanTaskCompleted: boolean;
   cronJobCompleted: boolean;
   updatedAt?: string;
 }
@@ -444,144 +401,6 @@ export interface TerminalRunResult {
   stderr: string;
   truncated: boolean;
   error?: string;
-}
-
-/** A kanban board — one project / workstream. The `default` slug is special:
- *  its DB lives at `~/.hermes/kanban.db` for back-compat. Others live under
- *  `~/.hermes/kanban/boards/<slug>/kanban.db`. */
-export interface KanbanBoard {
-  slug: string;
-  name: string;
-  description?: string;
-  icon?: string;
-  color?: string;
-  createdAt?: string;
-  archived?: boolean;
-  active?: boolean;
-  /** Aggregate counts populated when listing — saves a per-board roundtrip. */
-  counts?: { triage: number; todo: number; ready: number; running: number; blocked: number; done: number; archived: number; total: number };
-}
-
-export type KanbanTaskStatus = 'triage' | 'todo' | 'ready' | 'running' | 'blocked' | 'done' | 'archived' | (string & {});
-
-export interface KanbanTask {
-  id: string;
-  title: string;
-  body?: string;
-  status: KanbanTaskStatus;
-  assignee?: string;
-  priority: number;
-  createdBy?: string;
-  createdAt?: string;
-  startedAt?: string;
-  completedAt?: string;
-  workspaceKind?: string;
-  workspacePath?: string;
-  tenant?: string;
-  result?: string;
-  spawnFailures?: number;
-  consecutiveFailures?: number;
-  lastFailureError?: string;
-  maxRetries?: number | null;
-  workerPid?: number | null;
-  lastHeartbeatAt?: string;
-  parents?: string[];
-  children?: string[];
-  /** Skills the worker should load on this task (in addition to kanban-worker). */
-  skills?: string[];
-}
-
-export interface KanbanComment {
-  id: number;
-  author: string;
-  body: string;
-  createdAt: string;
-}
-
-export interface KanbanEvent {
-  id: number;
-  runId?: number | null;
-  kind: string;
-  payload?: unknown;
-  createdAt: string;
-}
-
-export interface KanbanRun {
-  id: number;
-  profile?: string;
-  status: string;
-  startedAt: string;
-  endedAt?: string;
-  outcome?: string;
-  summary?: string;
-  error?: string;
-}
-
-export interface KanbanTaskDetail extends KanbanTask {
-  comments: KanbanComment[];
-  events: KanbanEvent[];
-  runs: KanbanRun[];
-}
-
-/** A single Markdown file discovered under a task's workspace path. */
-export interface KanbanMarkdownEntry {
-  /** Path relative to the workspace root. */
-  path: string;
-  /** Size in bytes. */
-  size: number;
-  /** mtime as seconds since epoch (so the client can format with `relTime`). */
-  mtime: number;
-}
-
-export interface KanbanMarkdownListResult {
-  /** Absolute resolved workspace root, or null when the task has none. */
-  root: string | null;
-  entries: KanbanMarkdownEntry[];
-}
-
-export interface KanbanMarkdownFile {
-  path: string;
-  size: number;
-  mtime: number;
-  content: string;
-}
-
-/** Per-board task summary returned by GET /api/deck/kanban?board=… */
-export interface KanbanBoardSnapshot {
-  board?: KanbanBoard;
-  tasks: KanbanTask[];
-  unavailableReason?: string;
-}
-
-export interface KanbanDiagnostic {
-  taskId?: string;
-  severity: 'warning' | 'error' | 'critical' | (string & {});
-  kind: string;
-  message: string;
-  createdAt?: string;
-}
-
-export interface KanbanStats {
-  total: number;
-  byStatus: Record<string, number>;
-  byAssignee: Record<string, number>;
-  oldestReadyAgeSec?: number;
-}
-
-export interface KanbanAssignee {
-  profile: string;
-  counts: { ready: number; running: number; blocked: number; done: number; total: number };
-  /** True when the profile is known on this machine (lives under ~/.hermes/profiles/). */
-  known?: boolean;
-}
-
-export interface KanbanTaskLog {
-  log: string;
-  truncated: boolean;
-}
-
-export interface KanbanTaskContext {
-  context: string;
 }
 
 // Live tmux-backed terminal — separate from the allowlisted action runner.

@@ -1,8 +1,8 @@
 /* global React, HD */
 // Page-level recreations of the real Next.js routes from src/app/*/page.tsx,
 // translated to English-first chrome per the design-system voice rule.
-// Source files: profiles/page.tsx, models/page.tsx, runs/page.tsx,
-// tools/page.tsx, settings/page.tsx, offline/page.tsx.
+// Source files: profiles/page.tsx, models/page.tsx, tools/page.tsx,
+// settings/page.tsx, offline/page.tsx.
 const { useState, useMemo } = React;
 
 // Shared layout primitives ─────────────────────────────────────────────
@@ -236,44 +236,6 @@ function ModelsPage() {
   );
 }
 
-// ─── RUNS ───────────────────────────────────────────────────────────────
-function PlannedCard({ title, desc }) {
-  return (
-    <HD.Card>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--strong-text)' }}>{title}</h2>
-        <HD.Icon name="chevR" size={14} color="var(--muted-2)"/>
-      </div>
-      <p style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.55, margin: '6px 0 12px' }}>{desc}</p>
-      <HD.Tag variant="yellow">Planned</HD.Tag>
-    </HD.Card>
-  );
-}
-
-function RunsPage() {
-  return (
-    <Page intro={<>Execution-event center. The chat page already shows a live Run Timeline on the right; this view will index the replayable history at <Kbd>/v1/runs/[run_id]/events</Kbd>.</>}>
-      <HD.Card hero>
-        <HD.Kicker>RUN TIMELINE</HD.Kicker>
-        <h1 style={{ margin: '6px 0 10px', fontSize: 24, fontWeight: 650, letterSpacing: '-.025em', color: 'var(--strong-text)' }}>Structured Hermes execution streams</h1>
-        <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.6, margin: 0, maxWidth: 640 }}>
-          Live status &middot; <Kbd>delta</Kbd> &middot; <Kbd>tool.*</Kbd> &middot; <Kbd>run.completed</Kbd> events already render inside the chat thread. A standalone run index ships alongside the BFF replay buffer.
-        </p>
-        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-          <HD.Btn variant="primary" icon="radio">Open in chat</HD.Btn>
-          <HD.Tag variant="green" icon="activity">SSE ready</HD.Tag>
-        </div>
-      </HD.Card>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-        <PlannedCard title="Live events" desc="status · delta · tool · done · error — the standard event shape."/>
-        <PlannedCard title="Resumable replay" desc="BFF buffers recent events; reconnect from the last cursor."/>
-        <PlannedCard title="Run-level filters" desc="Slice history by profile, tool or status."/>
-      </div>
-    </Page>
-  );
-}
-
 // ─── TOOLS ──────────────────────────────────────────────────────────────
 const TOOLS = [
   { name: 'fs.read',           kind: 'toolset', description: 'Read a file from a path within the workspace allowlist.' },
@@ -373,7 +335,7 @@ function SettingsPage({ theme, setTheme }) {
   const [cleared, setCleared] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const apiHealthy = true;
-  const dashHealthy = false;
+  const catalogHealthy = true;
   const storageKb = 14.2;
 
   const refresh = () => {
@@ -404,14 +366,13 @@ function SettingsPage({ theme, setTheme }) {
           right={<HD.Btn size="sm" icon="refresh" onClick={refresh}>{refreshing ? 'Refreshing…' : 'Refresh'}</HD.Btn>}
         />
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <SettingsRow icon="server" name="Hermes API server" sub="http://hermes-api.local:7400" right={<HD.Tag variant={apiHealthy ? 'green' : 'yellow'}>{apiHealthy ? 'Healthy' : 'Fallback'}</HD.Tag>} first/>
-          <SettingsRow icon="database" name="Hermes Dashboard" sub="http://hermes-dash.local:7401" right={<HD.Tag variant={dashHealthy ? 'green' : 'yellow'}>{dashHealthy ? 'Seen' : 'Sidecar'}</HD.Tag>}/>
+          <SettingsRow icon="server" name="Hermes Agent API" sub="http://127.0.0.1:8642" right={<HD.Tag variant={apiHealthy ? 'green' : 'yellow'}>{apiHealthy ? 'Healthy' : 'Unavailable'}</HD.Tag>} first/>
+          <SettingsRow icon="database" name="Agent catalog" sub="/v1/profiles · /api/profiles" right={<HD.Tag variant={catalogHealthy ? 'green' : 'yellow'}>{catalogHealthy ? 'API-backed' : 'Unavailable'}</HD.Tag>}/>
         </div>
         <div style={{ marginTop: 12, padding: 12, background: 'var(--surface-bg)', border: '1px solid var(--line)', borderRadius: 8 }}>
           <HD.Kicker style={{ marginBottom: 8 }}>ENV VARS · SECRETS REDACTED</HD.Kicker>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
             <div>API server: <Kbd>HERMES_API_BASE</Kbd></div>
-            <div>Dashboard: <Kbd>HERMES_DASHBOARD_BASE</Kbd></div>
             <div>Auth: <Kbd>HERMES_API_KEY</Kbd> · <Kbd>API_SERVER_KEY</Kbd></div>
           </div>
         </div>
@@ -481,4 +442,4 @@ function OfflinePage() {
   );
 }
 
-window.HDPages = { ProfilesPage, ModelsPage, RunsPage, ToolsPage, SettingsPage, OfflinePage };
+window.HDPages = { ProfilesPage, ModelsPage, ToolsPage, SettingsPage, OfflinePage };

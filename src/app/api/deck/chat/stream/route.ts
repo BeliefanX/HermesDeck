@@ -20,7 +20,7 @@ export const dynamic = 'force-dynamic';
 // Hard cap on the request body size. The deck only uses this endpoint to send
 // the user message + (small) attachment metadata; the actual image bytes are
 // already in `attachments[].dataUrl`, so 8MB leaves plenty of headroom while
-// blocking obvious attacker inputs. The upstream Hermes /v1/responses cap is
+// blocking obvious attacker inputs. The upstream Hermes /v1/runs cap is
 // 10MB and is enforced by createChatStream.
 const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 

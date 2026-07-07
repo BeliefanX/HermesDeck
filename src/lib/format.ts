@@ -1,4 +1,4 @@
-// Format helpers shared by chat / sessions / runs UIs.
+// Format helpers shared by chat and session UIs.
 import { useEffect, useState } from 'react';
 import { getLang } from './i18n';
 import type { Tone } from '@/components/Brand';
@@ -93,7 +93,7 @@ export function shortTitle(title?: string, max = 36): string {
 /**
  * Force the calling component to re-render every `intervalMs` so `relTime()`
  * labels don't freeze at their first-paint value on pages that otherwise never
- * re-render (Runs, Profiles, Tools — single fetch, no polling).
+ * re-render (Profiles, Tools — single fetch, no polling).
  */
 export function useNowTick(intervalMs = 60_000): void {
   const [, setTick] = useState(0);

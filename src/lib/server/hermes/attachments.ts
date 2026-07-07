@@ -31,7 +31,7 @@ export function normalizeAttachments(input: unknown): NormalizedAttachment[] {
     }
     // Note: `file` kind is only consumed for *outbound* persistence/round-tripping
     // for now. We don't forward generic binary file uploads to the upstream Hermes
-    // /v1/responses input, so we don't push them here.
+    // /v1/runs input, so we don't push them here.
   }
   return out;
 }
@@ -55,7 +55,7 @@ export function buildPromptWithAttachments(message: string, atts: NormalizedAtta
 
 // ─── AI-emitted attachment extraction ───────────────────────────────
 //
-// The Hermes /v1/responses stream multiplexes text deltas, tool events, and
+// The Hermes /v1/runs stream multiplexes text deltas, tool events, and
 // (for image-generation tools or multimodal models) image artifacts. The
 // upstream OpenAI Responses event vocabulary uses several distinct shapes:
 //

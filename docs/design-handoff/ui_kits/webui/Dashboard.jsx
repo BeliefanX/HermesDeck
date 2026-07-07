@@ -23,7 +23,7 @@ function HeroCard() {
         color: 'var(--strong-text)', margin: '0 0 8px',
       }}>Hermes control deck</h1>
       <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.6, margin: 0, maxWidth: 540 }}>
-        Multi-session chat workbench. Profiles, Runs, Tools and the safe terminal in one console.
+        Multi-session chat workbench. Profiles, Tools and the safe terminal in one console.
         All data sourced from Hermes-native <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--value-text)' }}>state.db</span> and API Server — zero hard-coding in the frontend.
       </p>
       <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
@@ -40,7 +40,7 @@ function MetricsRow() {
       <HD.MetricCard kicker="SESSIONS · 24H" value="142" delta="+18%" deltaTone="green" sub="vs prev period"/>
       <HD.MetricCard kicker="TOKENS · 24H"    value="1.2M" delta="+9%"  deltaTone="green" sub="in / out"/>
       <HD.MetricCard kicker="COST · 14D"      value="$2.34" delta="−12%" deltaTone="green" sub="model spend"/>
-      <HD.MetricCard kicker="RUNS · 24H"      value="38"   delta="2 fail" deltaTone="red" sub="2 failed"/>
+      <HD.MetricCard kicker="TOOLS"           value="38"   delta="live" deltaTone="green" sub="skills · MCP"/>
     </div>
   );
 }
@@ -49,12 +49,12 @@ function SparkCard() {
   return (
     <HD.Card>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-        <HD.Kicker>RUNS · 14D</HD.Kicker>
+        <HD.Kicker>SESSIONS · 14D</HD.Kicker>
         <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>Mon · Tue · Wed · Thu · Fri</span>
       </div>
       <HD.Sparkline values={SPARK}/>
       <div style={{ display: 'flex', gap: 16, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--hairline)' }}>
-        <div><HD.Kicker>PEAK</HD.Kicker><div style={{ fontSize: 18, fontWeight: 650, color: 'var(--strong-text)', fontVariantNumeric: 'tabular-nums' }}>100<span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400, marginLeft: 4 }}>runs</span></div></div>
+        <div><HD.Kicker>PEAK</HD.Kicker><div style={{ fontSize: 18, fontWeight: 650, color: 'var(--strong-text)', fontVariantNumeric: 'tabular-nums' }}>100<span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400, marginLeft: 4 }}>sessions</span></div></div>
         <div><HD.Kicker>AVG</HD.Kicker><div style={{ fontSize: 18, fontWeight: 650, color: 'var(--strong-text)', fontVariantNumeric: 'tabular-nums' }}>61</div></div>
         <div><HD.Kicker>FAIL RATE</HD.Kicker><div style={{ fontSize: 18, fontWeight: 650, color: 'var(--strong-text)', fontVariantNumeric: 'tabular-nums' }}>3.4<span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400, marginLeft: 1 }}>%</span></div></div>
       </div>
@@ -67,7 +67,7 @@ function TopModelsCard() {
     <HD.Card>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
         <HD.Kicker>TOP MODELS · 14D</HD.Kicker>
-        <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>900 runs</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>900 sessions</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {TOPMODELS.map(m => <HD.BarRow key={m.name} label={m.name} value={m.count} max={m.max} raw={m.count}/>)}

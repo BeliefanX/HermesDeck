@@ -79,12 +79,11 @@ type ChatStreamRequest = {
 
 重新订阅进程内 Stream Hub。若 ring buffer 存在 gap，首个 `hub` event 会带 `gap:true`，前端应回拉 messages/projection。
 
-## Sessions, messages, runs, stats
+## Sessions, messages, stats
 
 - `GET /api/deck/sessions?profile=<id>`：先成功取得 Agent-scoped API sessions，再融合 Deck projection 中的 in-flight/proof 状态。普通用户只能看到 owner 为自己 Deck user id 的 projected rows；admin/super_admin 可跨 owner 查看，但仍受 Agent auth/catalog 约束。API response metadata、explicit identity、distinct API base 或 distinct API key 可证明 scope；shared/default base+key 且 `/health` 无 identity 或 explicit mismatch fail closed as `profile_routing_unavailable`/502 or `session_profile_mismatch`/403。
 - `GET /api/deck/sessions/[id]/messages?profile=<id>`：返回 session messages；projection 可返回刷新后仍存在的 draft assistant、tool-call、tool-result rows。普通用户读取他人 projection 会 403。
 - `DELETE /api/deck/sessions/[id]?profile=<id>`：通过 Hermes Agent `DELETE /api/sessions/{id}` 删除 upstream session；执行前必须通过 RBAC 与 profile/routing proof，不直接改本地 Hermes DB。
-- `GET /api/deck/runs?profile=<id>`、`GET /api/deck/runs/[id]`：运行列表与详情。
 - `GET /api/deck/stats?profile=<id>`：dashboard stats；成功取得 API sessions 后合并 viewer-scoped projection；sessions 的 dedicated-base/profile-metadata proof 规则相同，routing errors fail closed。
 - `GET /api/deck/tokens?days=<n>&profile=<id>`：token/cost 聚合，timeout 较长。
 
@@ -94,7 +93,7 @@ Notification BFF routes are Deck-owned and user-scoped. They do not call Hermes 
 
 - `GET /api/deck/notifications/config`：requires active Deck session; returns `{ ok:true, config, preferences, subscriptionCount, subscriptions }`. `subscriptions` contains non-reversible public ids only (no endpoint/key material). `config.available` is true only when `HERMESDECK_VAPID_PUBLIC_KEY`, `HERMESDECK_VAPID_PRIVATE_KEY`, and a subject (`HERMESDECK_VAPID_SUBJECT` or `HERMESDECK_PUBLIC_ORIGIN`) are present.
 - `GET /api/deck/notifications/preferences`：returns the current user's notification preference booleans.
-- `PUT/PATCH /api/deck/notifications/preferences`：mutating/CSRF-guarded; accepts booleans for `chatCompleted`, `chatFailed`, `kanbanTaskCompleted`, `cronJobCompleted`; ignores unknown or non-boolean values.
+- `PUT/PATCH /api/deck/notifications/preferences`：mutating/CSRF-guarded; accepts booleans for `chatCompleted`, `chatFailed`, `cronJobCompleted`; ignores unknown or non-boolean values.
 - `GET /api/deck/notifications/subscription`：returns only the current user's subscription count, never endpoint/key material.
 - `POST /api/deck/notifications/subscription`：mutating/CSRF-guarded; stores the browser Push API subscription for the current Deck user. Endpoint must use a supported browser push provider; key sizes are capped; each user is capped at 16 subscriptions.
 - `DELETE /api/deck/notifications/subscription`：mutating/CSRF-guarded; removes the current user's subscription by endpoint.
@@ -103,7 +102,7 @@ Notification BFF routes are Deck-owned and user-scoped. They do not call Hermes 
 Delivery semantics:
 
 - Chat complete/failed notifications are background-capable Web Push. `/api/deck/chat/stream` dispatches non-blocking `chat_completed` / `chat_failed` notifications after final/error projection writes. Push errors and expired endpoints do not fail the chat stream; 404/410 subscriptions are pruned.
-- Kanban/Cron completion notifications are page-open browser notifications only. They use Settings preferences fetched through the config route, but delivery happens in the active page via `new Notification(...)`; there is no server watcher for closed-page Kanban/Cron delivery.
+- Cron completion notifications are page-open browser notifications only. They use Settings preferences fetched through the config route, but delivery happens in the active page via `new Notification(...)`; there is no server watcher for closed-page Cron delivery.
 - Push payloads contain title/body/tag and a same-origin app URL such as `/chat?...`; the Service Worker rejects cross-origin and `/api/*` click targets.
 
 ## Cron proof
@@ -122,5 +121,5 @@ Delivery semantics:
 - `/api/deck/term/sessions*`：Live Terminal CRUD/input/resize/stream/tmux；需要启用 Live Terminal 且 `super_admin` 权限。
 - `POST /api/deck/uploads/parse`：解析 text/PDF/DOCX 等附件。
 - `GET /api/deck/cache-image`：admin-only image proxy/cache endpoint；Service Worker 不缓存此路由。
-- `/api/deck/kanban*`：任务板 BFF。
+
 - `/api/deck/lcm`：`super_admin/local-owner` LCM SQLite dashboard BFF。

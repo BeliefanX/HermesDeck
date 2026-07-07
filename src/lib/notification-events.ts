@@ -7,22 +7,12 @@ export type PageNotification = {
   tag: string;
 };
 
-const DONE_STATUSES = new Set(['done', 'completed', 'complete', 'success', 'succeeded', 'ok']);
-
 function obj(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function firstText(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    const found = text(value);
-    if (found) return found;
-  }
-  return undefined;
 }
 
 function compact(value: string | undefined, max = 96): string | undefined {
@@ -37,46 +27,11 @@ function normalizedStatus(value: unknown): string | undefined {
 
 function isDoneStatus(value: unknown): boolean {
   const status = normalizedStatus(value);
-  return Boolean(status && DONE_STATUSES.has(status));
-}
-
-function isExplicitKanbanCompleteKind(kind: string | undefined): boolean {
-  if (!kind) return false;
-  return [
-    'task_completed',
-    'task.complete',
-    'task.completed',
-    'kanban_task_completed',
-    'complete',
-    'completed',
-  ].includes(kind.toLowerCase());
+  return Boolean(status && ['done', 'completed', 'complete', 'success', 'succeeded', 'ok'].includes(status));
 }
 
 export function notificationAllowed(preferences: DeckNotificationPreferences | null | undefined, key: keyof DeckNotificationPreferences): boolean {
   return Boolean(preferences && preferences[key] !== false);
-}
-
-export function parseKanbanCompletionNotification(eventPayload: unknown, board = 'default'): PageNotification | null {
-  const envelope = obj(eventPayload);
-  const row = envelope.type === 'event' ? envelope : obj(envelope.event || envelope.payload || envelope);
-  const payload = obj(row.payload);
-  const kind = firstText(row.kind, payload.kind, payload.type, row.type);
-  const previousStatus = firstText(row.previous_status, row.previousStatus, row.from_status, row.fromStatus, payload.previous_status, payload.previousStatus, payload.from, payload.oldStatus);
-  const nextStatus = firstText(row.status, row.new_status, row.newStatus, row.to_status, row.toStatus, payload.status, payload.new_status, payload.newStatus, payload.to, payload.newStatus);
-  const explicitCompletion = isExplicitKanbanCompleteKind(kind);
-  const statusTransitionToDone = isDoneStatus(nextStatus) && !isDoneStatus(previousStatus);
-  if (!explicitCompletion && !statusTransitionToDone) return null;
-
-  const taskId = firstText(row.task_id, row.taskId, row.id, payload.task_id, payload.taskId, payload.id);
-  if (!taskId) return null;
-  const taskTitle = compact(firstText(row.title, row.task_title, row.taskTitle, payload.title, payload.task_title, payload.taskTitle));
-  const params = new URLSearchParams({ board, task: taskId });
-  return {
-    title: 'Kanban task complete',
-    body: taskTitle ? `Task ${taskTitle} is done.` : `Task ${taskId} is done.`,
-    url: `/kanban?${params.toString()}`,
-    tag: `kanban:${board}:${taskId}:complete`,
-  };
 }
 
 function cronStatusKey(job: DeckCronJob): string {

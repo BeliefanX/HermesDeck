@@ -11,12 +11,11 @@ const MAX_SUBSCRIPTIONS_PER_USER = 16;
 const MAX_ENDPOINT_LENGTH = 2048;
 const MAX_KEY_LENGTH = 512;
 
-export type NotificationPreferenceKey = 'chatCompleted' | 'chatFailed' | 'kanbanTaskCompleted' | 'cronJobCompleted';
+export type NotificationPreferenceKey = 'chatCompleted' | 'chatFailed' | 'cronJobCompleted';
 
 export type DeckNotificationPreferences = {
   chatCompleted: boolean;
   chatFailed: boolean;
-  kanbanTaskCompleted: boolean;
   cronJobCompleted: boolean;
   updatedAt?: string;
 };
@@ -76,7 +75,6 @@ export type NotificationDispatchInput = {
 const DEFAULT_PREFERENCES: DeckNotificationPreferences = {
   chatCompleted: true,
   chatFailed: true,
-  kanbanTaskCompleted: true,
   cronJobCompleted: true,
 };
 
@@ -226,7 +224,6 @@ export function saveUserNotificationPreferences(userId: string, patch: Partial<R
     ...state.preferences,
     ...(typeof patch.chatCompleted === 'boolean' ? { chatCompleted: patch.chatCompleted } : {}),
     ...(typeof patch.chatFailed === 'boolean' ? { chatFailed: patch.chatFailed } : {}),
-    ...(typeof patch.kanbanTaskCompleted === 'boolean' ? { kanbanTaskCompleted: patch.kanbanTaskCompleted } : {}),
     ...(typeof patch.cronJobCompleted === 'boolean' ? { cronJobCompleted: patch.cronJobCompleted } : {}),
     updatedAt: nowIso(),
   };

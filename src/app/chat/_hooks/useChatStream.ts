@@ -623,7 +623,7 @@ export function useChatStream(params: UseChatStreamParams) {
     openSessionAbortRef.current = ac;
     setActive(s.id);
     setError('');
-    // The run timeline is global, not per-session. When actually switching
+    // The event timeline is global, not per-session. When actually switching
     // threads, drop the previous session's events so they don't bleed into the
     // one we're opening (newChat already does this; openSession used not to).
     if (s.id !== active) clearTimeline();

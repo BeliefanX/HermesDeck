@@ -5,7 +5,7 @@ import { type MetaStore, type SessionGoal, type SessionMeta, getMeta } from '@/l
 // Deck-side approximation of Hermes's `/goal` and `/queue` slash commands.
 //
 // Hermes itself implements both inside gateway/run.py (the gateway's
-// _handle_command). Neither runs along the api_server `/v1/responses` path
+// _handle_command). Neither is part of the API Server `/v1/runs` chat path
 // HermesDeck talks to — they're gateway primitives. We re-create the *shape*
 // of the UX deck-side:
 //

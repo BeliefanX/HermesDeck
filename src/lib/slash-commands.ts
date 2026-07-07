@@ -50,7 +50,7 @@ export function useLocalizedSlashCommands(): SlashCommand[] {
     },
     en: {
       catLocal: 'HermesDeck local', catControl: 'Composer control', catTelegram: 'Telegram / Gateway', catSnippet: 'Prompt snippet',
-      localDesc: 'Runs locally; not sent to the LLM', controlDesc: 'Updates this turn’s composer setting; not sent to the LLM', unsupportedDesc: 'Not supported in HermesDeck yet; use Telegram',
+      localDesc: 'Executes locally; not sent to the LLM', controlDesc: 'Updates this turn’s composer setting; not sent to the LLM', unsupportedDesc: 'Not supported in HermesDeck yet; use Telegram',
       newLabel: 'New chat', newDesc: 'Open a fresh local conversation',
       clearLabel: 'Clear thread', clearDesc: 'Clear current messages (keep session)',
       regenLabel: 'Regenerate', regenDesc: 'Re-answer the last user message',
