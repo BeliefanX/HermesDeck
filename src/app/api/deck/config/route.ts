@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readProfileConfig, saveProfileConfigFile } from '@/lib/server/hermes';
 import { guardMutating, guardRequestBody, readLimitedJsonText } from '@/lib/server/csrf';
 import type { ConfigFileKey } from '@/lib/config-files';
-import { requireAdmin } from '@/lib/server/rbac';
+import { requireSuperAdmin } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,7 +34,7 @@ function statusForError(err: unknown): number {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = requireAdmin(req);
+  const auth = requireSuperAdmin(req);
   if (!auth.ok) return auth.response;
 
   const profile = new URL(req.url).searchParams.get('profile') || 'default';
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const guard = guardMutating(req);
   if (!guard.ok) return guard.response;
-  const auth = requireAdmin(req);
+  const auth = requireSuperAdmin(req);
   if (!auth.ok) return auth.response;
 
   const bodyGuard = guardRequestBody(req, { contentTypes: ['application/json'], maxBytes: MAX_BODY_BYTES });

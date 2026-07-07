@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { killSession } from '@/lib/server/terminal-pty';
 import { guardMutating } from '@/lib/server/csrf';
-import { requireAdmin } from '@/lib/server/rbac';
+import { requireSuperAdmin } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -9,7 +9,7 @@ export const runtime = 'nodejs';
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = guardMutating(req);
   if (!guard.ok) return guard.response;
-  const auth = requireAdmin(req);
+  const auth = requireSuperAdmin(req);
   if (!auth.ok) return auth.response;
   try {
     const { id } = await params;

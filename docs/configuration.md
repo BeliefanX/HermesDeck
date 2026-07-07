@@ -36,11 +36,11 @@ Default Agent（Hermes default profile）连接优先级：
 1. 进程环境 `HERMES_API_BASE`。
 2. `~/.hermes/.env` 中的 `HERMES_API_BASE` 或 `HERMES_API_SERVER_BASE`。
 3. `~/.hermes/.env` 中 `API_SERVER_HOST`/`HERMES_API_SERVER_HOST` + `API_SERVER_PORT`/`HERMES_API_SERVER_PORT`。
-4. 默认 `http://127.0.0.1:6117`。
+4. 默认 `http://127.0.0.1:8642`。
 
 API key: default Agent reads process env `HERMES_API_KEY`/`API_SERVER_KEY`, then default `.env`; named Agents read only their backing Hermes Agent profile `.env`. When a key exists, Deck sends `Authorization: Bearer …`.
 
-Named Agent 连接：backing `~/.hermes/profiles/<id>/.env` 必须提供 API base/port，且 `API_SERVER_ENABLED` 不能显式为 false/0/no。缺少 base 时，Deck 返回 Agent routing error，不把请求路由到 default API。
+Named Agent 连接：backing `~/.hermes/profiles/<id>/.env` 必须提供 API base/port，且 `API_SERVER_ENABLED` 不能显式为 false/0/no。缺少 base 时，Deck 返回 Agent routing error，不把请求路由到 default API。Named routing proof 接受 explicit identity、distinct API base 或 distinct API key；shared/default base+key 且 `/health` 无 identity 时 fail closed。
 
 ## Deck-owned stores
 
@@ -53,9 +53,9 @@ Named Agent 连接：backing `~/.hermes/profiles/<id>/.env` 必须提供 API bas
 
 这些文件是 Deck 自有状态。Projection 保存 observed sessions/messages、owner、Agent runtime id、status、response aliases，支持 UX 和 named-Agent proof；不是 Hermes runtime 数据源。
 
-## Agent config editor
+## Agent config editor (`super_admin/local-owner`)
 
-`GET/PUT /api/deck/config?profile=<id>` 只处理固定文件：
+`GET/PUT /api/deck/config?profile=<id>` 只对 `super_admin` 开放，只处理固定文件：
 
 - `config.yaml`
 - `SOUL.md`
@@ -91,7 +91,7 @@ Phase 1/2 当前实现：
 
 ## PWA cache
 
-当前 `public/sw.js`：`CACHE_VERSION='hermesdeck-pwa-v47'`。
+当前 `public/sw.js`：`CACHE_VERSION='hermesdeck-pwa-v53'`。
 
 - shell cache：只包含 `/offline`、manifest 和 icons。
 - runtime cache：只缓存同源 static `style/script/image/font`，LRU 上限 40。
@@ -114,6 +114,6 @@ Phase 1/2 当前实现：
 1. 反代/外网访问使用 HTTPS，并设置 `HERMESDECK_PUBLIC_ORIGIN`。
 2. TLS 后设置 `HERMESDECK_FORCE_SECURE_COOKIE=1`。
 3. 如启用 Web Push，设置 VAPID key/subject，并通过 Settings 测试每个目标浏览器/PWA 订阅。
-4. 只在可信 admin/super_admin 环境启用 `HERMESDECK_LIVE_TERMINAL=1`。
+4. 只在可信 `super_admin/local-owner` 环境启用 `HERMESDECK_LIVE_TERMINAL=1`。
 5. 确认 Hermes Agent API Server Agent catalog/models/cron endpoints 可用；普通用户没有本地枚举补齐，admin-only catalog fallback 也只在双 404 且逐 profile `/health` 证明后生效。
 6. 对 named Agents 配置独立 API base/port 与 API key，避免请求落到 default Agent。

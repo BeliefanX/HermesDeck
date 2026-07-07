@@ -393,7 +393,7 @@ export default function HomePage() {
           // always the *active* profile's threads — never silently 'default'.
           // The scope toggle drives only the aggregate `stats` request below.
           deckApi.sessions(activeProfile, ac.signal),
-          deckApi.tools(ac.signal),
+          deckApi.tools(activeProfile, ac.signal),
           canViewTokenAnalytics ? deckApi.tokens(14, ac.signal, profileForScope) : Promise.resolve(null),
           deckApi.stats(profileForScope, ac.signal),
         ]);

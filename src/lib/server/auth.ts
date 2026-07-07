@@ -574,7 +574,7 @@ function capabilitiesFor(user: Pick<DeckUser, 'role' | 'status'>): SafeDeckUserC
     canUseApp: active,
     canManageUsers: active && admin,
     canApproveUsers: active && admin,
-    canUseTerminal: active && admin,
+    canUseTerminal: active && user.role === 'super_admin',
     canManageOwnCredentials: active,
   };
 }

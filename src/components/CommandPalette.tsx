@@ -106,7 +106,6 @@ export function CommandPalette() {
   const { activeProfile } = useActiveProfile();
   const { capabilities } = useDeckSession();
   const canUseTerminal = capabilities.canUseTerminal;
-  const canManageUsers = capabilities.canManageUsers;
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [idx, setIdx] = useState(0);
@@ -160,7 +159,7 @@ export function CommandPalette() {
       setRuns([]);
     }
     Promise.allSettled([
-      deckApi.profiles(), profileForLoad ? deckApi.sessions(profileForLoad) : Promise.resolve({ sessions: [] }), deckApi.tools(), profileForLoad ? deckApi.runs(profileForLoad) : Promise.resolve({ runs: [] }),
+      deckApi.profiles(), profileForLoad ? deckApi.sessions(profileForLoad) : Promise.resolve({ sessions: [] }), profileForLoad ? deckApi.tools(profileForLoad) : Promise.resolve({ tools: [] }), profileForLoad ? deckApi.runs(profileForLoad) : Promise.resolve({ runs: [] }),
     ]).then(([p, s, tl, r]) => {
       if (loadSeqRef.current !== seq) return;
       if (p.status === 'fulfilled') setProfiles(p.value.profiles);
@@ -183,8 +182,8 @@ export function CommandPalette() {
   const allItems: CommandItem[] = useMemo(() => {
     const items: CommandItem[] = PAGE_ITEMS.filter((item) => {
       if (item.id === 'p:terminal' && !canUseTerminal) return false;
-      if (item.id === 'p:config' && !canManageUsers) return false;
-      if (item.id === 'p:lcm' && !canManageUsers) return false;
+      if (item.id === 'p:config' && !canUseTerminal) return false;
+      if (item.id === 'p:lcm' && !canUseTerminal) return false;
       return true;
     });
     items.push({
@@ -224,7 +223,7 @@ export function CommandPalette() {
       icon: <Radio size={14} />,
     }));
     return items;
-  }, [profiles, sessions, tools, runs, PAGE_ITEMS, t, canUseTerminal, canManageUsers]);
+  }, [profiles, sessions, tools, runs, PAGE_ITEMS, t, canUseTerminal]);
 
   // Defer the filter input so each keystroke doesn't block layout when the
   // candidate list is large (~200 items × tokenized substring scan).

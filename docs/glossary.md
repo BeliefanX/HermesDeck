@@ -18,7 +18,7 @@ The Hermes runtime isolation/config unit behind an Agent (`default` or `~/.herme
 
 ## Hermes Agent API Server
 
-The runtime source of truth for Deck. Agents/catalog, models, chat responses, cron proof and other runtime data must come through API endpoints. If the API cannot provide required runtime proof for sensitive upstream data, Deck fails closed.
+The runtime source of truth for Deck. Agents/catalog, models, chat runs/events, cron proof and other runtime data must come through API endpoints. If the API cannot provide required runtime proof for sensitive upstream data, Deck fails closed. Default fallback API base is `http://127.0.0.1:8642`; Deck's `6117` UI port is not the Agent API port.
 
 ## BFF
 
@@ -86,7 +86,7 @@ Whitelisted, bounded command runner exposed through `/api/deck/terminal/run`; in
 
 ## Live Terminal
 
-Optional tmux + node-pty shell, enabled only with `HERMESDECK_LIVE_TERMINAL=1`. It gives active admin/super_admin a real shell on the host.
+Optional tmux + node-pty shell, enabled only with `HERMESDECK_LIVE_TERMINAL=1`. It gives active `super_admin` a real shell on the host and remains part of the `super_admin/local-owner` management plane.
 
 ## PWA shell cache
 

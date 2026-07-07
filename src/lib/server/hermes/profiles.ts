@@ -1,7 +1,7 @@
 import type { DeckProfile } from '@/lib/types';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { apiHeaders, defaultHermesRoot, getHermesApiBase, HERMES_API_BASE, makeCache, PROFILE_ID_RE, redactSecrets } from './core.ts';
+import { apiHeaders, defaultHermesRoot, getHermesApiBase, hasDedicatedProfileRouting, HERMES_API_BASE, makeCache, PROFILE_ID_RE, redactSecrets } from './core.ts';
 import { readProfileRuntimeConfig } from './runtime-config';
 
 const ADMIN_CATALOG_LOCAL_PROFILE_LIMIT = 64;
@@ -199,6 +199,9 @@ export async function proveProfileRoutable(profileId: string): Promise<ProfileRo
       const routedProfileId = healthProfileIdentity(response, payload);
       if (routedProfileId && routedProfileId !== profileId) {
         return { ok: false, detail: `${profileId}: /health proved routed profile '${routedProfileId}'` };
+      }
+      if (!routedProfileId && profileId !== 'default' && !hasDedicatedProfileRouting(profileId)) {
+        return { ok: false, detail: `${profileId}: /health did not prove a dedicated non-default Agent route` };
       }
       return { ok: true };
     }

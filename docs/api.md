@@ -35,7 +35,7 @@
 - `GET/PATCH/DELETE /api/deck/admin/users/[id]`：用户状态、角色、删除等；`super_admin` 不可修改/删除，只有 `super_admin` 能授予/改变角色。
 - `GET/PUT /api/deck/admin/users/[id]/profiles`：管理用户 Agent assignment；路径名保留 `profiles` 仅为 API 兼容。
 
-RBAC：`super_admin` 可访问全部 API-backed Agents；`admin` 和普通 `user` 只能访问分配给自己的 Agents（`admin` 另外拥有用户管理权限）。每条 Agent-scoped route 都必须在服务端授权；普通用户不得访问未分配 Agent/default，也没有本地 runtime data fallback。admin/super_admin catalog fallback 仅在两个 strict API catalog endpoints 都返回 404 时枚举 bounded immediate local profile dirs，并且每个 candidate 必须 `/health` 证明。
+RBAC：`super_admin` 可访问全部 API-backed Agents，并拥有 `super_admin/local-owner` 本机管理面（config/skills/LCM/Live Terminal）；`admin` 和普通 `user` 只能访问分配给自己的 Agents（`admin` 另外拥有普通用户管理权限）。每条 Agent-scoped route 都必须在服务端授权；普通用户不得访问未分配 Agent/default，也没有本地 runtime data fallback。admin/super_admin catalog fallback 仅在两个 strict API catalog endpoints 都返回 404 时枚举 bounded immediate local profile dirs，并且每个 candidate 必须 `/health` 证明。
 
 ## Health and Agent catalog
 
@@ -65,7 +65,7 @@ type ChatStreamRequest = {
 
 行为：
 
-- body hard cap：8 MiB；发送给 Hermes `/v1/responses` 的 upstream body hard cap：1 MiB。
+- body hard cap：8 MiB；发送给 Hermes `/v1/runs` 的 upstream body hard cap：1 MiB。
 - Agent runtime id 必须合法且当前用户可访问。
 - named Agent continuation 必须通过 Deck projection 证明 session/response 属于该 Agent，且普通用户必须是该 projection 的 `ownerUserId`；否则 403。admin/super_admin 只有在 route 已通过 Agent 授权后才可跨 owner 使用 proof。
 - 未被证明的 named-Agent session 会替换为 server-generated `deck_<uuid>`，并作为可信 session 传 upstream，避免产生额外 `api` 话题。
@@ -81,9 +81,9 @@ type ChatStreamRequest = {
 
 ## Sessions, messages, runs, stats
 
-- `GET /api/deck/sessions?profile=<id>`：先成功取得 Agent-scoped API sessions，再融合 Deck projection 中的 in-flight/proof 状态。普通用户只能看到 owner 为自己 Deck user id 的 projected rows；admin/super_admin 可跨 owner 查看，但仍受 Agent auth/catalog 约束。API response metadata 可证明 scope；legacy profileless rows 只有在 Deck server-side 使用非 default 的专用 Agent API base 时才会 stamped。shared/default API base 或 explicit mismatch fail closed as `profile_routing_unavailable`/502 or `session_profile_mismatch`/403。
+- `GET /api/deck/sessions?profile=<id>`：先成功取得 Agent-scoped API sessions，再融合 Deck projection 中的 in-flight/proof 状态。普通用户只能看到 owner 为自己 Deck user id 的 projected rows；admin/super_admin 可跨 owner 查看，但仍受 Agent auth/catalog 约束。API response metadata、explicit identity、distinct API base 或 distinct API key 可证明 scope；shared/default base+key 且 `/health` 无 identity 或 explicit mismatch fail closed as `profile_routing_unavailable`/502 or `session_profile_mismatch`/403。
 - `GET /api/deck/sessions/[id]/messages?profile=<id>`：返回 session messages；projection 可返回刷新后仍存在的 draft assistant、tool-call、tool-result rows。普通用户读取他人 projection 会 403。
-- `DELETE /api/deck/sessions/[id]?profile=<id>`：删除/移除该 session 的 Deck 与 upstream 可删除状态；必须有 Agent 权限。
+- `DELETE /api/deck/sessions/[id]?profile=<id>`：通过 Hermes Agent `DELETE /api/sessions/{id}` 删除 upstream session；执行前必须通过 RBAC 与 profile/routing proof，不直接改本地 Hermes DB。
 - `GET /api/deck/runs?profile=<id>`、`GET /api/deck/runs/[id]`：运行列表与详情。
 - `GET /api/deck/stats?profile=<id>`：dashboard stats；成功取得 API sessions 后合并 viewer-scoped projection；sessions 的 dedicated-base/profile-metadata proof 规则相同，routing errors fail closed。
 - `GET /api/deck/tokens?days=<n>&profile=<id>`：token/cost 聚合，timeout 较长。
@@ -115,10 +115,12 @@ Delivery semantics:
 
 ## Tools, config, terminal and assets
 
-- `GET /api/deck/tools`、`GET /api/deck/skills`、`PUT /api/deck/skills`：能力/技能视图与受限编辑；保存使用 realpath containment、mtime optimistic lock、atomic write。
-- `GET/PUT /api/deck/config?profile=<id>`：读写 Agent 对应 Hermes Agent profile 的 `config.yaml`、`SOUL.md`、`memories/USER.md`、`memories/MEMORY.md`；不是 runtime 数据源。
+- `GET /api/deck/tools`：API-first discovery；BFF 优先读取 Agent `/v1/skills` + `/v1/toolsets` 并归一化给 Tools UI。
+- `GET /api/deck/skills`、`PUT /api/deck/skills`：`super_admin/local-owner` raw local skill 文件读写；保存使用 realpath containment、mtime optimistic lock、atomic write。
+- `GET/PUT /api/deck/config?profile=<id>`：`super_admin/local-owner` 读写 Agent 对应 Hermes Agent profile 的 `config.yaml`、`SOUL.md`、`memories/USER.md`、`memories/MEMORY.md`；不是 runtime 数据源。
 - `GET /api/deck/terminal/actions`、`POST /api/deck/terminal/run`：白名单 terminal actions。
-- `/api/deck/term/sessions*`：Live Terminal CRUD/input/resize/stream/tmux；需要启用 Live Terminal 且 admin 权限。
+- `/api/deck/term/sessions*`：Live Terminal CRUD/input/resize/stream/tmux；需要启用 Live Terminal 且 `super_admin` 权限。
 - `POST /api/deck/uploads/parse`：解析 text/PDF/DOCX 等附件。
 - `GET /api/deck/cache-image`：admin-only image proxy/cache endpoint；Service Worker 不缓存此路由。
-- `/api/deck/kanban*`、`/api/deck/lcm`：任务板和 LCM dashboard BFF。
+- `/api/deck/kanban*`：任务板 BFF。
+- `/api/deck/lcm`：`super_admin/local-owner` LCM SQLite dashboard BFF。

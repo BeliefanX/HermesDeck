@@ -81,7 +81,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const lang = useLang();
   const { capabilities } = useDeckSession();
   const canUseTerminal = capabilities.canUseTerminal;
-  const canManageUsers = capabilities.canManageUsers;
 
   // Reflect real Hermes API health in the sidebar footer dot — previously it
   // was hardcoded green, which contradicted the dashboard hero whenever Hermes
@@ -175,14 +174,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navItems = useMemo(
     () => NAV.filter((n) => {
       if (n.key === 'terminal' && !canUseTerminal) return false;
-      if (n.key === 'config' && !canManageUsers) return false;
-      if (n.key === 'lcm' && !canManageUsers) return false;
+      if (n.key === 'config' && !canUseTerminal) return false;
+      if (n.key === 'lcm' && !canUseTerminal) return false;
       return true;
     }).map((n) => ({
       ...n,
       label: t[`nav${n.key.charAt(0).toUpperCase() + n.key.slice(1)}` as keyof typeof t] as { label: string; kicker: string },
     })),
-    [t, canUseTerminal, canManageUsers],
+    [t, canUseTerminal],
   );
 
   useEffect(() => {

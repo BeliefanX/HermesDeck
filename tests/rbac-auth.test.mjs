@@ -23,6 +23,9 @@ const chatStreamModulePath = resolve('src/lib/server/hermes/chat-stream.ts');
 const clientSseModulePath = resolve('src/lib/client-sse.ts');
 const streamHubModulePath = resolve('src/lib/server/hermes/stream-hub.ts');
 const lcmRoutePath = resolve('src/app/api/deck/lcm/route.ts');
+const configRoutePath = resolve('src/app/api/deck/config/route.ts');
+const skillsRoutePath = resolve('src/app/api/deck/skills/route.ts');
+const toolsRoutePath = resolve('src/app/api/deck/tools/route.ts');
 const cacheImageRoutePath = resolve('src/app/api/deck/cache-image/route.ts');
 const serviceWorkerPath = resolve('public/sw.js');
 const useChatModelsPath = resolve('src/app/chat/_hooks/useChatModels.ts');
@@ -33,6 +36,7 @@ const csrfPath = resolve('src/lib/server/csrf.ts');
 const profilesModulePath = resolve('src/lib/server/hermes/profiles.ts');
 const hermesCoreModulePath = resolve('src/lib/server/hermes/core.ts');
 const hermesSessionsModulePath = resolve('src/lib/server/hermes/sessions.ts');
+const hermesToolsModulePath = resolve('src/lib/server/hermes/tools.ts');
 const hermesMessagesModulePath = resolve('src/lib/server/hermes/messages.ts');
 const deckChatProjectionModulePath = resolve('src/lib/server/deck-chat-projection.ts');
 const deckSessionListModulePath = resolve('src/lib/server/deck-session-list.ts');
@@ -891,11 +895,54 @@ test('profile-scoped Hermes sessions stamp unlabeled rows from a dedicated profi
   }
 });
 
+test('deleteSession proves profile ownership then calls Hermes Agent API DELETE', async () => {
+  const home = makeHome();
+  const hermesRoot = join(home, '.hermes');
+  mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
+  writeFileSync(join(hermesRoot, '.env'), 'API_SERVER_PORT=18642\nAPI_SERVER_KEY=default-secret\n');
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=18648\nAPI_SERVER_KEY=sensgift-secret\n');
+
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  const oldHermesApiBase = process.env.HERMES_API_BASE;
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMES_HOME = hermesRoot;
+    delete process.env.HERMES_API_BASE;
+    globalThis.fetch = async (url, init = {}) => {
+      calls.push({ url: String(url), method: init.method || 'GET', auth: init.headers?.Authorization });
+      if ((init.method || 'GET') === 'DELETE') return Response.json({ ok: true, removed: 1 });
+      return Response.json({ profile_id: 'sensgift', data: [{ id: 'sensgift-session-1', profile_id: 'sensgift' }] });
+    };
+
+    const sessions = await loadHermesSessionsModule();
+    const result = await sessions.deleteSession('sensgift-session-1', 'sensgift');
+    assert.deepEqual(result, { ok: true, removed: 1 });
+    assert.deepEqual(calls.map((call) => [call.method, call.url, call.auth]), [
+      ['GET', 'http://127.0.0.1:18648/api/sessions?limit=200&offset=0&profile=sensgift', 'Bearer sensgift-secret'],
+      ['DELETE', 'http://127.0.0.1:18648/api/sessions/sensgift-session-1?profile=sensgift', 'Bearer sensgift-secret'],
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+    if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
+    else process.env.HERMES_API_BASE = oldHermesApiBase;
+  }
+});
+
 test('profile-scoped Hermes sessions reject unlabeled rows from the shared default API base', async () => {
   const home = makeHome();
   const hermesRoot = join(home, '.hermes');
   mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
-  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=6117\nAPI_SERVER_KEY=sensgift-secret\n');
+  writeFileSync(join(hermesRoot, '.env'), 'API_SERVER_PORT=6117\nAPI_SERVER_KEY=default-secret\n');
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=6117\nAPI_SERVER_KEY=default-secret\n');
 
   const oldHome = process.env.HOME;
   const oldUserprofile = process.env.USERPROFILE;
@@ -927,6 +974,7 @@ test('profile-scoped Hermes sessions reject loopback alias rows from the shared 
   const home = makeHome();
   const hermesRoot = join(home, '.hermes');
   mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
+  writeFileSync(join(hermesRoot, '.env'), 'API_SERVER_PORT=6117\nAPI_SERVER_KEY=sensgift-secret\n');
   writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'HERMES_API_BASE=http://localhost:6117\nAPI_SERVER_KEY=sensgift-secret\n');
 
   const oldHome = process.env.HOME;
@@ -955,6 +1003,7 @@ test('profile-scoped Hermes sessions reject IPv6 loopback alias rows from the sh
   const home = makeHome();
   const hermesRoot = join(home, '.hermes');
   mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
+  writeFileSync(join(hermesRoot, '.env'), 'API_SERVER_PORT=6117\nAPI_SERVER_KEY=sensgift-secret\n');
   writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'HERMES_API_BASE=http://[::1]:6117\nAPI_SERVER_KEY=sensgift-secret\n');
 
   const oldHome = process.env.HOME;
@@ -2425,8 +2474,8 @@ test('profile-scoped session rows require upstream proof or server-owned dedicat
 
   assert.match(sessionsSource, /function profileIdForTrustedRow\([\s\S]*responseHasProfileMetadata = false/);
   assert.match(sessionsSource, /!isDefaultProfile\(requestedProfile\)[\s\S]*!responseHasProfileMetadata[\s\S]*!responseScopedByDedicatedApiBase/);
-  assert.match(sessionsSource, /getHermesApiBase\(profile\)/);
-  assert.match(sessionsSource, /getHermesApiBase\('default'\)/);
+  assert.match(sessionsSource, /hasDedicatedProfileRouting\(profile\)/);
+  assert.doesNotMatch(sessionsSource, /getHermesApiBase\(profile\)/);
   assert.match(sessionsSource, /Hermes Agent did not include session profile metadata for a profile-scoped session list/);
 });
 
@@ -2460,6 +2509,29 @@ test('profile HERMES_HOME with trailing slash resolves back to Hermes root', asy
 
     assert.equal(core.defaultHermesRoot(), hermesRoot);
     assert.equal(core.getHermesApiBase('default'), 'http://127.0.0.1:18642');
+  } finally {
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+    if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
+    else process.env.HERMES_API_BASE = oldHermesApiBase;
+  }
+});
+
+test('Hermes API default port is the Agent API port, not the Deck UI port', async () => {
+  const home = makeHome();
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  const oldHermesApiBase = process.env.HERMES_API_BASE;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    delete process.env.HERMES_HOME;
+    delete process.env.HERMES_API_BASE;
+    const core = await loadHermesCoreModule();
+    assert.equal(core.getHermesApiBase('default'), 'http://127.0.0.1:8642');
   } finally {
     process.env.HOME = oldHome;
     process.env.USERPROFILE = oldUserprofile;
@@ -2775,6 +2847,42 @@ test('named assigned Agent list accepts reachable health without routed identity
     const profiles = await loadHermesProfilesModule();
     const result = await profiles.getAssignedRoutableProfiles(['sensgift']);
     assert.deepEqual(result.map((profile) => profile.id), ['sensgift']);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+    if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
+    else process.env.HERMES_API_BASE = oldHermesApiBase;
+  }
+});
+
+test('named assigned profile fallback fails closed on shared default base without routed identity', async () => {
+  const home = makeHome();
+  const hermesRoot = join(home, '.hermes');
+  mkdirSync(join(hermesRoot, 'profiles', 'sensgift'), { recursive: true });
+  writeFileSync(join(hermesRoot, '.env'), 'API_SERVER_PORT=18642\nAPI_SERVER_KEY=shared-secret\n');
+  writeFileSync(join(hermesRoot, 'profiles', 'sensgift', '.env'), 'API_SERVER_PORT=18642\nAPI_SERVER_KEY=shared-secret\n');
+
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldHermesHome = process.env.HERMES_HOME;
+  const oldHermesApiBase = process.env.HERMES_API_BASE;
+  const originalFetch = globalThis.fetch;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMES_HOME = hermesRoot;
+    delete process.env.HERMES_API_BASE;
+    globalThis.fetch = async () => Response.json({ ok: true });
+
+    const profiles = await loadHermesProfilesModule();
+    await assert.rejects(
+      () => profiles.getAssignedRoutableProfiles(['sensgift']),
+      (err) => err?.code === 'assigned_profiles_unavailable'
+        && err?.details.some((detail) => detail.includes('did not prove a dedicated non-default Agent route')),
+    );
   } finally {
     globalThis.fetch = originalFetch;
     process.env.HOME = oldHome;
@@ -3369,26 +3477,27 @@ test('settings page includes admin-only user management UI with immutable super_
   assert.match(source, /Profile assignment must stay fail-closed/);
 });
 
-test('phase 6 UI gates terminal and config navigation by session capabilities', () => {
+test('phase 6 UI gates local-management navigation by super_admin capability', () => {
   const shellSource = readFileSync(resolve('src/components/AppShell.tsx'), 'utf8');
   const paletteSource = readFileSync(resolve('src/components/CommandPalette.tsx'), 'utf8');
   const dashboardSource = readFileSync(resolve('src/app/page.tsx'), 'utf8');
 
   assert.match(shellSource, /useDeckSession\(\)/);
   assert.match(shellSource, /canUseTerminal/);
-  assert.match(shellSource, /canManageUsers/);
   assert.match(shellSource, /n\.key === 'terminal'[\s\S]*!canUseTerminal/);
-  assert.match(shellSource, /n\.key === 'config'[\s\S]*!canManageUsers/);
+  assert.match(shellSource, /n\.key === 'config'[\s\S]*!canUseTerminal/);
+  assert.match(shellSource, /n\.key === 'lcm'[\s\S]*!canUseTerminal/);
 
   assert.match(paletteSource, /useDeckSession\(\)/);
   assert.match(paletteSource, /item\.id === 'p:terminal'[\s\S]*!canUseTerminal/);
-  assert.match(paletteSource, /item\.id === 'p:config'[\s\S]*!canManageUsers/);
-  assert.match(paletteSource, /item\.id === 'p:lcm'[\s\S]*!canManageUsers/);
+  assert.match(paletteSource, /item\.id === 'p:config'[\s\S]*!canUseTerminal/);
+  assert.match(paletteSource, /item\.id === 'p:lcm'[\s\S]*!canUseTerminal/);
   assert.match(paletteSource, /id: 'p:kanban'/);
   assert.match(paletteSource, /id: 'p:lcm'/);
   assert.match(paletteSource, /const loadSeqRef = useRef\(0\)/);
   assert.match(paletteSource, /const profileForLoad = activeProfile/);
   assert.match(paletteSource, /if \(loadSeqRef\.current !== seq\) return/);
+  assert.match(paletteSource, /profileForLoad \? deckApi\.tools\(profileForLoad\) : Promise\.resolve\(\{ tools: \[\] \}\)/);
   assert.match(paletteSource, /profileForLoad \? deckApi\.runs\(profileForLoad\) : Promise\.resolve\(\{ runs: \[\] \}\)/);
 
   assert.match(dashboardSource, /useDeckSession\(\)/);
@@ -3560,13 +3669,26 @@ test('active chat stream supersede rejects a non-owner on the same profile witho
   assert.equal(hub.getActiveStream(sessionId), ownerStream);
 });
 
-test('LCM and raw cache-image routes are admin-only', () => {
+test('local filesystem and LCM management routes require super_admin', () => {
   const lcmSource = readFileSync(lcmRoutePath, 'utf8');
+  const configSource = readFileSync(configRoutePath, 'utf8');
+  const skillsSource = readFileSync(skillsRoutePath, 'utf8');
+  const liveTerminalSources = [
+    'src/app/api/deck/term/sessions/route.ts',
+    'src/app/api/deck/term/sessions/[id]/route.ts',
+    'src/app/api/deck/term/sessions/[id]/resize/route.ts',
+    'src/app/api/deck/term/sessions/[id]/windows/route.ts',
+    'src/app/api/deck/term/sessions/[id]/tmux/route.ts',
+    'src/app/api/deck/term/sessions/[id]/stream/route.ts',
+    'src/app/api/deck/term/sessions/[id]/input/route.ts',
+  ].map((path) => readFileSync(resolve(path), 'utf8'));
   const cacheImageSource = readFileSync(cacheImageRoutePath, 'utf8');
   const swSource = readFileSync(serviceWorkerPath, 'utf8');
   const shellSource = readFileSync(resolve('src/components/AppShell.tsx'), 'utf8');
-  assert.match(lcmSource, /requireAdmin\(req\)/);
-  assert.doesNotMatch(lcmSource, /requireAuth\(req\)|requireActiveUser\(req\)/);
+  for (const source of [lcmSource, configSource, skillsSource, ...liveTerminalSources]) {
+    assert.match(source, /requireSuperAdmin\(req\)/);
+    assert.doesNotMatch(source, /requireAdmin\(req\)|requireAuth\(req\)|requireActiveUser\(req\)/);
+  }
   assert.match(cacheImageSource, /requireAdmin\(req\)/);
   assert.doesNotMatch(cacheImageSource, /requireProfileAccess|requireActiveUser/);
   const cacheImageSwStart = swSource.indexOf("url.pathname === '/api/deck/cache-image'");
@@ -3577,7 +3699,114 @@ test('LCM and raw cache-image routes are admin-only', () => {
   assert.match(cacheImageSwBlock, /cache\.delete\(req\)/);
   assert.match(cacheImageSwBlock, /fetch\(req\)/);
   assert.doesNotMatch(cacheImageSwBlock, /cache\.match|putWithTrim\(IMAGE_CACHE|cache\.put/);
-  assert.match(shellSource, /n\.key === 'lcm'[\s\S]*!canManageUsers/);
+  assert.match(shellSource, /n\.key === 'lcm'[\s\S]*!canUseTerminal/);
+});
+
+test('tools discovery is Agent API-first and local fallback is super_admin-only', () => {
+  const toolsModuleSource = readFileSync(hermesToolsModulePath, 'utf8');
+  const toolsRouteSource = readFileSync(toolsRoutePath, 'utf8');
+  const clientApiSource = readFileSync(clientApiPath, 'utf8');
+  assert.match(toolsModuleSource, /hermesApiGet<unknown>\('\/v1\/skills'/);
+  assert.match(toolsModuleSource, /hermesApiGet<unknown>\('\/v1\/toolsets'/);
+  assert.match(toolsModuleSource, /indexSkillFiles\(\)/);
+  assert.match(toolsRouteSource, /requireProfileAccess\(auth\.user, profile/);
+  assert.match(toolsRouteSource, /allowLocalFallback: isSuperAdminRole\(auth\.user\.role\)/);
+  assert.match(clientApiSource, /tools: \(profileId = 'default', signal\?: AbortSignal\)/);
+  assert.doesNotMatch(clientApiSource, /tools: \(signal\?: AbortSignal\)/);
+});
+
+test('assigned named-profile users can fetch API-backed tools only for that profile', async () => {
+  const home = makeHome();
+  const profileId = `agent-tools-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldHermesHome = process.env.HERMES_HOME;
+  const originalFetch = globalThis.fetch;
+  try {
+    const auth = await loadAuth(home);
+    const store = withSuppressedBootstrapLog(() => auth.readAuth());
+    const superAdmin = Object.values(store.users)[0];
+    const now = new Date().toISOString();
+    const user = {
+      id: 'named_tools_user',
+      username: 'named-tools-user',
+      role: 'user',
+      status: 'active',
+      ...auth.createPasswordRecord('named-tools-password-123'),
+      assignedProfileIds: [profileId],
+      preferences: { profiles: {} },
+      createdAt: now,
+      updatedAt: now,
+      approvedAt: now,
+      approvedBy: superAdmin.id,
+    };
+    writeStore(home, { ...store, users: { ...store.users, [user.id]: user } });
+    mkdirSync(join(home, '.hermes', 'profiles', profileId), { recursive: true });
+    writeFileSync(join(home, '.hermes', 'profiles', profileId, '.env'), 'HERMES_API_BASE=http://127.0.0.1:18642\nAPI_SERVER_KEY=named-profile-key\n');
+    process.env.HERMES_HOME = join(home, '.hermes');
+    const cookie = cookieHeader(auth.issueSessionToken(user.id));
+    const calls = [];
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      calls.push(href);
+      if (href.endsWith('/v1/skills')) return Response.json({ skills: [{ name: 'named-skill', category: 'research' }] });
+      if (href.endsWith('/v1/toolsets')) return Response.json({ toolsets: [{ name: 'named-toolset', enabled: true }] });
+      return new Response('not found', { status: 404 });
+    };
+    const route = await loadRouteModule(toolsRoutePath);
+
+    const allowed = await route.GET(routeRequest(`/api/deck/tools?profile=${encodeURIComponent(profileId)}`, { headers: { cookie } }));
+    assert.equal(allowed.status, 200);
+    const allowedBody = await responseJson(allowed);
+    assert.deepEqual(allowedBody.tools.map((tool) => tool.name).sort(), ['named-skill', 'named-toolset']);
+    assert.deepEqual(calls.map((href) => new URL(href).pathname).sort(), ['/v1/skills', '/v1/toolsets']);
+
+    calls.length = 0;
+    const bareDefault = await route.GET(routeRequest('/api/deck/tools', { headers: { cookie } }));
+    assert.equal(bareDefault.status, 403);
+    assert.deepEqual(calls, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = oldHermesHome;
+  }
+});
+
+test('admin users are denied local config skill and LCM routes', async () => {
+  const home = makeHome();
+  const auth = await loadAuth(home);
+  const store = withSuppressedBootstrapLog(() => auth.readAuth());
+  const superAdmin = Object.values(store.users)[0];
+  const now = new Date().toISOString();
+  const admin = {
+    id: 'local_admin_denied',
+    username: 'local-admin-denied',
+    role: 'admin',
+    status: 'active',
+    ...auth.createPasswordRecord('admin-password-123'),
+    assignedProfileIds: ['default'],
+    preferences: { profiles: {} },
+    createdAt: now,
+    updatedAt: now,
+    approvedAt: now,
+    approvedBy: superAdmin.id,
+  };
+  writeStore(home, { ...store, users: { ...store.users, [admin.id]: admin } });
+  const cookie = cookieHeader(auth.issueSessionToken(admin.id));
+  const [configRoute, skillsRoute, lcmRoute] = await Promise.all([
+    loadRouteModule(configRoutePath),
+    loadRouteModule(skillsRoutePath),
+    loadRouteModule(lcmRoutePath),
+  ]);
+
+  assert.equal((await configRoute.GET(routeRequest('/api/deck/config?profile=default', { headers: { cookie } }))).status, 403);
+  assert.equal((await skillsRoute.GET(routeRequest('/api/deck/skills?path=foo/SKILL.md', { headers: { cookie } }))).status, 403);
+  assert.equal((await lcmRoute.GET(routeRequest('/api/deck/lcm', { headers: { cookie } }))).status, 403);
 });
 
 test('service worker shell excludes protected routes and navigation cache fallbacks', () => {

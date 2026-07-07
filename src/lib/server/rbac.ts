@@ -76,6 +76,10 @@ export function requireAdmin(req: Request): RbacGuard {
   return requireRole(req, ['admin', 'super_admin']);
 }
 
+export function requireSuperAdmin(req: Request): RbacGuard {
+  return requireRole(req, ['super_admin']);
+}
+
 export function normalizeProfileId(profileId: unknown, fallback = 'default'): string | null {
   const raw = typeof profileId === 'string' && profileId.trim() ? profileId.trim() : fallback;
   return PROFILE_ID_RE.test(raw) ? raw : null;

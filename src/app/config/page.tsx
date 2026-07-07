@@ -37,6 +37,7 @@ function bodyHeight(kind: ConfigFileKind): number {
 export default function ConfigPage() {
   const { activeProfile, profiles, hydrated } = useActiveProfile();
   const [bundle, setBundle] = useState<DeckConfigBundle | null>(null);
+  const [selectedKey, setSelectedKey] = useState<ConfigFileKey | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
@@ -49,6 +50,8 @@ export default function ConfigPage() {
       home: 'Hermes 配置目录',
       loadFailed: '加载失败：',
       retry: '重试',
+      fileList: '文件列表',
+      missing: '未创建',
     },
     en: {
       intro: 'Preview and edit the active Agent’s Hermes config files. Read-only by default — click Edit to make changes; saves are format- and length-checked. Switch the Agent in the top bar to inspect another Agent.',
@@ -57,6 +60,8 @@ export default function ConfigPage() {
       home: 'Hermes home',
       loadFailed: 'Load failed: ',
       retry: 'Retry',
+      fileList: 'Files',
+      missing: 'Missing',
     },
   });
 
@@ -104,8 +109,18 @@ export default function ConfigPage() {
 
   const profileName = profiles.find((p) => p.id === activeProfile)?.name || activeProfile;
 
+  useEffect(() => {
+    if (!bundle?.files.length) {
+      setSelectedKey(null);
+      return;
+    }
+    setSelectedKey((key) => (key && bundle.files.some((f) => f.key === key) ? key : bundle.files[0].key));
+  }, [bundle, activeProfile]);
+
+  const selectedFile = bundle?.files.find((f) => f.key === selectedKey) || bundle?.files[0];
+
   return (
-    <Page intro={t.intro}>
+    <Page intro={t.intro} style={{ flex: 1, minHeight: 0 }}>
       <SectionHead
         kicker={t.kicker}
         title={
@@ -142,20 +157,68 @@ export default function ConfigPage() {
       )}
 
       {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}>
-              <div className="skel" style={{ width: 200, height: 18 }} />
-              <div style={{ height: 8 }} />
-              <div className="skel" style={{ width: '100%', height: 90 }} />
-            </Card>
-          ))}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'stretch', flex: 1, minHeight: 0 }}>
+          <Card style={{ flex: '0 0 280px', width: '100%', minWidth: 240, minHeight: 220 }}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="skel" style={{ width: i === 0 ? '80%' : '100%', height: 42, marginTop: i ? 10 : 0 }} />
+            ))}
+          </Card>
+          <Card style={{ flex: '1 1 520px', minWidth: 0, minHeight: 420 }}>
+            <div className="skel" style={{ width: 220, height: 18 }} />
+            <div style={{ height: 10 }} />
+            <div className="skel" style={{ width: '100%', height: 260 }} />
+          </Card>
         </div>
-      ) : bundle ? (
-        <div key={activeProfile} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {bundle.files.map((f) => (
-            <ConfigFileCard key={f.key} profile={activeProfile} file={f} onSaved={handleSaved} />
-          ))}
+      ) : bundle && selectedFile ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'stretch', flex: 1, minHeight: 0 }}>
+          <Card padding={0} style={{ flex: '0 0 280px', width: '100%', minWidth: 240, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--hairline)' }}>
+              <Kicker>{t.fileList}</Kicker>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'auto', minHeight: 0 }}>
+              {bundle.files.map((f) => {
+                const selected = f.key === selectedFile.key;
+                const over = f.charLimit != null && f.charCount > f.charLimit;
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    aria-current={selected ? 'true' : undefined}
+                    onClick={() => setSelectedKey(f.key)}
+                    style={{
+                      display: 'flex', gap: 10, alignItems: 'flex-start', width: '100%', textAlign: 'left',
+                      padding: '12px 14px', border: 0, borderBottom: '1px solid var(--hairline)', cursor: 'pointer',
+                      background: selected ? 'var(--accent-soft, var(--surface-bg))' : 'transparent',
+                      color: 'var(--text)',
+                    }}
+                  >
+                    <span style={{ marginTop: 1, color: selected ? 'var(--accent)' : 'var(--muted)' }}>{FILE_ICON[f.key]}</span>
+                    <span style={{ minWidth: 0, flex: 1 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, fontWeight: 650, color: 'var(--strong-text)' }}>{f.filename}</span>
+                        {!f.exists && <Tag variant="yellow">{t.missing}</Tag>}
+                      </span>
+                      <span style={{ display: 'block', marginTop: 3, fontSize: 11, color: 'var(--muted-2)', wordBreak: 'break-all' }}>{f.displayPath}</span>
+                      <span style={{ display: 'block', marginTop: 4, fontSize: 11, color: over ? 'var(--red)' : 'var(--muted)' }}>
+                        {fmtBytes(f.size)}
+                        {f.charLimit != null ? ` · ${f.charCount.toLocaleString()} / ${f.charLimit.toLocaleString()}` : ''}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          <div style={{ flex: '1 1 520px', minWidth: 0, display: 'flex', minHeight: 0 }}>
+            <ConfigFileCard
+              key={`${activeProfile}:${selectedFile.key}`}
+              profile={activeProfile}
+              file={selectedFile}
+              onSaved={handleSaved}
+              fill
+            />
+          </div>
         </div>
       ) : null}
     </Page>
@@ -168,10 +231,12 @@ function ConfigFileCard({
   profile,
   file,
   onSaved,
+  fill = false,
 }: {
   profile: string;
   file: DeckConfigFile;
   onSaved: (key: ConfigFileKey, patch: { content: string; mtime: string; size: number; charCount: number }) => void;
+  fill?: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [mode, setMode] = useState<'view' | 'edit'>('view');
@@ -334,9 +399,9 @@ function ConfigFileCard({
   const h = bodyHeight(file.kind);
 
   return (
-    <Card padding={0}>
+    <Card padding={0} style={fill ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } : undefined}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 16px', borderBottom: '1px solid var(--hairline)' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 16px', borderBottom: '1px solid var(--hairline)', flexShrink: 0 }}>
         <span
           style={{
             width: 36, height: 36, borderRadius: 10, flexShrink: 0,
@@ -389,7 +454,7 @@ function ConfigFileCard({
 
       {/* Character-usage meter — SOUL.md / USER.md / MEMORY.md only */}
       {limit != null && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--hairline)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--hairline)', flexShrink: 0 }}>
           <Kicker style={{ flexShrink: 0 }}>{t.usage}</Kicker>
           <CharMeter count={count} limit={limit} overLabel={t.over} />
         </div>
@@ -399,7 +464,7 @@ function ConfigFileCard({
       {banner && (
         <div
           style={{
-            display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 16px',
+            display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 16px', flexShrink: 0,
             borderBottom: '1px solid var(--hairline)', fontSize: 12,
             background:
               banner.tone === 'error' ? 'var(--status-red-bg)'
@@ -418,7 +483,7 @@ function ConfigFileCard({
       )}
 
       {/* Body */}
-      <div style={{ padding: editing ? 0 : 0 }}>
+      <div style={{ padding: editing ? 0 : 0, flex: fill ? 1 : undefined, minHeight: fill ? 0 : undefined, display: fill ? 'flex' : undefined }}>
         {editing ? (
           <textarea
             ref={textareaRef}
@@ -430,24 +495,24 @@ function ConfigFileCard({
             }}
             spellCheck={false}
             style={{
-              display: 'block', width: '100%', height: h, resize: 'vertical',
+              display: 'block', width: '100%', height: fill ? '100%' : h, minHeight: fill ? h : undefined, resize: fill ? 'none' : 'vertical', flex: fill ? 1 : undefined,
               background: 'var(--bg-soft)', color: 'var(--text)', border: 'none', outline: 'none',
               padding: 16, fontFamily: 'var(--font-mono)', fontSize: 12.5, lineHeight: 1.6, tabSize: 2,
               boxSizing: 'border-box',
             }}
           />
         ) : !exists ? (
-          <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', flex: fill ? 1 : undefined, width: '100%', boxSizing: 'border-box' }}>
             <FileWarning size={20} style={{ color: 'var(--muted-2)' }} />
             <div style={{ fontSize: 13, marginTop: 8 }}>{t.missing}</div>
             <div style={{ fontSize: 11.5, color: 'var(--muted-2)', marginTop: 2 }}>{t.missingHint(file.filename)}</div>
           </div>
         ) : content.trim() === '' ? (
-          <div style={{ padding: 24, color: 'var(--muted-2)', fontSize: 12, fontStyle: 'italic' }}>—</div>
+          <div style={{ padding: 24, color: 'var(--muted-2)', fontSize: 12, fontStyle: 'italic', flex: fill ? 1 : undefined, width: '100%', boxSizing: 'border-box' }}>—</div>
         ) : (
           <pre
             style={{
-              margin: 0, maxHeight: h, overflow: 'auto', padding: 16,
+              margin: 0, height: fill ? '100%' : undefined, minHeight: fill ? h : undefined, maxHeight: fill ? 'none' : h, overflow: 'auto', padding: 16, flex: fill ? 1 : undefined,
               background: 'var(--bg-soft)', color: 'var(--text)',
               fontFamily: 'var(--font-mono)', fontSize: 12.5, lineHeight: 1.6, tabSize: 2,
               whiteSpace: 'pre-wrap', wordBreak: 'break-word',

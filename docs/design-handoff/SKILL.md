@@ -9,6 +9,10 @@ If creating visual artifacts (slides, mocks, throwaway prototypes, etc), copy as
 If the user invokes this skill without any other guidance, ask them what they want to build or design, ask some questions, and act as an expert designer who outputs HTML artifacts _or_ production code, depending on the need.
 
 Quick reference:
+- Production source of truth is `src/app/globals.css`, `design.md`, and `docs/*`; this handoff is reference material.
+- Visible Deck entrypoint is `6117`; Hermes Agent API fallback default is `127.0.0.1:8642`.
+- Runtime data is API-first. Chat uses `/v1/runs` + `/v1/runs/{run_id}/events`; tools discovery uses `/v1/skills` + `/v1/toolsets`.
+- `super_admin/local-owner` surfaces are real and retained: config/SOUL/USER/MEMORY editor, raw skill files, LCM SQLite dashboard, Live Terminal.
 - Tokens live in `colors_and_type.css` (dark + light, semantic).
 - Brand mark: `assets/brand/hermesdeck-mark.svg`.
 - Iconography: lucide-react / lucide CDN. Never emoji, never unicode-as-icon.

@@ -4,11 +4,12 @@ HermesDeck 是 Hermes Agent 的浏览器控制台：多会话聊天、Agent-awar
 
 ## 当前架构要点
 
-- **API-only runtime**：聊天、Agents、models、cron proof、runs/stats/messages 等运行时数据通过 Hermes Agent API Server 暴露给 Deck BFF；BFF 再以 `/api/deck/*` 给前端提供稳定契约。
+- **API-first runtime**：聊天、Agents、models、cron proof、runs/stats/messages、tools/skills 等运行时数据通过 Hermes Agent API Server 暴露给 Deck BFF；BFF 再以 `/api/deck/*` 给前端提供稳定契约。`super_admin/local-owner` 管理面保留本机 config/SOUL/USER/MEMORY、raw skill 文件、LCM SQLite dashboard 与 Live Terminal；这些不是普通 runtime fallback。
 - **Deck 用户 ≠ Hermes Agent profile**：Deck 登录账号（user/account）由 Deck auth/RBAC 管理；Deck 分配给用户的是 Agent（技术上由 Hermes Agent profile 支撑的 runtime id）。API 兼容字段 `profile`/`profileId` 表示 Agent runtime id，不是 Deck user profile。
-- **RBAC fail-closed**：Deck 有自己的登录 cookie、用户/角色和 Agent assignment。Hermes Agent 本身不是 Deck 多用户/RBAC 系统；多用户边界属于 Deck BFF。每条 Agent-scoped route 都必须先由 Deck server-side RBAC 授权；普通用户不得访问未分配 Agent/default。敏感 upstream 数据缺少 routing proof 时失败关闭；profileless session rows 只有在 Deck server-side 已路由到非 default 的专用 Agent API base 时才可按该 Agent stamped。
+- **RBAC fail-closed**：Deck 有自己的登录 cookie、用户/角色和 Agent assignment。Hermes Agent 本身不是 Deck 多用户/RBAC 系统；多用户边界属于 Deck BFF。每条 Agent-scoped route 都必须先由 Deck server-side RBAC 授权；普通用户不得访问未分配 Agent/default。敏感 upstream 数据缺少 routing proof 时失败关闭；profileless session rows 只有在 Deck server-side 已证明 explicit identity、非 default 专用 Agent API base 或专用 API key 时才可按该 Agent stamped。共享/default base+key 且 `/health` 无 identity 时失败关闭。
 - **Canonical visible entrypoint：`http://<host>:6117`**。项目脚本启动 Next 服务在 `6118`，同时启动 `6117 -> 6118` 的同源反向代理；用户、PWA、反向代理/launchd 对外应以 `6117` 为入口，`6118` 是内部目标。
-- **聊天流**：Deck BFF 调 Hermes API Server `/v1/responses`，用 SSE 向浏览器转发文本、raw run-event、attachment、done/error，并发送 keep-alive 注释保持长连接活性。前端发送 35 分钟 timeout（2,100,000ms），服务端夹在 `[1000, 2100000]`，匹配 Hermes active subagent 30 分钟上限 + 5 分钟收尾余量。
+- **Agent API port**：Deck 可见入口仍是 `6117`；Hermes Agent API fallback default 是 `http://127.0.0.1:8642`。不要把 Deck UI port 当成 Agent API port。
+- **聊天流**：Deck BFF 先 POST Hermes API Server `/v1/runs`，再读取 `/v1/runs/{run_id}/events` SSE，向浏览器转发文本、raw run-event、attachment、done/error，并发送 keep-alive 注释保持长连接活性。前端发送 35 分钟 timeout（2,100,000ms），服务端夹在 `[1000, 2100000]`，匹配 Hermes active subagent 30 分钟上限 + 5 分钟收尾余量。
 - **Deck-owned chat projection**：`~/.hermesdeck/chat-projection.v1.json`（或 `HERMESDECK_DATA_DIR`）只保存 Deck UX/proof 状态，用 lock、atomic write、TTL/cap prune 维护；它不是 Hermes runtime 数据源。Projection 会持久化 draft/final assistant、tool-call、tool-result 行和 response/session aliases（不逐 delta 持久化 tool/function arguments），刷新后仍可显示 in-flight 状态。Projection proof/write 对普通用户按 `ownerUserId` 收紧，admin/super_admin 仍需先通过 Agent 授权；shared/default API base 上的 unlabeled upstream session rows 仍 fail closed。
 - **Notifications Phase 1/2**：Web Push（Phase 1）支持聊天完成/失败的后台通知；Kanban 任务完成与 Cron job 完成（Phase 2）只在对应页面打开时用浏览器 `Notification` API 提示。Kanban/Cron 关闭页面后的后台通知尚未实现，因为当前没有安全的 always-on watcher/event API。
 - **安全 PWA cache / push worker**：Service Worker 只预缓存公开离线 shell 和图标；认证页面、API 响应、聊天 HTML 不被持久缓存。Push payload 只包含低敏标题、短正文和同源非 API 点击 URL。
@@ -86,6 +87,6 @@ npm run test:csrf    # CSRF/auth 单测
 ## 非目标与安全边界
 
 - HermesDeck 只改 Deck；不要从 Deck 文档或代码中要求修改 Hermes Agent 内部行为。
-- 不把本地数据库读取、Hermes CLI 或本地 profile/model 枚举描述为运行时数据路径。
+- 不把本地数据库读取、Hermes CLI 或本地 profile/model 枚举描述为普通运行时数据路径；本机 config/skills/LCM/terminal 只属于 `super_admin/local-owner` 管理面。
 - 不在普通用户会话中缓存受保护 HTML/API 响应。
-- Live Terminal 一旦启用即等价于给登录用户一条真实 shell；只应授予可信 admin/super_admin。
+- Live Terminal 一旦启用即等价于给登录用户一条真实 shell；只应授予可信 `super_admin`。

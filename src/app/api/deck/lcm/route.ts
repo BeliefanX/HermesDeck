@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLcmDashboard } from '@/lib/server/hermes';
-import { requireAdmin } from '@/lib/server/rbac';
+import { requireSuperAdmin } from '@/lib/server/rbac';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const auth = requireAdmin(req);
+  const auth = requireSuperAdmin(req);
   if (!auth.ok) return auth.response;
   try {
     const data = await getLcmDashboard();

@@ -24,15 +24,16 @@ No Figma or external brand kit is authoritative for this repository.
 
 ## Current system boundaries
 
-- **Visible entrypoint:** `http://<host>:6117` is canonical for users, PWA install, and reverse proxies. Project scripts run Next on `6118` and expose `6117 -> 6118` as the same-origin reverse proxy.
-- **API-only runtime:** Deck production data comes from Hermes Agent API Server through the Deck BFF (`/api/deck/*`). Do not describe local Hermes DB reads, Hermes CLI calls, or local profile/model catalog enumeration as runtime fallbacks.
+- **Visible entrypoint:** `http://<host>:6117` is canonical for users, PWA install, and reverse proxies. Project scripts run Next on `6118` and expose `6117 -> 6118` as the same-origin reverse proxy. Hermes Agent API fallback default is `http://127.0.0.1:8642`; do not use `6117` as the Agent API default.
+- **API-first runtime:** Deck production runtime data comes from Hermes Agent API Server through the Deck BFF (`/api/deck/*`). Chat uses `/v1/runs` + `/v1/runs/{run_id}/events`; tools discovery uses `/v1/skills` + `/v1/toolsets`. Do not describe local Hermes DB reads, Hermes CLI calls, or local profile/model catalog enumeration as ordinary runtime fallbacks.
+- **super_admin/local-owner plane:** Local config/SOUL/USER/MEMORY editing, raw local skill file read/write, LCM SQLite dashboard, and Live Terminal are retained `super_admin` features. Do not describe them as removed, deprecated, or available to ordinary users/admins.
 - **Terminology:** Deck users/accounts are login identities. Assigned Agents are runtime targets backed by Hermes Agent profiles. A Hermes Agent profile is not a Deck user profile; API fields named `profile`/`profileId` are legacy/compat Agent runtime ids.
 - **Deck-owned state:** Auth/session state and chat projection live under `~/.hermesdeck` or `HERMESDECK_DATA_DIR`; projection is UX/proof state, not a Hermes runtime source of truth.
 - **RBAC:** Access fails closed. Agent assignment and role checks must be proven before serving protected data or mutating state; ordinary users must not access unassigned Agents/default.
 - **PWA:** Public offline shell and icons may be cached. Auth pages, API responses, chat HTML, and protected user data must not be persisted by the service worker. Web Push is currently background-capable for chat complete/failed only; Kanban/Cron notifications are page-open browser notifications, not an always-on watcher.
 - **Terminal:** There are two terminal-related surfaces:
   - `terminalActions` are bounded diagnostic/action endpoints implemented with `execFile`/synthetic handlers.
-  - **Live Terminal** is an opt-in real shell backed by tmux/node-pty and mounted by the Terminal page when `HERMESDECK_LIVE_TERMINAL=1`. Treat it as full shell access for trusted admin/super_admin operators, not as a bounded command runner.
+  - **Live Terminal** is an opt-in real shell backed by tmux/node-pty and mounted by the Terminal page when `HERMESDECK_LIVE_TERMINAL=1`. Treat it as full shell access for trusted `super_admin/local-owner` operators, not as a bounded command runner.
 
 ---
 
@@ -78,7 +79,7 @@ Production tokens are OKLCH-based and live in `src/app/globals.css`.
 - **Languages:** The running app supports zh/en UI strings. Keep new chrome strings aligned with the existing i18n pattern rather than imposing an English-only rule.
 - **Tone:** Engineer-to-engineer, operational, and exact. Say what exists, what is disabled, and what is planned.
 - **Terminal wording:** When Live Terminal is enabled, describe it plainly as a real shell session exposed through the browser and protected by RBAC/feature gating. Do not imply free-form shell input is impossible.
-- **Architecture wording:** Use “Hermes Agent API Server”, “Deck BFF”, “Deck-owned projection”, “Assigned Agents”, “RBAC fail-closed”, “canonical 6117 entrypoint”, and “PWA protected-data cache boundary” consistently.
+- **Architecture wording:** Use “Hermes Agent API Server”, “Deck BFF”, “Deck-owned projection”, “Assigned Agents”, “RBAC fail-closed”, “super_admin/local-owner”, “canonical 6117 entrypoint”, “Agent API 8642 default”, and “PWA protected-data cache boundary” consistently.
 - **No fabricated examples:** Metrics, runs, costs, testimonials, and model/provider data must come from runtime/API data or be labeled as placeholder/demo content.
 
 ---

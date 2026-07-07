@@ -172,8 +172,12 @@ function ChatPageInner() {
 
   useEffect(() => {
     // Profile list is owned by ProfileContext now; just hydrate tools here.
-    deckApi.tools().then((r) => setTools(r.tools)).catch(() => {});
-  }, []);
+    if (!profile) {
+      setTools([]);
+      return;
+    }
+    deckApi.tools(profile).then((r) => setTools(r.tools)).catch(() => {});
+  }, [profile]);
 
   useEffect(() => {
     if (!hydrated || !profile) return;

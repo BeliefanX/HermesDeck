@@ -1,5 +1,5 @@
 import type { DeckSession } from '@/lib/types';
-import { getHermesApiBase, hermesApiGet, PROFILE_ID_RE } from './core.ts';
+import { hasDedicatedProfileRouting, hermesApiDelete, hermesApiGet, PROFILE_ID_RE } from './core.ts';
 
 const PAGE_LIMIT = 200;
 const SESSION_LIST_MAX = 1000;
@@ -110,24 +110,8 @@ function isDefaultProfile(profile?: string): boolean {
   return !profile || profile === 'default';
 }
 
-function normalizedApiBase(base: string): string | null {
-  try {
-    const url = new URL(base);
-    const host = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname.toLowerCase()) ? 'loopback' : url.hostname.toLowerCase();
-    const port = url.port || (url.protocol === 'https:' ? '443' : '80');
-    const path = url.pathname.replace(/\/+$/, '') || '/';
-    return `${url.protocol}//${host}:${port}${path}`;
-  } catch {
-    return base.replace(/\/+$/, '');
-  }
-}
-
 function scopedByDedicatedProfileApiBase(profile?: string): boolean {
-  if (!profile || isDefaultProfile(profile)) return false;
-  const profileBase = getHermesApiBase(profile);
-  const defaultBase = getHermesApiBase('default');
-  if (!profileBase || !defaultBase) return false;
-  return normalizedApiBase(profileBase) !== normalizedApiBase(defaultBase);
+  return Boolean(profile && hasDedicatedProfileRouting(profile));
 }
 
 function profileIdForTrustedRow(
@@ -288,6 +272,15 @@ export async function tagSessionSource(_sessionId: string, _source: string, _pro
   return;
 }
 
-export async function deleteSession(_sessionId: string, _profile = 'default'): Promise<{ ok: boolean; removed: number }> {
-  throw new Error('deleteSession: Hermes Agent API does not currently expose session deletion. Direct local database mutation is disabled.');
+export async function deleteSession(sessionId: string, profile = 'default'): Promise<{ ok: boolean; removed: number }> {
+  const trimmedSessionId = sessionId.trim();
+  if (!trimmedSessionId) throw new Error('deleteSession: session id is required');
+  const scopedProfile = validateProfile(profile) || 'default';
+  await assertSessionBelongsToProfile(trimmedSessionId, scopedProfile);
+  const payload = await hermesApiDelete<{ ok?: boolean; removed?: number }>(
+    `/api/sessions/${encodeURIComponent(trimmedSessionId)}?profile=${encodeURIComponent(scopedProfile)}`,
+    10_000,
+    scopedProfile,
+  );
+  return { ok: payload.ok !== false, removed: typeof payload.removed === 'number' ? payload.removed : 1 };
 }

@@ -1,6 +1,27 @@
 import type { ToolSummary } from '@/lib/types';
-import { makeCache } from './core';
+import { hermesApiGet, makeKeyedCache } from './core';
 import { indexSkillFiles } from './skills';
+
+type ToolsOptions = { allowLocalFallback?: boolean };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function arrayFromPayload(payload: unknown, keys: string[]): unknown[] {
+  if (Array.isArray(payload)) return payload;
+  if (!isRecord(payload)) return [];
+  for (const key of keys) {
+    const value = payload[key];
+    if (Array.isArray(value)) return value;
+  }
+  if (isRecord(payload.data)) return arrayFromPayload(payload.data, keys);
+  return [];
+}
 
 function taskGroupForName(name: string, category?: string): ToolSummary['taskGroup'] {
   const haystack = `${category ?? ''} ${name}`.toLowerCase();
@@ -15,27 +36,68 @@ function taskGroupForName(name: string, category?: string): ToolSummary['taskGro
   return 'unknown';
 }
 
-async function getToolsUncached(): Promise<ToolSummary[]> {
+function normalizeApiItem(raw: unknown, kind: ToolSummary['kind']): ToolSummary | null {
+  if (typeof raw === 'string') {
+    const name = raw.trim();
+    return name ? { name, kind, enabled: true, source: 'builtin', taskGroup: taskGroupForName(name) } : null;
+  }
+  if (!isRecord(raw)) return null;
+  const name = stringValue(raw.name) || stringValue(raw.id) || stringValue(raw.slug);
+  if (!name) return null;
+  const category = stringValue(raw.category) || stringValue(raw.group);
+  return {
+    name,
+    kind,
+    enabled: raw.enabled === undefined ? true : raw.enabled !== false,
+    description: stringValue(raw.description) || stringValue(raw.summary),
+    category,
+    source: stringValue(raw.source) as ToolSummary['source'] || 'builtin',
+    trust: stringValue(raw.trust),
+    taskGroup: taskGroupForName(name, category),
+  };
+}
+
+async function getApiTools(profile: string): Promise<ToolSummary[]> {
+  const [skillsPayload, toolsetsPayload] = await Promise.all([
+    hermesApiGet<unknown>('/v1/skills', 5000, profile),
+    hermesApiGet<unknown>('/v1/toolsets', 5000, profile),
+  ]);
+  return [
+    ...arrayFromPayload(skillsPayload, ['skills', 'items', 'data']).map((item) => normalizeApiItem(item, 'skill')),
+    ...arrayFromPayload(toolsetsPayload, ['toolsets', 'items', 'data']).map((item) => normalizeApiItem(item, 'toolset')),
+  ].filter((tool): tool is ToolSummary => tool !== null);
+}
+
+async function getLocalTools(): Promise<ToolSummary[]> {
+  const skills = await indexSkillFiles();
+  return skills.map((skill) => ({
+    name: skill.name,
+    kind: 'skill',
+    enabled: true,
+    category: skill.category,
+    source: 'local',
+    taskGroup: taskGroupForName(skill.name, skill.category),
+    relPath: skill.relPath,
+  }));
+}
+
+async function getToolsUncached(key: string): Promise<ToolSummary[]> {
+  const [profile, fallbackFlag] = key.split('\t');
+  const allowLocalFallback = fallbackFlag === '1';
   const out: ToolSummary[] = [];
   const seen = new Set<string>();
   const add = (tool: ToolSummary) => {
-    const key = `${tool.kind}:${tool.source ?? 'unknown'}:${tool.name}:${tool.relPath ?? ''}`;
-    if (seen.has(key)) return;
-    seen.add(key);
+    const dedupe = `${tool.kind}:${tool.source ?? 'unknown'}:${tool.name}:${tool.relPath ?? ''}`;
+    if (seen.has(dedupe)) return;
+    seen.add(dedupe);
     out.push(tool);
   };
 
-  const skills = await indexSkillFiles();
-  for (const skill of skills) {
-    add({
-      name: skill.name,
-      kind: 'skill',
-      enabled: true,
-      category: skill.category,
-      source: 'local',
-      taskGroup: taskGroupForName(skill.name, skill.category),
-      relPath: skill.relPath,
-    });
+  try {
+    for (const tool of await getApiTools(profile || 'default')) add(tool);
+  } catch (err) {
+    if (!allowLocalFallback) throw err;
+    for (const tool of await getLocalTools()) add(tool);
   }
 
   return out.sort((a, b) => {
@@ -47,4 +109,8 @@ async function getToolsUncached(): Promise<ToolSummary[]> {
   });
 }
 
-export const getTools = makeCache(10_000, getToolsUncached);
+const getToolsCached = makeKeyedCache(10_000, getToolsUncached);
+
+export function getTools(profile = 'default', options: ToolsOptions = {}): Promise<ToolSummary[]> {
+  return getToolsCached(`${profile}\t${options.allowLocalFallback ? '1' : '0'}`);
+}

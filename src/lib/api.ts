@@ -149,7 +149,8 @@ export const deckApi = {
     request<{ ok: true }>('/api/deck/chat/approval', { method: 'POST', body: JSON.stringify(body), timeoutMs: 30_000 }),
   deleteSession: (sessionId: string, profileId = 'default') =>
     request<{ ok: boolean; removed: number }>(`/api/deck/sessions/${encodeURIComponent(sessionId)}?profile=${encodeURIComponent(profileId)}`, { method: 'DELETE' }),
-  tools: (signal?: AbortSignal) => request<{ tools: ToolSummary[] }>('/api/deck/tools', { signal }),
+  tools: (profileId = 'default', signal?: AbortSignal) =>
+    request<{ tools: ToolSummary[] }>(`/api/deck/tools?profile=${encodeURIComponent(profileId)}`, { signal }),
   lcm: (signal?: AbortSignal) => request<LcmDashboard>('/api/deck/lcm', { signal, timeoutMs: 30_000 }),
   skillRead: (relPath: string, signal?: AbortSignal) =>
     request<SkillContent>(`/api/deck/skills?path=${encodeURIComponent(relPath)}`, { signal }),

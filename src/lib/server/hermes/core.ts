@@ -107,7 +107,7 @@ function readHermesEnv(profileId = 'default'): Record<string, string> {
 }
 
 export const hermesEnv = readHermesEnv();
-const defaultApiPort = hermesEnv.API_SERVER_PORT || hermesEnv.HERMES_API_SERVER_PORT || '6117';
+const defaultApiPort = hermesEnv.API_SERVER_PORT || hermesEnv.HERMES_API_SERVER_PORT || '8642';
 
 export const HERMES_API_BASE = process.env.HERMES_API_BASE || hermesEnv.HERMES_API_BASE || `http://127.0.0.1:${defaultApiPort}`;
 
@@ -144,6 +144,29 @@ export function apiHeaders(profileId = 'default'): Record<string, string> {
   return h;
 }
 
+export function normalizedApiBase(base: string): string | null {
+  try {
+    const url = new URL(base);
+    const host = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname.toLowerCase()) ? 'loopback' : url.hostname.toLowerCase();
+    const port = url.port || (url.protocol === 'https:' ? '443' : '80');
+    const path = url.pathname.replace(/\/+$/, '') || '/';
+    return `${url.protocol}//${host}:${port}${path}`;
+  } catch {
+    return base.replace(/\/+$/, '');
+  }
+}
+
+export function hasDedicatedProfileRouting(profileId: string): boolean {
+  if (!profileId || profileId === 'default') return false;
+  const profileBase = getHermesApiBase(profileId);
+  const defaultBase = getHermesApiBase('default');
+  if (!profileBase || !defaultBase) return false;
+  if (normalizedApiBase(profileBase) !== normalizedApiBase(defaultBase)) return true;
+  const profileAuth = apiHeaders(profileId).Authorization;
+  const defaultAuth = apiHeaders('default').Authorization;
+  return Boolean(profileAuth && defaultAuth && profileAuth !== defaultAuth);
+}
+
 export async function hermesApiGet<T>(path: string, timeoutMs = 5000, profileId = 'default'): Promise<T> {
   const apiBase = getHermesApiBase(profileId);
   if (!apiBase) {
@@ -160,6 +183,27 @@ export async function hermesApiGet<T>(path: string, timeoutMs = 5000, profileId 
     const detail = text ? `: ${redactSecrets(text).slice(0, 240)}` : '';
     throw new Error(`Hermes Agent API GET ${path} failed with ${response.status}${detail}`);
   }
+  return response.json() as Promise<T>;
+}
+
+export async function hermesApiDelete<T>(path: string, timeoutMs = 5000, profileId = 'default'): Promise<T> {
+  const apiBase = getHermesApiBase(profileId);
+  if (!apiBase) {
+    throw new Error(`Hermes Agent API DELETE ${path} failed: profile '${profileId}' has no configured API server base`);
+  }
+  const base = apiBase.replace(/\/+$/, '');
+  const response = await fetch(`${base}${path.startsWith('/') ? path : `/${path}`}`, {
+    method: 'DELETE',
+    cache: 'no-store',
+    headers: apiHeaders(profileId),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    const detail = text ? `: ${redactSecrets(text).slice(0, 240)}` : '';
+    throw new Error(`Hermes Agent API DELETE ${path} failed with ${response.status}${detail}`);
+  }
+  if (response.status === 204) return { ok: true } as T;
   return response.json() as Promise<T>;
 }
 

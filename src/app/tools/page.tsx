@@ -10,6 +10,7 @@ import {
 import { Page, Card, Chip, Tag, Kicker, Kbd, SectionHead } from '@/components/Brand';
 import { useT } from '@/lib/i18n';
 import { SkillEditor } from '@/components/SkillEditor';
+import { useActiveProfile } from '@/lib/profile-context';
 
 const KIND_ICON: Record<string, React.ReactNode> = {
   toolset: <Wrench size={14} />,
@@ -40,6 +41,7 @@ const GROUP_ICON: Record<Group, React.ReactNode> = {
 };
 
 export default function ToolsPage() {
+  const { activeProfile, hydrated } = useActiveProfile();
   const [tools, setTools] = useState<ToolSummary[]>([]);
   const [q, setQ] = useState('');
   const [kind, setKind] = useState<string>('all');
@@ -156,8 +158,16 @@ export default function ToolsPage() {
   };
 
   useEffect(() => {
+    if (!hydrated) return;
+    if (!activeProfile) {
+      setTools([]);
+      setErr('');
+      setLoading(false);
+      return;
+    }
     const ac = new AbortController();
-    deckApi.tools(ac.signal)
+    setLoading(true);
+    deckApi.tools(activeProfile, ac.signal)
       .then((r) => { if (!ac.signal.aborted) setTools(r.tools); })
       .catch((e) => {
         if (ac.signal.aborted) return;
@@ -166,7 +176,7 @@ export default function ToolsPage() {
       })
       .finally(() => { if (!ac.signal.aborted) setLoading(false); });
     return () => { ac.abort(); };
-  }, []);
+  }, [activeProfile, hydrated]);
 
   const counts = useMemo(() => {
     const total = tools.length;

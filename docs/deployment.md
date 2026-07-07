@@ -1,6 +1,6 @@
 # Deployment
 
-HermesDeck 部署为一个本地 Node/Next 服务，加一个 6117 同源 reverse proxy。它依赖 Hermes Agent API Server 提供运行时数据；Deck 自身不通过本地 DB/CLI/catalog 在生产中补齐 runtime 结果。
+HermesDeck 部署为一个本地 Node/Next 服务，加一个 6117 同源 reverse proxy。它依赖 Hermes Agent API Server 提供运行时数据；Deck 自身不通过本地 DB/CLI/catalog 在生产中补齐 runtime 结果。Deck 可见入口 `6117` 与 Agent API fallback default `127.0.0.1:8642` 是不同服务。
 
 ## Recommended topology
 
@@ -97,17 +97,18 @@ server {
 - 如启用 Web Push chat notifications，设置 VAPID public/private key 与 subject；不要把 private key 放进客户端或仓库。
 - 只有可信反代才启用 `HERMESDECK_TRUST_PROXY=1`。
 - 不要把 Deck 裸奔到公网；Deck 管理 Agent 背后的 Hermes profile/config、可选终端，并持有用户 session。
-- Live Terminal 默认关。启用后仅 active admin/super_admin 可用，但本质上仍是宿主用户 shell。
+- Live Terminal 默认关。启用后仅 active `super_admin` 可用，但本质上仍是宿主用户 shell。
+- `super_admin/local-owner` 管理面保留本机 config/SOUL/USER/MEMORY 编辑、raw skill 文件读写、LCM SQLite dashboard 与 Live Terminal；这些能力不要写成删除/废弃，也不要授予普通用户。
 - admin/super_admin 先依赖 API-backed Agent catalog；只有 strict `/v1/profiles` 与 `/api/profiles` 都返回 404 时，才可使用 bounded immediate local profile-dir catalog fallback，且每个 candidate 必须 `/health` 证明。普通用户没有本地枚举 fallback，也不把 catalog/health proof 缺失解释成用户无权限。
 
 ## Hermes API Server requirements
 
-- Default Agent（Hermes default profile）：`HERMES_API_BASE` 或 default `.env` 的 API base/port 可达。
+- Default Agent（Hermes default profile）：`HERMES_API_BASE` 或 default `.env` 的 API base/port 可达；未配置时 fallback default 是 `http://127.0.0.1:8642`。
 - Named Agents：各 backing profile `.env` 配置独立 API base/port/key；缺少 base 时 Deck 拒绝把请求发到 default Agent。
 - Agent catalog endpoint：`/v1/profiles` 或 `/api/profiles` 至少一个可用。
 - Models：`/v1/models` 可用且返回 selectable models。
 - Cron：`/api/jobs?include_disabled=true&profile=<id>` 必须返回 Agent routing proof；无 proof 时这类敏感 upstream data fail closed。
-- Sessions/stats：named-Agent session/stat lists 必须先成功取得 API sessions，再合并 Deck projection；API response metadata 或 Deck server-owned 非 default 专用 Agent API base 可证明 profileless rows 的 scope；shared/default base 与 explicit mismatch fail closed。
+- Sessions/stats：named-Agent session/stat lists 必须先成功取得 API sessions，再合并 Deck projection；API response metadata、explicit identity、Deck server-owned 非 default 专用 Agent API base 或专用 API key 可证明 profileless rows 的 scope；shared/default base+key、无 identity `/health` 与 explicit mismatch fail closed。
 
 ## Notifications / Web Push
 

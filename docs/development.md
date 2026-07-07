@@ -6,7 +6,7 @@
 
 - Node.js 22+。
 - npm dependencies：`npm install`。
-- Hermes Agent API Server：default Agent 默认 `http://127.0.0.1:6117`，或用 backing profile `.env` 指定。
+- Hermes Agent API Server：default Agent 默认 `http://127.0.0.1:8642`，或用 backing profile `.env` 指定。Deck UI/BFF 可见入口仍是 `6117`。
 - Python：仅用于少量 Deck-side helpers（如 config YAML validation）；不是 runtime data source。
 - tmux/node-pty：仅在 `HERMESDECK_LIVE_TERMINAL=1` 时需要。
 
@@ -43,9 +43,10 @@ npm run dev
 
 - `src/app/api/deck/**/route.ts`：BFF endpoints。
 - `src/lib/server/hermes/core.ts`：Hermes API base/key/Agent env 解析、fetch helper、redaction、cache helper。
-- `src/lib/server/hermes/profiles.ts`：API-backed Agent catalog，无本地枚举补齐。
+- `src/lib/server/hermes/profiles.ts`：API-backed Agent catalog；ordinary users 无本地枚举补齐。
 - `src/lib/server/hermes/models.ts`：per-Agent `/v1/models` adapter，无本地模型清单补齐。
-- `src/lib/server/hermes/chat-stream.ts`：SSE hub/upstream pump/keep-alive/text delta filtering；chat timeout clamp 是 `[1000, 2100000]` ms。
+- `src/lib/server/hermes/tools.ts`：API-first `/v1/skills` + `/v1/toolsets` discovery；local skill index 只服务 `super_admin/local-owner` 编辑器。
+- `src/lib/server/hermes/chat-stream.ts`：`/v1/runs` start + `/v1/runs/{run_id}/events` upstream SSE pump/keep-alive/text delta filtering；chat timeout clamp 是 `[1000, 2100000]` ms。
 - `src/lib/chat-timeouts.ts`：35 分钟 chat stream default/hard cap（Hermes active subagent 30 分钟 + 5 分钟余量），前端与服务端共享。
 - `src/lib/server/hermes/cron.ts`：cron Agent routing proof。
 - `src/lib/server/auth.ts`、`rbac.ts`：Deck users/roles/capabilities/Agent scope（代码中 `profile`/`profileId` 是 legacy Agent runtime id）。
@@ -59,7 +60,7 @@ npm run dev
 
 - `GET /api/deck/auth/session` 查看当前用户与 capabilities。
 - 普通用户访问 Agent 前必须有 assignment，且不得访问未分配 Agent/default。
-- admin/super_admin catalog outage 应显示上游不可用，而不是从本地目录补齐；不要把 catalog/health proof 缺失描述成用户无权限。
+- catalog outage 应显示上游不可用，而不是给普通用户从本地目录补齐；不要把 catalog/health proof 缺失描述成用户无权限。`super_admin/local-owner` 本机管理面可用的 config/skills/LCM/Live Terminal 不等于 runtime fallback。
 
 ### Chat SSE
 
@@ -95,7 +96,7 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 ### PWA
 
 - dev 模式 `PWARegister` 会 unregister SW；如果曾访问 production，手动在 DevTools Application 面板清理旧 SW/cache。
-- 生产 SW 版本以 `public/sw.js` 的 `CACHE_VERSION` 为准，当前为 `hermesdeck-pwa-v47`。
+- 生产 SW 版本以 `public/sw.js` 的 `CACHE_VERSION` 为准，当前为 `hermesdeck-pwa-v53`。
 - 验证：`npm run verify:pwa`。
 
 ### Notifications
@@ -113,7 +114,7 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 - 不把 Deck user/account 与 Hermes Agent profile 混用；用户可见文案用 Agent/账号/用户，API 字段 `profile`/`profileId` 仅按 legacy/compat Agent runtime id 说明。
 - 端口叙述必须是：6117 可见入口，6118 内部 Next/proxy target。
 - PWA cache 必须强调不缓存受保护认证 HTML/API 响应。
-- Agent catalog/models/cron proof 必须 API-backed 且 fail-closed。
+- Agent catalog/models/cron proof 必须 API-backed 且 fail-closed；tools discovery 优先 `/v1/skills` + `/v1/toolsets`，local skill index/raw file 只属于 `super_admin/local-owner` 编辑器。
 
 ## Pre-merge verification
 
