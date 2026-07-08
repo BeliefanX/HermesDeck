@@ -33,6 +33,33 @@ test('visible message filtering keeps only the latest empty assistant typing tar
   assert.deepEqual(visible.map((m) => m.id), ['u1', 'tool-call', 'latest-empty']);
 });
 
+test('visible message filtering keeps only the projected final assistant after live/projection completion overlap', () => {
+  const rows = [
+    { id: 'u1', role: 'user', content: 'finish task' },
+    { id: 'live-final', role: 'assistant', content: 'done' },
+    { id: 'tool-result', role: 'tool', content: 'ok', toolCallId: 'call_1' },
+    { id: 'projected-final', role: 'assistant', content: 'done', metadata: { projectionStatus: 'final' } },
+  ];
+
+  const hiddenTools = selectVisibleMessages(rows, false, false);
+  assert.deepEqual(hiddenTools.map((m) => m.id), ['u1', 'projected-final']);
+
+  const shownTools = selectVisibleMessages(rows, true, false);
+  assert.deepEqual(shownTools.map((m) => m.id), ['u1', 'tool-result', 'projected-final']);
+});
+
+test('visible message filtering preserves repeated assistant text across user turns', () => {
+  const rows = [
+    { id: 'u1', role: 'user', content: 'first' },
+    { id: 'projected-final', role: 'assistant', content: 'done', metadata: { projectionStatus: 'final' } },
+    { id: 'u2', role: 'user', content: 'say it again' },
+    { id: 'later-repeat', role: 'assistant', content: 'done' },
+  ];
+
+  const visible = selectVisibleMessages(rows, false, false);
+  assert.deepEqual(visible.map((m) => m.id), ['u1', 'projected-final', 'u2', 'later-repeat']);
+});
+
 test('async delegation completion markers render as visible subagent results, not user rows', () => {
   const rows = [
     { id: 'u1', role: 'user', content: 'delegate this' },

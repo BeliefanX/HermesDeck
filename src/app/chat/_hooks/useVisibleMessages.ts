@@ -43,10 +43,50 @@ function latestTypingTargetIndex(activeMessages: DeckMessage[], busy: boolean): 
   return -1;
 }
 
+function isProjectionFinalMessage(m: DeckMessage | undefined): boolean {
+  return m?.role === 'assistant' && m.metadata?.projectionStatus === 'final';
+}
+
+function isPlainAssistantText(m: DeckMessage | undefined): boolean {
+  return !!m
+    && m.role === 'assistant'
+    && !!m.content.trim()
+    && !hasToolCalls(m)
+    && !hasAttachments(m);
+}
+
+function sameAssistantText(a: DeckMessage | undefined, b: DeckMessage | undefined): boolean {
+  return isPlainAssistantText(a) && isPlainAssistantText(b) && a!.content.trim() === b!.content.trim();
+}
+
+function hasUserBoundaryBetween(messages: DeckMessage[], a: number, b: number): boolean {
+  const start = Math.min(a, b) + 1;
+  const end = Math.max(a, b);
+  return messages.slice(start, end).some((m) => m.role === 'user');
+}
+
+function dedupeFinalAssistantProjection(messages: DeckMessage[]): DeckMessage[] {
+  return messages.filter((message, idx) => {
+    if (isProjectionFinalMessage(message)) return true;
+    if (!isPlainAssistantText(message)) return true;
+
+    // Live SSE text and durable projection can briefly coexist with different
+    // ids. Prefer the server-projected final row, but only within the same turn
+    // (no intervening user), so a later legitimate repeated answer is kept.
+    const hasProjectedDuplicateInSameTurn = messages.some((other, otherIdx) => (
+      otherIdx !== idx
+      && isProjectionFinalMessage(other)
+      && sameAssistantText(message, other)
+      && !hasUserBoundaryBetween(messages, idx, otherIdx)
+    ));
+    return !hasProjectedDuplicateInSameTurn;
+  });
+}
+
 export function selectVisibleMessages(activeMessages: DeckMessage[], showToolDetails: boolean, busy: boolean): DeckMessage[] {
   const messages = activeMessages.map(normalizeAsyncDelegationCompletionMessage);
   const typingTargetIdx = latestTypingTargetIndex(messages, busy);
-  const visible = messages.filter((m, idx) => {
+  const visible = dedupeFinalAssistantProjection(messages.filter((m, idx) => {
     const emptyNonToolRow = !hasText(m) && !hasToolCalls(m) && !hasAttachments(m) && m.role !== 'tool';
 
     if (!showToolDetails && hiddenByToolDetails(m)) return false;
@@ -57,7 +97,7 @@ export function selectVisibleMessages(activeMessages: DeckMessage[], showToolDet
     if (emptyNonToolRow) return idx === typingTargetIdx;
 
     return true;
-  });
+  }));
   const typingVisibleIdx = visible.findIndex((m) => isEmptyAssistantTextTarget(m) && (busy || isProjectedDraftMessage(m)));
   if (typingVisibleIdx <= 0) return visible;
   const pendingAfterTyping = visible.slice(typingVisibleIdx + 1).filter(isPendingApprovalMessage);
