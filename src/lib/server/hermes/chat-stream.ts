@@ -381,6 +381,7 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
     const startJson = await startResponse.json().catch(() => ({})) as Record<string, unknown>;
     const runId = typeof startJson.run_id === 'string' ? startJson.run_id : '';
     if (!runId) throw new Error('Hermes API Server /v1/runs did not return run_id');
+    emitToHub(stream, 'run-event', { type: 'run.created', payload: { run_id: runId }, ts: Date.now() });
     runProjectionHook(() => hooks?.onRunEvent?.({
       sessionId: stream.sessionId,
       profileId: profile,

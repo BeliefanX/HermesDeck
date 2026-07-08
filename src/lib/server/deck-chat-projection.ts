@@ -28,7 +28,7 @@ const MAX_IMPORTED_SESSIONS = 500;
 const MAX_MESSAGES_PER_SESSION = 1000;
 const MAX_STORED_SESSIONS = 750;
 const MAX_ACTIVE_OR_ERRORED_SESSIONS = 200;
-const COMPLETED_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const COMPLETED_SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const FAILED_OR_RUNNING_SESSION_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 const LOCK_STALE_MS = 5 * 60_000;
 const LOCK_RETRY_MS = 25;
@@ -567,6 +567,10 @@ function isToolArgsDelta(type: string): boolean {
     || /\bfunction_call\.arguments\.delta$/i.test(type);
 }
 
+function isNoisyRunEvent(type: string): boolean {
+  return type.endsWith('.delta') || /\.delta\b/i.test(type);
+}
+
 function isToolArgsDone(type: string): boolean {
   return /(?:function_call|tool_call)[._-]arguments\.done$/i.test(type)
     || /\bfunction_call\.arguments\.done$/i.test(type);
@@ -729,8 +733,42 @@ function insertToolResultMessage(session: ProjectedSession, input: {
   return true;
 }
 
+function runEventKey(type: string, payload: Record<string, unknown>, content: string): string {
+  const runId = stringValue(payload.run_id) || 'run';
+  const id = stringValue(payload.id) || stringValue(payload.event_id) || stringValue(payload.item_id)
+    || stringValue(payload.call_id) || stringValue(payload.tool_call_id) || stringValue(payload.status)
+    || stringValue(payload.phase);
+  return `${type}:${runId}:${id || content}`.slice(0, 240);
+}
+
+function insertRunEventMessage(session: ProjectedSession, input: {
+  type: string;
+  payload: Record<string, unknown>;
+  now: string;
+}): boolean {
+  const content = sanitizeText({ type: input.type, payload: input.payload }, 20_000);
+  const key = runEventKey(input.type, input.payload, content);
+  const existing = session.messages.find((message) => message.metadata?.projectionKind === 'run-event' && message.metadata?.eventKey === key);
+  if (existing) {
+    if (existing.content === content) return false;
+    existing.content = content;
+    existing.updatedAt = input.now;
+    return true;
+  }
+  session.messages.push({
+    id: `re_${randomUUID().slice(0, 8)}`,
+    role: 'tool',
+    content,
+    toolName: 'run-event',
+    toolCallId: key,
+    createdAt: input.now,
+    metadata: { observedFrom: 'deck-stream', projectionKind: 'run-event', eventType: input.type, eventKey: key },
+  });
+  return true;
+}
+
 function isProjectableRunEvent(type: string, payload: Record<string, unknown>, item: Record<string, unknown>): boolean {
-  if (isRunId(payload.run_id)) return true;
+  if (isNoisyRunEvent(type)) return false;
   if (type === 'approval.request' || type === 'approval.responded') return Boolean(stringValue(payload.run_id));
   if (type === 'response.output_item.added') return isFunctionCallItemType(item.type);
   if (isToolArgsDelta(type)) return false;
@@ -757,6 +795,7 @@ function isProjectableRunEvent(type: string, payload: Record<string, unknown>, i
     );
     return Boolean(itemId && (payload.output ?? payload.result ?? payload.content) != null);
   }
+  if (isRunId(payload.run_id)) return true;
   return false;
 }
 
@@ -1011,6 +1050,8 @@ export function recordProjectedRunEvent(input: RecordProjectedRunEventInput): vo
           now,
         }) || changed;
       }
+    } else if (isRunId(payload.run_id)) {
+      changed = insertRunEventMessage(session, { type: innerType, payload, now }) || changed;
     }
 
     if (changed) {

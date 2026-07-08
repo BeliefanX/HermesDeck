@@ -219,6 +219,14 @@ function isToolResultEvent(type: string): boolean {
     || type === 'response.function_call.output'
     || type === 'response.tool_result';
 }
+function isGenericRunEvent(type: string, payload: Record<string, unknown>): boolean {
+  return !!payload.run_id && !(type.endsWith('.delta') || /\.delta\b/i.test(type));
+}
+function genericRunEventKey(type: string, payload: Record<string, unknown>): string {
+  const id = String(payload.id || payload.event_id || payload.item_id || payload.call_id || payload.tool_call_id || payload.status || payload.phase || '');
+  const content = JSON.stringify({ type, payload });
+  return `${type}:${String(payload.run_id || 'run')}:${id || content}`.slice(0, 240);
+}
 function isToolStartEvent(type: string): boolean {
   return type === 'tool.started' || type === 'tool.start' || type === 'tool.call';
 }
@@ -579,6 +587,25 @@ export function useChatStream(params: UseChatStreamParams) {
         return { ...m, [sid]: [...list.slice(0, insertAt), newRow, ...list.slice(insertAt)] };
       });
       return;
+    }
+
+    if (isGenericRunEvent(innerType, p)) {
+      const key = genericRunEventKey(innerType, p);
+      const content = JSON.stringify({ type: innerType, payload: p }, null, 2);
+      setMessages((m) => {
+        const list = m[sid] || [];
+        if (list.some((x) => x.metadata?.projectionKind === 'run-event' && x.metadata?.eventKey === key)) return m;
+        const newRow: DeckMessage = {
+          id: `re_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          role: 'tool',
+          content,
+          toolName: 'run-event',
+          toolCallId: key,
+          createdAt: new Date().toISOString(),
+          metadata: { observedFrom: 'deck-stream', projectionKind: 'run-event', eventType: innerType, eventKey: key },
+        };
+        return { ...m, [sid]: [...list, newRow] };
+      });
     }
   }, [profile, setMessages]);
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -106,6 +106,52 @@ test('pending approval tool results without an API run id are projected as unava
     assert.equal(approval.metadata.runId, 'tool_call_terminal_approval');
     assert.equal(approval.metadata.actionUnavailable, true);
     assert.deepEqual(approval.metadata.choices, []);
+  } finally {
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('generic Agent run events persist as hidden tool-detail rows with 90-day retention', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'hermesdeck-run-event-projection-'));
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  try {
+    process.env.HERMESDECK_DATA_DIR = dataDir;
+    const projection = await import(`${projectionModule}?case=${Date.now()}-${importNonce++}`);
+    const viewer = { userId: 'user_run_event_projection', role: 'user' };
+
+    projection.startProjectedTurn({
+      sessionId: 'run-event-session',
+      profileId: 'default',
+      ownerUserId: viewer.userId,
+      ownerRole: viewer.role,
+      message: 'do work',
+    });
+    projection.recordProjectedRunEvent({
+      sessionId: 'run-event-session',
+      profileId: 'default',
+      viewer,
+      type: 'run.status',
+      payload: { type: 'run.status', run_id: 'run_raw_event_1', status: 'queued', detail: { step: 'scheduler' } },
+    });
+    projection.finalizeProjectedTurn({
+      sessionId: 'run-event-session',
+      profileId: 'default',
+      viewer,
+      content: 'done',
+    });
+
+    const messages = projection.getProjectedMessages('run-event-session', 'default', { viewer });
+    const event = messages.find((message) => message.metadata?.projectionKind === 'run-event');
+    assert.ok(event);
+    assert.equal(event.role, 'tool');
+    assert.equal(event.toolName, 'run-event');
+    assert.match(event.content, /run_raw_event_1/);
+    assert.match(event.content, /scheduler/);
+
+    const source = readFileSync(new URL('../src/lib/server/deck-chat-projection.ts', import.meta.url), 'utf8');
+    assert.match(source, /const COMPLETED_SESSION_TTL_MS = 90 \* 24 \* 60 \* 60 \* 1000;/);
   } finally {
     if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
     else process.env.HERMESDECK_DATA_DIR = oldDataDir;

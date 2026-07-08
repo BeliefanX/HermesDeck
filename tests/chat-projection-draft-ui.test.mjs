@@ -59,6 +59,7 @@ test('chat tool cards render concrete tool names before generic labels', () => {
   assert.match(messageRow, /const toolNames = calls\.map\(\(c\) => c\.name\)/);
   assert.match(messageRow, /<span className="tool-block-names">\{toolNames\}<\/span>\n\s+<span className="tool-block-title">/);
   assert.match(messageRow, /<span className="tool-block-names">\{toolName \|\| 'tool'\}<\/span>\n\s+<span className="tool-block-title">\{title\}<\/span>/);
+  assert.match(messageRow, /titleOverride=\{isRunEvent \? 'Agent API event' : undefined\}/);
 });
 
 test('active projected drafts are hydrated from the server and polled to final content', () => {
@@ -135,12 +136,12 @@ test('server projection persists tool call and result rows for refresh hydration
   assert.match(projection, /projectionKind: 'tool-result'/);
 });
 
-test('run-event projection skips non-tool stream events before touching the store', () => {
+test('run-event projection skips delta noise before touching the store', () => {
   assert.match(projection, /function isProjectableRunEvent\(type: string, payload: Record<string, unknown>, item: Record<string, unknown>\): boolean/);
   assert.match(projection, /if \(!isProjectableRunEvent\(innerType, payload, item\)\) return;\n\s+mutateStore\(\(store\) => \{/);
   assert.match(projection, /if \(result === false\) return result;\n\s+writeStore\(store\);/);
   assert.match(projection, /return changed \|\| false;/);
-  assert.match(projection, /if \(isToolArgsDelta\(type\)\) return false;/);
+  assert.match(projection, /if \(isNoisyRunEvent\(type\)\) return false;/);
   assert.doesNotMatch(projection, /else if \(isToolArgsDelta\(innerType\)\)/);
   assert.doesNotMatch(projection, /const item = safeRecord\(payload\.item\) \|\| \{\};\n\s+mutateStore\(\(store\) => \{/);
 });

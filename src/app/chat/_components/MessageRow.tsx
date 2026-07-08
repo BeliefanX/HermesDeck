@@ -45,6 +45,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
   const isTool = m.role === 'tool';
   const isApproval = m.role === 'assistant' && m.metadata?.projectionKind === 'approval';
   const isAsyncDelegation = isAsyncDelegationResultMessage(m);
+  const isRunEvent = isTool && m.metadata?.projectionKind === 'run-event';
   const isToolCall = m.role === 'assistant' && (m.toolCalls?.length || 0) > 0 && !m.content;
   const isSubagentRow =
     (isToolCall && (m.toolCalls || []).some((c) => isSubagentTool(c.name)))
@@ -75,7 +76,11 @@ export const ChatMessageRow = memo(function ChatMessageRow({
         ) : isToolCall ? (
           <ToolCallSummary calls={m.toolCalls || []} />
         ) : isTool || isAsyncDelegation ? (
-          <ToolResultSummary toolName={isAsyncDelegation ? ASYNC_DELEGATION_TOOL_NAME : resolvedToolName} content={m.content} />
+          <ToolResultSummary
+            toolName={isAsyncDelegation ? ASYNC_DELEGATION_TOOL_NAME : resolvedToolName}
+            content={m.content}
+            titleOverride={isRunEvent ? 'Agent API event' : undefined}
+          />
         ) : m.content ? (
           <MessageContent content={m.content} streaming={isLastAssistant && busy} />
         ) : showTyping ? (
@@ -206,7 +211,7 @@ function extractSubagentDispatchPreview(value: unknown): string | null {
   return `${unit} dispatched${delegationId ? ` · ${delegationId}` : ''}`;
 }
 
-const ToolResultSummary = memo(function ToolResultSummary({ toolName, content }: { toolName?: string; content: string }) {
+const ToolResultSummary = memo(function ToolResultSummary({ toolName, content, titleOverride }: { toolName?: string; content: string; titleOverride?: string }) {
   const [open, setOpen] = useState(false);
   const subagent = isSubagentTool(toolName);
   const parsed = parseToolPayload(content);
@@ -214,7 +219,7 @@ const ToolResultSummary = memo(function ToolResultSummary({ toolName, content }:
   // that instead of generic key:value preview. Background dispatch acks are not
   // final results, so label them separately from async completion rows.
   let preview = '';
-  let title = subagent ? 'Subagent result' : 'Tool result';
+  let title = titleOverride || (subagent ? 'Subagent result' : 'Tool result');
   if (subagent) {
     const dispatchPreview = extractSubagentDispatchPreview(parsed.value);
     if (dispatchPreview) title = 'Subagent dispatched';
