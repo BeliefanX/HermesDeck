@@ -994,7 +994,7 @@ export function recordProjectedRunEvent(input: RecordProjectedRunEventInput): vo
     } else if (isToolStartEvent(innerType)) {
       const name = toolEventName(payload, item);
       const itemId = toolEventId(payload, item, `tool_${name}`);
-      const argsValue = payload.arguments ?? payload.args ?? payload.input;
+      const argsValue = payload.arguments ?? payload.args ?? payload.input ?? payload.preview;
       const args = typeof argsValue === 'string'
         ? argsValue
         : (argsValue == null ? '' : normalizeToolOutput(argsValue));

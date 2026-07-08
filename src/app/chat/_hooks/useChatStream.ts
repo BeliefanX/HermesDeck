@@ -391,7 +391,7 @@ export function useChatStream(params: UseChatStreamParams) {
       const name = toolEventName(p, item);
       const itemId = toolEventId(p, item, `tool_${name}`);
       if (!itemId || getToolSlot(inf.toolCalls, itemId)) return;
-      const argsValue = p.arguments ?? p.args ?? p.input;
+      const argsValue = p.arguments ?? p.args ?? p.input ?? p.preview;
       const args = typeof argsValue === 'string' ? argsValue : (argsValue == null ? '' : normalizeToolOutput(argsValue));
       const newAssistantId = `tc_${itemId}_${Math.random().toString(36).slice(2, 6)}`;
       const newTextId = `a_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;

@@ -11,6 +11,7 @@ const deckSessionList = readFileSync(new URL('../src/lib/server/deck-session-lis
 const sessionsRoute = readFileSync(new URL('../src/app/api/deck/sessions/route.ts', import.meta.url), 'utf8');
 const messagesRoute = readFileSync(new URL('../src/app/api/deck/sessions/[id]/messages/route.ts', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8');
+const chatStreamHook = readFileSync(new URL('../src/app/chat/_hooks/useChatStream.ts', import.meta.url), 'utf8');
 
 test('server-projected draft assistant rows survive refresh as visible typing placeholders', () => {
   assert.match(visibleMessages, /export function isProjectedDraftMessage/);
@@ -63,6 +64,11 @@ test('chat tool cards render concrete tool names before generic labels', () => {
   assert.match(messageRow, /titleOverride=\{runEventDisplay\?\.title\}/);
   assert.match(messageRow, /title: 'Run event'/);
   assert.match(messageRow, /title: 'Tool call'/);
+});
+
+test('generic tool-start events use Agent API preview as displayed args fallback', () => {
+  assert.match(chatStreamHook, /p\.arguments \?\? p\.args \?\? p\.input \?\? p\.preview/);
+  assert.match(projection, /payload\.arguments \?\? payload\.args \?\? payload\.input \?\? payload\.preview/);
 });
 
 test('active projected drafts are hydrated from the server and polled to final content', () => {
