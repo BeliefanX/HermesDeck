@@ -46,7 +46,7 @@ npm run dev
 - `src/lib/server/hermes/profiles.ts`：API-backed Agent catalog；ordinary users 无本地枚举补齐。
 - `src/lib/server/hermes/models.ts`：per-Agent `/v1/models` adapter，无本地模型清单补齐。
 - `src/lib/server/hermes/tools.ts`：API-first `/v1/skills` + `/v1/toolsets` discovery；local skill index 只服务 `super_admin/local-owner` 编辑器。
-- `src/lib/server/hermes/chat-stream.ts`：`/v1/runs` start + `/v1/runs/{run_id}/events` upstream SSE pump/keep-alive/text delta filtering；chat timeout clamp 是 `[1000, 2100000]` ms。
+- `src/lib/server/hermes/chat-stream.ts`：`/v1/runs` start + `/v1/runs/{run_id}/events` upstream SSE pump/keep-alive/text delta filtering；图片附件先归一为 attachment-annotated text prompt；chat timeout clamp 是 `[1000, 2100000]` ms。
 - `src/lib/chat-timeouts.ts`：35 分钟 chat stream default/hard cap（Hermes active subagent 30 分钟 + 5 分钟余量），前端与服务端共享。
 - `src/lib/server/hermes/cron.ts`：cron Agent routing proof。
 - `src/lib/server/auth.ts`、`mfa.ts`、`rbac.ts`：Deck users/roles/capabilities/MFA/Agent scope（代码中 `profile`/`profileId` 是 legacy Agent runtime id）。
@@ -97,7 +97,7 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 
 ### Cron
 
-`GET /api/deck/cron?profile=<id>` 必须能从 API 响应确认 Agent routing。若返回 `profile_routing_unavailable`，升级/重启 Hermes API Server 或修正 Agent API base；不要在 Deck 里添加本地 cron 枚举。cron/jobs 属于敏感 upstream data，无 proof 仍 fail closed。
+`GET /api/deck/cron?profile=<id>` 必须能确认 Agent routing。响应 profile envelope 或 row profile metadata 可证明；profileless legacy rows 只有在 Deck 证明 dedicated named-Agent API routing 时才 stamped。若返回 `profile_routing_unavailable`，升级/重启 Hermes API Server 或修正 Agent API base；不要在 Deck 里添加本地 cron 枚举。cron/jobs 属于敏感 upstream data，无 proof 仍 fail closed。
 
 ### PWA
 

@@ -70,7 +70,7 @@ A Hermes async `delegate_task` completion marker in history: `[ASYNC DELEGATION 
 
 ## Cron proof
 
-Evidence in Hermes API Server cron response that requested Agent routing was honored: response-level `profile`/routing fields or every job row carrying the requested Agent runtime id. Without proof, Deck returns `profile_routing_unavailable`.
+Evidence that Hermes API Server cron data belongs to the requested Agent: response-level `profile`/routing fields, every job row carrying the requested Agent runtime id, or Deck server-owned dedicated named-Agent API routing for legacy profileless rows. Shared/default routing is not proof. Without proof, Deck returns `profile_routing_unavailable`; explicit mismatch returns 403.
 
 ## RBAC fail-closed
 

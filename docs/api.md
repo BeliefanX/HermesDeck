@@ -72,6 +72,7 @@ type ChatStreamRequest = {
 行为：
 
 - Deck route body hard cap：8 MiB；发送给 Hermes `/v1/runs` 的 upstream JSON body hard cap：10,000,000 bytes。
+- 图片附件沿用 `buildPromptWithAttachments()` 生成的 text prompt 发送给 `/v1/runs`；当前 Deck 不向 `/v1/runs` 发送 `/v1/responses` 风格的 `input_image` content parts。
 - Agent runtime id 必须合法且当前用户可访问。
 - named Agent continuation 必须通过 Deck projection 证明 session/response 属于该 Agent，且普通用户必须是该 projection 的 `ownerUserId`；否则 403。admin/super_admin 只有在 route 已通过 Agent 授权后才可跨 owner 使用 proof。
 - 未被证明的 named-Agent session 会替换为 server-generated `deck_<uuid>`，并作为可信 session 传 upstream，避免产生额外 `api` 话题。
@@ -118,8 +119,8 @@ Delivery semantics:
 - `GET /api/deck/cron?profile=<id>`：按一个或多个用户可访问 Agents 调 Hermes API Server `/api/jobs?include_disabled=true&profile=<id>`。
 - `GET /api/deck/cron/[jobId]?profile=<id>`：先用 profile-scoped job list 证明 job 属于该 Agent，再读取 Agent `/api/jobs/{job_id}`。
 - `POST /api/deck/cron`、`PATCH/DELETE /api/deck/cron/[jobId]`、`POST /api/deck/cron/[jobId]/pause|resume|run`：admin/super_admin only，CSRF，先做 Agent access/job proof，再转发 Agent jobs API；不读取本地 cron 文件。
-- routing proof 接受：响应顶层 `profile_id/profileId/routed_profile_id/profile/routing.*` 等 legacy/compat 字段确认，或所有 job row 自带相同 Agent runtime id。
-- 未确认时返回 `profile_routing_unavailable`（502），不展示可能混 Agent 的 cron jobs；这类敏感 profile-scoped upstream data 无 proof 仍 fail closed。
+- routing proof 接受：响应顶层 `profile_id/profileId/routed_profile_id/profile/routing.*` 等 legacy/compat 字段确认，或所有 job row 自带相同 Agent runtime id。profileless legacy rows 只有在 Deck server-owned dedicated named-Agent routing（非 default/shared API base 或专用 key）已证明时才按请求 Agent stamped。
+- 未确认时返回 `profile_routing_unavailable`（502），explicit upstream mismatch 返回 403，不展示可能混 Agent 的 cron jobs；这类敏感 profile-scoped upstream data 无 proof 仍 fail closed。
 - job shape 归一化为 `id/name/status/state/enabled/schedule/nextRunAt/lastRunAt/lastStatus/promptPreview/deliver/skills/toolsets/model/provider/workdir/profile/script/noAgent/repeat/lastError/lastDeliveryError/createdAt`。
 
 ## Tools, config, terminal and assets

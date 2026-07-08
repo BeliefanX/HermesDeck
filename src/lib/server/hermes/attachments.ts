@@ -38,14 +38,14 @@ export function normalizeAttachments(input: unknown): NormalizedAttachment[] {
 
 export function buildPromptWithAttachments(message: string, atts: NormalizedAttachment[]): string {
   const textAtts = atts.filter((a) => a.kind === 'text');
-  if (!textAtts.length) return message;
+  const imageAtts = atts.filter((a) => a.kind === 'image');
+  if (!textAtts.length && !imageAtts.length) return message;
   const blocks = textAtts.map((a) => {
     const header = `Attached file: ${a.name} (${a.mime || 'unknown'}, ${formatAttachmentBytes(a.size)})`;
     return `<<<<<< ${header}\n${a.text}\n>>>>>> end of ${a.name}`;
   });
   // Annotate image attachments as text hints too — useful when the model is
   // not multimodal but we still want it to know an image was attached.
-  const imageAtts = atts.filter((a) => a.kind === 'image');
   const imageHints = imageAtts.map(
     (a) => `Attached image: ${a.name} (${a.mime || 'image/*'}, ${formatAttachmentBytes(a.size)})`,
   );

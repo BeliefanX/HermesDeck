@@ -31,7 +31,7 @@ Deck 运行时数据来自 Hermes Agent API Server：
 - chat：按 Agent 调 `/v1/runs` + `/v1/runs/{run_id}/events`，必要时传 `X-Hermes-Session-Id`。
 - run control：`/api/deck/chat/runs/{runId}` 和 `/stop` 只在 Deck projection 已绑定 `profile/session/run` 后转发 Agent `/v1/runs/{run_id}`。
 - capabilities/status：按 Agent 调 `/v1/capabilities` 与 `/health/detailed`，普通用户只得到低敏 status。
-- cron：按 Agent 调 `/api/jobs?include_disabled=true&profile=<id>`，必须从响应或 job rows 得到 routing proof。
+- cron：按 Agent 调 `/api/jobs?include_disabled=true&profile=<id>`；响应 profile envelope、row profile metadata 或 server-owned dedicated named-Agent routing 才能证明 profileless legacy jobs。
 - cron detail/actions：先用 profile-scoped job list 证明 job 属于该 Agent，再转发 `/api/jobs/{job_id}` 和 pause/resume/run/update/delete；写操作 admin-only + CSRF。
 - sessions：list/messages/delete/update/fork 都走 Agent `/api/sessions*`，update 只转发 `title/end_reason`；Deck pin/tags/folder 仍是 Deck metadata。
 - tools/skills：优先从 Agent `/v1/skills` + `/v1/toolsets` 发现；`/api/deck/skill-catalog` 只暴露 metadata；raw local skill 文件读写只属于 `super_admin/local-owner` 编辑器。
@@ -55,14 +55,14 @@ Fail-closed 规则：
 - 非 admin 缺少 Agent assignment：403。
 - Agent runtime id（legacy `profile`/`profileId`）无效：400。
 - admin/super_admin 需要 catalog 时，先走 API catalog；只有 `/v1/profiles` 与 `/api/profiles` 都是 404，才使用 admin-only bounded local profile-dir fallback，并逐个 `/health` 证明。普通用户无本地 runtime data fallback。
-- sessions/stats 等 sensitive upstream rows 必须由 API 响应 metadata、explicit identity、Deck server-owned 专用 Agent API base 或专用 API key 证明 scope；shared/default base+key 且 `/health` 无 identity 的 unlabeled rows 返回 `profile_routing_unavailable`。cron/jobs 仍需要 API 响应证明。
+- sessions/stats 等 sensitive upstream rows 必须由 API 响应 metadata、explicit identity、Deck server-owned 专用 Agent API base 或专用 API key 证明 scope；shared/default base+key 且 `/health` 无 identity 的 unlabeled rows 返回 `profile_routing_unavailable`。cron/jobs 的 explicit mismatch 仍 403；profileless jobs 只在 response proof 或 dedicated named-Agent routing proof 下 stamped。
 
 ## Chat/SSE 数据流
 
 1. 浏览器向 `POST /api/deck/chat/stream` 发送 message、Agent runtime id（wire 字段 `profileId`）、model/reasoning override、attachments、可选 session/previous response。
 2. Route handler 执行 auth、CSRF、Agent access、named-Agent continuation proof。
 3. `createChatStream` 建立进程内 Stream Hub，先写 Deck projection draft，再后台 pump upstream。
-4. BFF 调 Hermes API Server `/v1/runs` 创建 run，再连接 `/v1/runs/{run_id}/events` 解析 upstream SSE events。
+4. BFF 调 Hermes API Server `/v1/runs` 创建 run，再连接 `/v1/runs/{run_id}/events` 解析 upstream SSE events；图片附件当前作为 attachment-annotated text prompt 发送，避免把 `/v1/responses` 的 multimodal content-parts 形状传给 `/v1/runs`。
 5. BFF 仍原样转发 raw `run-event`；浏览器把 `tool.started`/`tool.completed` 的 `payload.tool` 名称（如 `lcm_grep`、`hindsight_recall`）通用投影到聊天窗口主体里的工具卡片，不再显示右侧运行事件小窗。`onRunEvent` projection hook 在 tool/function call/result 语义边界物化为 `tool-call`/`tool-result` message rows；其它带 `run_id` 的非 delta Agent API events 物化为隐藏 run-event rows，打开工具详情时按“具体事件名 → Run event”显示；tool output arrays 会归一化为文本；后台 `delegate_task` 派发 ack 与异步完成回填复用 subagent tool-result 卡片。
 6. 只有文本 delta 写入 assistant bubble；tool/function argument delta 不混入普通助手正文，也不触发 durable projection write，持久参数来自 `arguments.done`/done item。
 7. 浏览器断线/刷新只 detach 当前 subscriber；hub 继续 pump，`GET /api/deck/chat/resume?sessionId=<id>&since=<seq>` 可回放，sessions/messages polling 也能读到 projection 中的 draft assistant/tool rows。

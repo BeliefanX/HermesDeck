@@ -297,22 +297,9 @@ async function pumpUpstream(stream: ActiveStream, body: ChatStreamBody, hooks?: 
   const timeoutMs = Math.min(Math.max(1000, requestedTimeout), CHAT_STREAM_HARD_TIMEOUT_MS);
 
   try {
-    const inputForApi: unknown = hasImages
-      ? [
-          {
-            role: 'user',
-            content: [
-              { type: 'input_text', text: enrichedMessage },
-              ...attachments
-                .filter((a) => a.kind === 'image' && a.dataUrl)
-                .map((a) => ({
-                  type: 'input_image',
-                  image_url: { url: a.dataUrl as string, detail: 'auto' },
-                })),
-            ],
-          },
-        ]
-      : enrichedMessage;
+    // ponytail: current /v1/runs reads raw input content as text; send image turns
+    // as the existing attachment-annotated prompt until Agent normalizes images here.
+    const inputForApi: unknown = hasImages ? String(enrichedMessage) : enrichedMessage;
     const apiBody: Record<string, unknown> = { input: inputForApi };
     if (model) apiBody.model = model;
     if (reasoningEffort && reasoningEffort !== 'auto') apiBody.reasoning = { effort: reasoningEffort };

@@ -1,4 +1,4 @@
-import { hermesApiGet } from './core';
+import { hasDedicatedProfileRouting, hermesApiGet } from './core';
 import type { DeckCronJob } from '@/lib/types';
 
 type HermesCronJobsResponse = {
@@ -97,15 +97,33 @@ function confirmedProfileId(payload: HermesCronJobsResponse): string | undefined
     || str(routing.profile);
 }
 
-function assertProfileRoutingConfirmed(payload: HermesCronJobsResponse, rawJobs: unknown[], requestedProfile: string): boolean {
+function rowProfileId(raw: unknown): string | undefined {
+  const row = obj(raw);
+  const routing = obj(row.routing);
+  return str(row.profile_id)
+    || str(row.profileId)
+    || str(row.routed_profile_id)
+    || str(row.profile)
+    || str(routing.profile_id)
+    || str(routing.profileId)
+    || str(routing.routed_profile_id)
+    || str(routing.profile);
+}
+
+export function assertProfileRoutingConfirmed(payload: HermesCronJobsResponse, rawJobs: unknown[], requestedProfile: string): boolean {
   const confirmed = confirmedProfileId(payload);
   if (confirmed === requestedProfile) return true;
   if (confirmed) throw new CronProfileRoutingError(requestedProfile, 'cron_profile_mismatch');
 
   const rowProfiles = rawJobs
-    .map((job) => str(obj(job).profile))
+    .map(rowProfileId)
     .filter((profile): profile is string => Boolean(profile));
   if (rowProfiles.some((profile) => profile !== requestedProfile)) throw new CronProfileRoutingError(requestedProfile, 'cron_profile_mismatch');
+  const everyRowProvesProfile = rawJobs.length > 0 && rowProfiles.length === rawJobs.length;
+  if (everyRowProvesProfile) return false;
+  if (!hasDedicatedProfileRouting(requestedProfile)) {
+    throw new CronProfileRoutingError(requestedProfile);
+  }
   return true;
 }
 
