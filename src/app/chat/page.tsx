@@ -93,10 +93,7 @@ function ChatPageInner() {
     defaultReasoning, reasoningLevels, reasoningTouchedRef,
   } = useChatModels(profile);
 
-  // Run timeline — still aggregated by useChatStream for its own delta
-  // bookkeeping, but no longer rendered (the side panel shows the context
-  // window breakdown instead).
-  const [, setTimeline] = useState<TimelineItem[]>([]);
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
 
   // Token usage from each session's latest completed turn, keyed by session id.
   // Powers the context-window breakdown panel.
@@ -600,6 +597,7 @@ function ChatPageInner() {
       slashCommands={slashCommands}
       slashIdx={slashIdx}
       tools={tools}
+      timeline={timeline}
       contextUsage={usageBySession[active]}
       abortRef={abortRef}
       taRef={taRef}

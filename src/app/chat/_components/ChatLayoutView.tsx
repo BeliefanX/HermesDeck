@@ -11,6 +11,7 @@ import {
   type AttachmentItem,
 } from '@/lib/attachments';
 import { type SlashCommand } from '@/lib/slash-commands';
+import type { TimelineItem } from '@/lib/timeline';
 import type { TurnUsage } from '../_lib/context-window';
 import type { ChatT } from '../_lib/i18n';
 import { TabBtn, iconBtnStyle } from './InlineParts';
@@ -63,6 +64,7 @@ interface ChatLayoutViewProps {
   slashIdx: number;
   // Tools / context window
   tools: ToolSummary[];
+  timeline: TimelineItem[];
   /** Token usage for the active session's latest turn — drives the context panel. */
   contextUsage?: TurnUsage;
   // Refs
@@ -404,6 +406,7 @@ export function ChatLayoutView(p: ChatLayoutViewProps) {
           activeSession={p.sessions.find((x) => x.id === p.active)}
           activeMessages={p.activeMessages}
           tools={p.tools}
+          timeline={p.timeline}
           responseId={p.responseIds[p.active]}
           usage={p.contextUsage ?? null}
         />

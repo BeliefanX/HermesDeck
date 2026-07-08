@@ -63,7 +63,7 @@ Fail-closed 规则：
 2. Route handler 执行 auth、CSRF、Agent access、named-Agent continuation proof。
 3. `createChatStream` 建立进程内 Stream Hub，先写 Deck projection draft，再后台 pump upstream。
 4. BFF 调 Hermes API Server `/v1/runs` 创建 run，再连接 `/v1/runs/{run_id}/events` 解析 upstream SSE events。
-5. BFF 仍原样转发 raw `run-event`，但 `onRunEvent` projection hook 只在 tool/function call/result 语义边界物化为 `tool-call`/`tool-result` message rows；tool output arrays 会归一化为文本。
+5. BFF 仍原样转发 raw `run-event`；浏览器右侧观测面板会通用显示 `tool.started`/`tool.completed` 的 `payload.tool` 名称（如 `lcm_grep`、`hindsight_recall`）。`onRunEvent` projection hook 只在 tool/function call/result 语义边界物化为 `tool-call`/`tool-result` message rows；tool output arrays 会归一化为文本。
 6. 只有文本 delta 写入 assistant bubble；tool/function argument delta 不混入普通助手正文，也不触发 durable projection write，持久参数来自 `arguments.done`/done item。
 7. 浏览器断线/刷新只 detach 当前 subscriber；hub 继续 pump，`GET /api/deck/chat/resume?sessionId=<id>&since=<seq>` 可回放，sessions/messages polling 也能读到 projection 中的 draft assistant/tool rows。
 

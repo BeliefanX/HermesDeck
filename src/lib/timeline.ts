@@ -125,25 +125,39 @@ export function interpret(
     type.startsWith('response.tool_call') ||
     type.startsWith('response.function_call') ||
     /tool/i.test(type) ||
+    stringProp(payload, 'tool') ||
     stringProp(payload, 'tool_name') ||
     stringProp(asRecord(prop(payload, 'tool_call')), 'name') ||
     stringProp(asRecord(prop(payload, 'function')), 'name')
   ) {
     const name =
+      stringProp(payload, 'tool') ||
       stringProp(payload, 'tool_name') ||
       stringProp(asRecord(prop(payload, 'tool_call')), 'name') ||
       stringProp(asRecord(prop(payload, 'function')), 'name') ||
       stringProp(payload, 'name') ||
       'tool';
-    let phase: string = 'tool';
+    const rawError = prop(payload, 'error');
+    const error = typeof rawError === 'string' && rawError
+      ? rawError
+      : rawError === true
+      ? 'failed'
+      : undefined;
+    let phase: string = error ? 'failed' : 'tool';
     if (type.endsWith('.added') || type.endsWith('.created') || type.endsWith('.started')) phase = 'call';
-    else if (type.endsWith('.completed') || type.endsWith('.done')) phase = 'done';
+    else if (type.endsWith('.completed') || type.endsWith('.done')) phase = error ? 'failed' : 'done';
     else if (type.endsWith('.failed')) phase = 'failed';
     else if (type.endsWith('.delta') || type.includes('arguments')) phase = 'args';
     else if (type.includes('output')) phase = 'result';
     const args = prop(payload, 'arguments') || prop(payload, 'args') || prop(payload, 'input');
     const result = prop(payload, 'output') || prop(payload, 'result');
-    const summary = result
+    const preview = stringProp(payload, 'preview');
+    const duration = typeof prop(payload, 'duration') === 'number' ? `${prop(payload, 'duration')}s` : undefined;
+    const summary = error
+      ? `error · ${shorten(error, 120)}`
+      : preview
+      ? shorten(duration ? `${preview} · ${duration}` : preview, 120)
+      : result
       ? `result · ${summarizeArgs(result)}`
       : args
       ? `args · ${summarizeArgs(args)}`
