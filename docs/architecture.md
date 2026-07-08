@@ -47,7 +47,7 @@ Deck auth store 默认在 `~/.hermesdeck/auth.json`（可用 `HERMESDECK_AUTH_DI
 - `admin`：可管理普通用户、按 assignment 使用 API-backed Agents；不拥有本机 raw file/LCM/Live Terminal 权限。
 - `user`：只能访问被分配的 Agents。
 
-MFA：TOTP 2FA 与 passkey/WebAuthn 都是密码后的第二因子；没有 passwordless 登录。已启用 MFA 的用户在密码正确后只得到短期 password-MFA token，TOTP 或 passkey 验证成功后才写正式 `hermesdeck_session`。TOTP 尝试按 user id + client IP 限速；WebAuthn registration/login challenge 是 5 分钟进程内状态并按 purpose 隔离，不能跨 enrollment/login/MFA token 混用。
+MFA：TOTP 2FA 与 passkey/WebAuthn 都是密码后的并列第二因子；没有 passwordless 登录。已启用 MFA 的用户在密码正确后只得到短期 password-MFA token，TOTP 或 passkey 验证成功后才写正式 `hermesdeck_session`。TOTP setup 显示 QR code，并保留 manual secret/URI fallback；passkey registration 需要 current password/受保护 session，但不要求 TOTP。TOTP 尝试按 user id + client IP 限速；WebAuthn registration/login challenge 是 5 分钟进程内状态并按 purpose 隔离，不能跨 enrollment/login/MFA token 混用。
 
 Fail-closed 规则：
 

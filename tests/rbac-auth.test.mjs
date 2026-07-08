@@ -3982,6 +3982,8 @@ test('TOTP MFA enrollment gates login session issuance until second factor succe
   assert.equal(res.status, 200);
   const start = await res.json();
   assert.match(start.secret, /^[A-Z2-7]+$/);
+  assert.match(start.otpauth, /^otpauth:\/\/totp\//);
+  assert.match(start.qrDataUrl, /^data:image\/png;base64,/);
   res = await mfaRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/mfa', { action: 'totp-enroll-confirm', currentPassword: password, secret: start.secret, code: totp(start.secret) }, sessionCookie));
   assert.equal(res.status, 200);
 
@@ -3992,6 +3994,23 @@ test('TOTP MFA enrollment gates login session issuance until second factor succe
   const login = await res.json();
   assert.equal(login.mfaRequired, true);
   assert.equal(login.factors.totp, true);
+});
+
+test('passkey registration options do not require TOTP enrollment', async () => {
+  const home = makeHome();
+  const auth = await loadAuth(home);
+  const store = withSuppressedBootstrapLog(() => auth.readAuth());
+  const user = Object.values(store.users)[0];
+  const password = 'passkey-only-password-123';
+  writeStore(home, { ...store, users: { ...store.users, [user.id]: { ...user, ...auth.createPasswordRecord(password, user.passwordVersion + 1), mfa: undefined, bootstrap: undefined } } });
+  const sessionCookie = `hermesdeck_session=${auth.issueSessionToken(user.id)}`;
+  const mfaRoute = await loadRoute(mfaRoutePath);
+
+  const res = await mfaRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/mfa', { action: 'passkey-register-options', currentPassword: password, name: 'Passkey' }, sessionCookie));
+  const body = await res.json();
+  assert.equal(res.status, 200, body.error);
+  assert.equal(typeof body.challengeId, 'string');
+  assert.equal(typeof body.options?.challenge, 'string');
 });
 
 test('TOTP MFA rate limit survives freshly minted pre-auth tokens', async () => {

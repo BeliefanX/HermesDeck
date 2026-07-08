@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
 import { SESSION_COOKIE, SESSION_TTL_MS, cookieSecureFor, issueSessionToken, rateLimitCheck, rateLimitRecordFailure, rateLimitReset, setUserTotp, verifyPassword, verifySessionToken } from '@/lib/server/auth';
 import { guardRequestBody, isSameOrigin, readLimitedJson } from '@/lib/server/csrf';
-import { consumeMfaToken, generateTotpSecret, makeAuthenticationOptions, makeRegistrationOptions, otpauthUri, peekMfaToken, userMfaFactors, verifyAuthentication, verifyRegistration, verifyTotp } from '@/lib/server/mfa';
+import { consumeMfaToken, generateTotpSecret, makeAuthenticationOptions, makeRegistrationOptions, otpauthUri, peekMfaToken, totpQrDataUrl, userMfaFactors, verifyAuthentication, verifyRegistration, verifyTotp } from '@/lib/server/mfa';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +41,8 @@ export async function POST(req: NextRequest) {
   if (body.action === 'totp-enroll-start') {
     if (!verifyPassword(body.currentPassword || '', session.user.id)) return NextResponse.json({ ok: false, error: 'Current password is incorrect.' }, { status: 401 });
     const secret = generateTotpSecret();
-    return NextResponse.json({ ok: true, secret, otpauth: otpauthUri(session.user, secret) });
+    const otpauth = otpauthUri(session.user, secret);
+    return NextResponse.json({ ok: true, secret, otpauth, qrDataUrl: await totpQrDataUrl(otpauth) });
   }
   if (body.action === 'totp-enroll-confirm') {
     if (!verifyPassword(body.currentPassword || '', session.user.id)) return NextResponse.json({ ok: false, error: 'Current password is incorrect.' }, { status: 401 });

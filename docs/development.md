@@ -109,7 +109,7 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 
 ### MFA
 
-- TOTP 使用 Node `crypto`，不要为 Base32/TOTP 引入额外依赖。
+- TOTP code/secret 使用 Node `crypto`；`qrcode` 仅用于 server-side QR data URLs。不要为 Base32/TOTP 引入额外依赖。
 - WebAuthn/passkey server verification 使用 SimpleWebAuthn；不要手写 COSE/CBOR/signature 验证。
 - 关键回归在 `npm run test:rbac`：MFA 登录不提前发 session、fresh pre-auth token 不能重置 TOTP 限速、WebAuthn challenge id 不能充当 password-MFA token。
 

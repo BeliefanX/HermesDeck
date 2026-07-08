@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import QRCode from 'qrcode';
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from '@simplewebauthn/server';
 import type { AuthenticationResponseJSON, AuthenticatorTransportFuture, RegistrationResponseJSON } from '@simplewebauthn/server';
 import type { DeckPasskey, DeckUser } from '@/lib/server/auth';
@@ -28,6 +29,10 @@ export function generateTotpSecret(): string {
 
 export function otpauthUri(user: DeckUser, secret: string, issuer = 'HermesDeck'): string {
   return `otpauth://totp/${encodeURIComponent(`${issuer}:${user.username}`)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=${TOTP_DIGITS}&period=30`;
+}
+
+export function totpQrDataUrl(uri: string): Promise<string> {
+  return QRCode.toDataURL(uri, { errorCorrectionLevel: 'M', margin: 2, width: 192 });
 }
 
 export function verifyTotp(secret: string, code: string, now = Date.now()): boolean {

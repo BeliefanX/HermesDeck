@@ -53,6 +53,7 @@ export default function SettingsPage() {
   const [mfaCode, setMfaCode] = useState('');
   const [mfaSecret, setMfaSecret] = useState<string | null>(null);
   const [mfaOtpauth, setMfaOtpauth] = useState<string | null>(null);
+  const [mfaQrDataUrl, setMfaQrDataUrl] = useState<string | null>(null);
   const [mfaMessage, setMfaMessage] = useState<string | null>(null);
   const [mfaError, setMfaError] = useState<string | null>(null);
   const [mfaBusy, setMfaBusy] = useState(false);
@@ -333,7 +334,7 @@ export default function SettingsPage() {
     setMfaBusy(true); setMfaError(null); setMfaMessage(null);
     try {
       const data = await mfaPost({ action: 'totp-enroll-start', currentPassword: mfaPassword });
-      setMfaSecret(data.secret); setMfaOtpauth(data.otpauth); setMfaMessage('Scan or enter the secret, then confirm with a code.');
+      setMfaSecret(data.secret); setMfaOtpauth(data.otpauth); setMfaQrDataUrl(data.qrDataUrl); setMfaMessage('Scan or enter the secret, then confirm with a code.');
     } catch (err) { setMfaError(localizeError(err instanceof Error ? err.message : 'MFA request failed.', lang)); }
     finally { setMfaBusy(false); }
   }
@@ -341,7 +342,7 @@ export default function SettingsPage() {
   async function confirmTotpEnroll() {
     if (!mfaSecret) return;
     setMfaBusy(true); setMfaError(null); setMfaMessage(null);
-    try { await mfaPost({ action: 'totp-enroll-confirm', currentPassword: mfaPassword, secret: mfaSecret, code: mfaCode }); setMfaSecret(null); setMfaOtpauth(null); setMfaPassword(''); setMfaCode(''); setMfaMessage('TOTP enabled.'); await refreshMfa(); }
+    try { await mfaPost({ action: 'totp-enroll-confirm', currentPassword: mfaPassword, secret: mfaSecret, code: mfaCode }); setMfaSecret(null); setMfaOtpauth(null); setMfaQrDataUrl(null); setMfaPassword(''); setMfaCode(''); setMfaMessage('TOTP enabled.'); await refreshMfa(); }
     catch (err) { setMfaError(localizeError(err instanceof Error ? err.message : 'MFA request failed.', lang)); }
     finally { setMfaBusy(false); }
   }
@@ -599,7 +600,14 @@ export default function SettingsPage() {
           <label style={fieldStyle}><span style={labelStyle}>Current password</span><input type="password" value={mfaPassword} onChange={(e) => setMfaPassword(e.target.value)} style={inputStyle} autoComplete="current-password" /></label>
           <label style={fieldStyle}><span style={labelStyle}>TOTP code</span><input inputMode="numeric" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} style={inputStyle} autoComplete="one-time-code" /></label>
         </div>
-        {mfaSecret ? <div style={{ marginTop: 12, fontSize: 12, wordBreak: 'break-all', color: 'var(--text)' }}>Secret: <Kbd>{mfaSecret}</Kbd><br />URI: {mfaOtpauth}</div> : null}
+        {mfaSecret ? <div style={{ marginTop: 12, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', fontSize: 12, wordBreak: 'break-all', color: 'var(--text)' }}>
+          {mfaQrDataUrl ? <>
+            {/* ponytail: data-URL QR is already generated server-side; next/image adds no value here. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={mfaQrDataUrl} alt="TOTP setup QR code" width={144} height={144} style={{ background: '#fff', borderRadius: 8, padding: 6 }} />
+          </> : null}
+          <div>Secret: <Kbd>{mfaSecret}</Kbd><br />URI: {mfaOtpauth}</div>
+        </div> : null}
         {mfaError ? <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--red)' }}>{mfaError}</div> : null}
         {mfaMessage ? <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--green)' }}>{mfaMessage}</div> : null}
         <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
