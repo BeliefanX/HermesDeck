@@ -74,10 +74,13 @@ test('generic tool-start events use Agent API preview as displayed args fallback
 test('active projected drafts are hydrated from the server and polled to final content', () => {
   assert.match(chatPage, /deckApi\.messages\(active, profile\)/);
   assert.match(chatPage, /if \(busy && cached\?\.length\) \{/);
+  assert.match(chatStreamHook, /Refresh can restore a busy local placeholder before the normal page\n\s+\/\/ message loader runs/);
+  assert.match(chatStreamHook, /const r = await deckApi\.messages\(liveSid, profile, ac\.signal\)/);
   assert.match(chatPage, /clearStaleActiveSession\(active\)/);
   assert.match(chatPage, /isSessionProfileMismatch\(err\)/);
   assert.match(chatPage, /projectionStatus === 'draft'/);
   assert.match(chatPage, /setInterval\(poll, 3000\)/);
+  assert.doesNotMatch(chatPage, /if \(!hydrated \|\| !profile \|\| !active \|\| busy\) return;/);
 });
 
 test('active server projection is fetched even over cached local placeholders', () => {
@@ -100,7 +103,7 @@ test('projection polling is bounded by active draft state and avoids whole-messa
   assert.match(chatPage, /messagesEqual\(m\[active\], r\.messages\)/);
   assert.match(chatPage, /return m;/);
   assert.doesNotMatch(chatPage, /\}, \[active, busy, hydrated, messages, profile, setMessages\]\);/);
-  assert.match(chatPage, /\}, \[active, busy, hasActiveServerDraft, hydrated, profile, setMessages\]\);/);
+  assert.match(chatPage, /\}, \[active, hasActiveServerDraft, hydrated, profile, setMessages\]\);/);
 });
 
 test('Deck chat projection reads are profile-scoped for shared assigned agents', () => {

@@ -290,7 +290,7 @@ function ChatPageInner() {
   }, [active, busy, clearStaleActiveSession, hydrated, profile, setMessages]);
 
   useEffect(() => {
-    if (!hydrated || !profile || !active || busy) return;
+    if (!hydrated || !profile || !active) return;
     if (!hasActiveServerDraft) return;
     let cancelled = false;
     const poll = async () => {
@@ -313,7 +313,7 @@ function ChatPageInner() {
     const id = window.setInterval(poll, 3000);
     void poll();
     return () => { cancelled = true; window.clearInterval(id); };
-  }, [active, busy, hasActiveServerDraft, hydrated, profile, setMessages]);
+  }, [active, hasActiveServerDraft, hydrated, profile, setMessages]);
 
   useEffect(() => {
     if (!hydrated || !activeSession?.model) return;

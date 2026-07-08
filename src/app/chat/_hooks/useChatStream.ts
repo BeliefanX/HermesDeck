@@ -1207,6 +1207,16 @@ export function useChatStream(params: UseChatStreamParams) {
 
     (async () => {
       try {
+        // Refresh can restore a busy local placeholder before the normal page
+        // message loader runs. Pull the durable projection once so tool rows
+        // become server-draft rows; page-level draft polling keeps them fresh.
+        try {
+          const r = await deckApi.messages(liveSid, profile, ac.signal);
+          if (!isAbortedRef.current && !ac.signal.aborted && r.messages.length) {
+            setMessages((m) => ({ ...m, [liveSid]: r.messages }));
+          }
+        } catch {}
+
         const ok = await resumeChatStreamClient(
           // CRITICAL: GET /resume is keyed by the hub id, not the canonical
           // session id. They may differ when Hermes assigned its own session id
