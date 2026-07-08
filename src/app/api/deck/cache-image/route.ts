@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAdmin } from '@/lib/server/rbac';
+import { requireSuperAdmin } from '@/lib/server/rbac';
 import { createReadStream } from 'node:fs';
 import { lstat, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -29,26 +29,21 @@ const MIME_BY_EXT: Record<string, string> = {
   '.bmp': 'image/bmp',
   '.tiff': 'image/tiff',
   '.heic': 'image/heic',
-  '.pdf': 'application/pdf',
-  '.mp3': 'audio/mpeg',
-  '.wav': 'audio/wav',
-  '.m4a': 'audio/mp4',
-  '.ogg': 'audio/ogg',
-  '.mp4': 'video/mp4',
-  '.webm': 'video/webm',
-  '.txt': 'text/plain; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
 };
 
-function isInsideAllowedRoot(absPath: string): boolean {
-  return HERMES_CACHE_ROOTS.some((root) => {
+function isInsideAnyRoot(absPath: string, roots: string[]): boolean {
+  return roots.some((root) => {
     const r = root.endsWith(sep) ? root : root + sep;
     return absPath === root || absPath.startsWith(r);
   });
 }
 
+function isInsideAllowedRoot(absPath: string): boolean {
+  return isInsideAnyRoot(absPath, HERMES_CACHE_ROOTS);
+}
+
 export async function GET(req: NextRequest) {
-  const auth = requireAdmin(req);
+  const auth = requireSuperAdmin(req);
   if (!auth.ok) return auth.response;
   const url = new URL(req.url);
   const raw = url.searchParams.get('path');
@@ -91,11 +86,20 @@ export async function GET(req: NextRequest) {
     return new Response('resolved path could not be verified', { status: 403 });
   }
   if (!isInsideAllowedRoot(real)) {
-    return new Response('resolved path is outside the allowed Hermes cache root', { status: 403 });
+    let realRoots: string[];
+    try {
+      realRoots = await Promise.all(HERMES_CACHE_ROOTS.map((root) => realpath(root)));
+    } catch {
+      return new Response('resolved cache root could not be verified', { status: 403 });
+    }
+    if (!isInsideAnyRoot(real, realRoots)) {
+      return new Response('resolved path is outside the allowed Hermes cache root', { status: 403 });
+    }
   }
 
   const ext = extname(abs).toLowerCase();
-  const mime = MIME_BY_EXT[ext] || 'application/octet-stream';
+  const mime = MIME_BY_EXT[ext];
+  if (!mime) return new Response('unsupported image type', { status: 415 });
   const headers: Record<string, string> = {
     'Content-Type': mime,
     'Content-Length': String(info.size),

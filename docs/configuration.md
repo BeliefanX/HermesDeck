@@ -94,21 +94,21 @@ Phase 1/2 当前实现：
 
 - TOTP 与 passkey 都是密码后的并列第二因子；Deck 不提供 passwordless 登录。
 - Login 对已启用 MFA 的用户只返回短期 password-MFA token，不写 `hermesdeck_session`；`POST /api/deck/auth/mfa` 在 proxy 层是 public，因为登录二阶段还没有 session cookie。Route 本身只允许 login actions 使用 purpose-bound `mfaToken`，enrollment/settings actions 仍要求受保护 session；完成 TOTP 或 passkey 验证后才签发正式 cookie。
-- TOTP enrollment 返回 QR data URL，并显示 manual secret/`otpauth://` URI fallback；TOTP secrets 与 passkey public-key/counter metadata 存在 `auth.json`；文件仍由 Deck 以 0600 写入。TOTP 暴力尝试按 user id + client IP 限速。
+- TOTP enrollment 返回 QR data URL，并显示 manual secret/`otpauth://` URI fallback；TOTP secrets 与 passkey public-key/counter metadata 存在 `auth.json`；文件仍由 Deck 以 0600 写入。TOTP 与 passkey 登录验证失败都按 user id + client IP 限速。
 - Passkey registration 需要 current password/受保护 session，但不要求 TOTP 已启用。
 - Passkey/WebAuthn challenge 是 5 分钟进程内状态；Deck 重启或多进程切换会让正在进行的注册/登录挑战失效。<!-- ponytail: in-memory challenge state is enough for single-process Deck; use a durable challenge store if multi-process deployment matters. -->
 - Settings 负责启用/关闭 MFA；TOTP disable 要 current password + 当前 TOTP。Admin PATCH user 可用 `mfaReset:true` 清空可管理用户的 TOTP/passkeys；`super_admin` 仍不可被降级/删除/普通修改。
 
 ## PWA cache
 
-当前 `public/sw.js`：`CACHE_VERSION='hermesdeck-pwa-v58'`。
+当前 `public/sw.js`：`CACHE_VERSION='hermesdeck-pwa-v59'`。
 
 - shell cache：只包含 `/offline`、manifest 和 icons。
 - runtime cache：只缓存同源 static `style/script/image/font`，LRU 上限 40。
 - API：网络直通；只有 fetch 抛错才合成离线 503 JSON。
 - navigation：网络优先；离线返回公开 `/offline`。
 - 受保护认证页面和聊天 HTML 不预缓存、不 runtime-cache。
-- `/api/deck/cache-image` 每次网络请求，并清理旧 SW cache 命中，避免跨用户 artifact 泄漏。
+- `/api/deck/cache-image` 每次网络请求，并清理旧 SW cache 命中；route 要求 `super_admin`，且只服务 image extensions/MIME。
 
 清缓存时应删除当前 `CACHE_VERSION` 前缀以外的旧 cache；不要恢复旧版 image cache 语义。
 

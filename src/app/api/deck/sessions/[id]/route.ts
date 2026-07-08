@@ -52,6 +52,9 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
     const result = await deleteSession(decodeURIComponent(id), profile);
     return NextResponse.json(result);
   } catch (err) {
+    if (err instanceof SessionProfileRoutingError) {
+      return NextResponse.json({ ok: false, removed: 0, error: err.code, detail: err.message }, { status: err.status });
+    }
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
       { ok: false, removed: 0, error: 'session_delete_failed', detail: msg.slice(0, 200) },

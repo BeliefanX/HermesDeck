@@ -17,5 +17,5 @@ test('Responses function_call_output links by call_id, not only fc item id', () 
 test('tool output arrays from skill_view are rendered as text, not raw card JSON', () => {
   assert.match(source, /function normalizeToolOutput\(output: unknown\): string/);
   assert.match(source, /return typeof rec\.text === 'string' \? rec\.text : '';/);
-  assert.match(source, /const text = normalizeToolOutput\(output\);/);
+  assert.match(source, /const text = toolResultContent\(output, innerType, p\);/);
 });

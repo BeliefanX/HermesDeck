@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, statSync, existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, statSync, existsSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomBytes, scryptSync, createHmac } from 'node:crypto';
@@ -875,6 +875,15 @@ test('deleteSession proves profile ownership then calls Hermes Agent API DELETE'
     if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
     else process.env.HERMES_API_BASE = oldHermesApiBase;
   }
+});
+
+test('DELETE session route preserves profile routing errors', () => {
+  const source = readFileSync(resolve('src/app/api/deck/sessions/[id]/route.ts'), 'utf8');
+  assert.match(source, /export async function DELETE/);
+  assert.match(source, /err instanceof SessionProfileRoutingError/);
+  assert.match(source, /error: err\.code/);
+  assert.match(source, /status: err\.status/);
+  assert.doesNotMatch(source, /catch \(err\) \{\n\s+const msg = err instanceof Error/);
 });
 
 test('profile-scoped Hermes sessions reject unlabeled rows from the shared default API base', async () => {
@@ -3818,8 +3827,8 @@ test('local filesystem and LCM management routes require super_admin', () => {
     assert.match(source, /requireSuperAdmin\(req\)/);
     assert.doesNotMatch(source, /requireAdmin\(req\)|requireAuth\(req\)|requireActiveUser\(req\)/);
   }
-  assert.match(cacheImageSource, /requireAdmin\(req\)/);
-  assert.doesNotMatch(cacheImageSource, /requireProfileAccess|requireActiveUser/);
+  assert.match(cacheImageSource, /requireSuperAdmin\(req\)/);
+  assert.doesNotMatch(cacheImageSource, /requireAdmin\(req\)|requireProfileAccess|requireActiveUser/);
   const cacheImageSwStart = swSource.indexOf("url.pathname === '/api/deck/cache-image'");
   const cacheImageSwEnd = swSource.indexOf('// Other API requests');
   assert.notEqual(cacheImageSwStart, -1);
@@ -3829,6 +3838,62 @@ test('local filesystem and LCM management routes require super_admin', () => {
   assert.match(cacheImageSwBlock, /fetch\(req\)/);
   assert.doesNotMatch(cacheImageSwBlock, /cache\.match|putWithTrim\(IMAGE_CACHE|cache\.put/);
   assert.match(shellSource, /n\.key === 'lcm'[\s\S]*!canUseTerminal/);
+});
+
+test('cache-image route requires super_admin and only serves image MIME types', async () => {
+  const home = makeHome();
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  let cacheDir = '';
+  try {
+    const auth = await loadAuth(home);
+    const store = withSuppressedBootstrapLog(() => auth.readAuth());
+    const superAdmin = Object.values(store.users)[0];
+    const now = new Date().toISOString();
+    const admin = {
+      id: 'cache_image_admin',
+      username: 'cache-image-admin',
+      role: 'admin',
+      status: 'active',
+      ...auth.createPasswordRecord('cache-image-admin-password-123'),
+      assignedProfileIds: ['default'],
+      preferences: { profiles: {} },
+      createdAt: now,
+      updatedAt: now,
+      approvedAt: now,
+      approvedBy: superAdmin.id,
+    };
+    writeStore(home, { ...store, users: { ...store.users, [admin.id]: admin } });
+    const cacheRoot = join(homedir(), '.hermes', 'cache');
+    mkdirSync(cacheRoot, { recursive: true });
+    cacheDir = mkdtempSync(join(cacheRoot, 'rbac-cache-image-'));
+    const png = join(cacheDir, 'ok.png');
+    const txt = join(cacheDir, 'secret.txt');
+    writeFileSync(png, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    writeFileSync(txt, 'not an image');
+    const route = await loadRouteModule(cacheImageRoutePath);
+    const adminToken = auth.issueSessionToken(admin.id);
+    const superToken = auth.issueSessionToken(superAdmin.id);
+
+    const adminDenied = await route.GET(routeRequest(`/api/deck/cache-image?path=${encodeURIComponent(png)}`, { headers: { cookie: cookieHeader(adminToken) } }));
+    assert.equal(adminDenied.status, 403);
+
+    const imageAllowed = await route.GET(routeRequest(`/api/deck/cache-image?path=${encodeURIComponent(png)}`, { headers: { cookie: cookieHeader(superToken) } }));
+    assert.equal(imageAllowed.status, 200, await imageAllowed.clone().text());
+    assert.equal(imageAllowed.headers.get('content-type'), 'image/png');
+
+    const nonImageRejected = await route.GET(routeRequest(`/api/deck/cache-image?path=${encodeURIComponent(txt)}`, { headers: { cookie: cookieHeader(superToken) } }));
+    assert.equal(nonImageRejected.status, 415);
+  } finally {
+    if (cacheDir) rmSync(cacheDir, { recursive: true, force: true });
+    if (oldHome === undefined) delete process.env.HOME;
+    else process.env.HOME = oldHome;
+    if (oldUserprofile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = oldUserprofile;
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+  }
 });
 
 test('tools discovery is Agent API-first and local fallback is super_admin-only', () => {
@@ -4121,6 +4186,16 @@ test('passkey registration options reject IP origins and mismatched RP config be
   assert.match(body.error, /configured for https:\/\/deck\.example\.test/);
   delete process.env.HERMESDECK_WEBAUTHN_ORIGIN;
   delete process.env.HERMESDECK_WEBAUTHN_RP_ID;
+});
+
+test('passkey MFA verify uses the same failure limiter as TOTP', () => {
+  const source = readFileSync(mfaRoutePath, 'utf8');
+  const start = source.indexOf('async function finishPasskey');
+  const block = source.slice(start, source.indexOf('\n}\n\nfunction webAuthnConfigError', start));
+  assert.match(block, /const key = mfaLimitKey\(req, user\?\.id \|\| 'invalid'\)/);
+  assert.match(block, /rateLimitCheck\(key\)/);
+  assert.match(block, /rateLimitRecordFailure\(key\)/);
+  assert.match(block, /rateLimitReset\(key\)/);
 });
 
 test('TOTP MFA rate limit survives freshly minted pre-auth tokens', async () => {

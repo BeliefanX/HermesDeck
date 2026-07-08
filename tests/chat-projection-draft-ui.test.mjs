@@ -12,6 +12,8 @@ const sessionsRoute = readFileSync(new URL('../src/app/api/deck/sessions/route.t
 const messagesRoute = readFileSync(new URL('../src/app/api/deck/sessions/[id]/messages/route.ts', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8');
 const chatStreamHook = readFileSync(new URL('../src/app/chat/_hooks/useChatStream.ts', import.meta.url), 'utf8');
+const chatComposer = readFileSync(new URL('../src/app/chat/_components/ChatComposer.tsx', import.meta.url), 'utf8');
+const goalAndQueue = readFileSync(new URL('../src/app/chat/_hooks/useGoalAndQueue.ts', import.meta.url), 'utf8');
 
 test('server-projected draft assistant rows survive refresh as visible typing placeholders', () => {
   assert.match(visibleMessages, /export function isProjectedDraftMessage/);
@@ -96,6 +98,28 @@ test('chat tool cards render concrete tool names before generic labels', () => {
 test('generic tool-start events use Agent API preview as displayed args fallback', () => {
   assert.match(chatStreamHook, /p\.arguments \?\? p\.args \?\? p\.input \?\? p\.preview/);
   assert.match(projection, /payload\.arguments \?\? payload\.args \?\? payload\.input \?\? payload\.preview/);
+});
+
+test('generic tool result events use stable fallbacks and payload content when output is absent', () => {
+  assert.match(chatStreamHook, /stableToolFallbackId\(innerType, fallbackName, p, item\)/);
+  assert.match(chatStreamHook, /const text = toolResultContent\(output, innerType, p\);/);
+  assert.match(projection, /stableToolFallbackId\(innerType, fallbackName, payload, item\)/);
+  assert.match(projection, /const content = toolResultContent\(output, innerType, payload\);/);
+});
+
+test('attachment-only sends are enabled and clear across new chat/profile switch', () => {
+  assert.match(chatComposer, /const canSend = !!input\.trim\(\) \|\| attachments\.some\(\(a\) => a\.status === 'ready'\)/);
+  assert.match(chatComposer, /disabled=\{busy \|\| !canSend\}/);
+  assert.match(chatStreamHook, /const liveAtts = opts\?\.attachmentsOverride\n\s+\?\? attachments\.filter\(\(a\) => a\.status === 'ready'\)\.map\(attachmentToPayload\);\n\s+if \(\(!text && !liveAtts\.length\) \|\| busy\) return;/);
+  assert.match(goalAndQueue, /if \(!raw && !canSendAttachmentsOnly\) return;/);
+  assert.match(chatPage, /canSendAttachmentsOnly: attachments\.some\(\(a\) => a\.status === 'ready'\)/);
+  assert.match(chatStreamHook, /setAttachments\(\[\]\);\n\s+\}, \[abortRef, profile, setAttachments, setBusy, setMessagesLoading\]\)/);
+  assert.match(chatStreamHook, /setActive\(''\);\n\s+setError\(''\);\n\s+setAttachments\(\[\]\);/);
+});
+
+test('chat tool-card fold headers are semantic buttons', () => {
+  assert.match(messageRow, /<button type="button" className="tool-block-head"/);
+  assert.doesNotMatch(messageRow, /className="tool-block-head"[^>]*role="button"/);
 });
 
 test('active projected drafts are hydrated from the server and polled to final content', () => {
@@ -202,7 +226,7 @@ test('server projection preserves function-call aliases and normalizes tool outp
   assert.match(projection, /toolCallId: input\.callId \|\| visibleId/);
   assert.match(projection, /function normalizeToolOutput\(output: unknown\): string/);
   assert.match(projection, /return typeof rec\.text === 'string' \? rec\.text : '';/);
-  assert.match(projection, /const content = normalizeToolOutput\(output\)/);
+  assert.match(projection, /const content = toolResultContent\(output, innerType, payload\);/);
 });
 
 test('completed projected sessions hydrate canonical Agent tool rows when available', () => {

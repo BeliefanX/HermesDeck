@@ -55,6 +55,7 @@ export function ChatComposer({
 }) {
   const [goalEditing, setGoalEditing] = useState(false);
   const [goalDraft, setGoalDraft] = useState('');
+  const canSend = !!input.trim() || attachments.some((a) => a.status === 'ready');
   const { goal, goalActive, queue, enqueue, removeQueued, clearQueue, setGoal, pauseGoal, resumeGoal, clearGoal } = goalAndQueue;
   return (
     <div
@@ -469,7 +470,7 @@ export function ChatComposer({
                 if (slashRange) setSlashRange(null);
                 send();
               }}
-              disabled={busy || !input.trim()}
+              disabled={busy || !canSend}
             >
               {t.send}
             </Btn>

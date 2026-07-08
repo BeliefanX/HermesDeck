@@ -196,14 +196,14 @@ const ToolCallSummary = memo(function ToolCallSummary({ calls }: { calls: Array<
   const toolNames = calls.map((c) => c.name).filter(Boolean).join(' · ') || 'tool';
   return (
     <div className={`tool-block${subagent ? ' subagent' : ''}`}>
-      <div className="tool-block-head" onClick={() => setOpen((v) => !v)} role="button" aria-expanded={open}>
+      <button type="button" className="tool-block-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <Icon size={12} />
         <span className="tool-block-names">{toolNames}</span>
         <span className="tool-block-title">
           {title} {calls.length > 1 && <span className="muted">×{calls.length}</span>}
         </span>
         <ChevronDown size={12} className={`tool-block-chev ${open ? 'open' : ''}`} />
-      </div>
+      </button>
       {open && (
         <div className="tool-block-body">
           {calls.map((c, i) => {
@@ -275,12 +275,12 @@ const ToolResultSummary = memo(function ToolResultSummary({ toolName, content, t
   const Icon = subagent ? Bot : CheckCircle2;
   return (
     <div className={`tool-block result${subagent ? ' subagent' : ''}`}>
-      <div className="tool-block-head" onClick={() => setOpen((v) => !v)} role="button" aria-expanded={open}>
+      <button type="button" className="tool-block-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <Icon size={12} />
         <span className="tool-block-names">{toolName || 'tool'}</span>
         <span className="tool-block-title">{title}</span>
         <ChevronDown size={12} className={`tool-block-chev ${open ? 'open' : ''}`} />
-      </div>
+      </button>
       {!open && preview && <div className="tool-block-preview">{preview}</div>}
       {open && (
         <pre className="tool-call-args">{parsed.formatted || content}</pre>

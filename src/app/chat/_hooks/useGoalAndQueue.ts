@@ -39,6 +39,7 @@ interface UseGoalAndQueueArgs {
   input: string;
   setInput: (v: string) => void;
   send: (override?: string) => void | Promise<void>;
+  canSendAttachmentsOnly?: boolean;
 }
 
 export interface UseGoalAndQueueResult {
@@ -58,7 +59,7 @@ export interface UseGoalAndQueueResult {
 }
 
 export function useGoalAndQueue({
-  active, busy, metaStore, updateMeta, input, setInput, send,
+  active, busy, metaStore, updateMeta, input, setInput, send, canSendAttachmentsOnly = false,
 }: UseGoalAndQueueArgs): UseGoalAndQueueResult {
   const meta = active ? getMeta(metaStore, active) : null;
   const goal = meta?.goal;
@@ -112,13 +113,13 @@ export function useGoalAndQueue({
 
   const sendWithGoal = useCallback((override?: string) => {
     const raw = (override ?? input).trim();
-    if (!raw) return;
+    if (!raw && !canSendAttachmentsOnly) return;
     const final = formatPrompt(raw);
     // useChatStream's send only clears `input` when called with no textArg.
     // We always pass an override (the prefixed text), so clear it ourselves.
     if (override === undefined) setInput('');
     return send(final);
-  }, [input, formatPrompt, send, setInput]);
+  }, [canSendAttachmentsOnly, input, formatPrompt, send, setInput]);
 
   const enqueue = useCallback(() => {
     const raw = input.trim();

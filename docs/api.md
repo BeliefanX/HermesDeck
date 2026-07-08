@@ -94,7 +94,7 @@ type ChatStreamRequest = {
 - `PATCH /api/deck/sessions/[id]?profile=<id>`：只允许 `title`、`end_reason`，CSRF + session/profile proof 后转发 Agent `PATCH /api/sessions/{id}`；不处理 Deck pin/tags/folder。
 - `POST /api/deck/sessions/[id]/fork?profile=<id>`：CSRF + session/profile proof 后转发 Agent `POST /api/sessions/{id}/fork`。
 - `GET /api/deck/stats?profile=<id>`：dashboard stats；成功取得 API sessions 后合并 viewer-scoped projection；sessions 的 dedicated-base/profile-metadata proof 规则相同，routing errors fail closed。
-- `GET /api/deck/tokens?days=<n>&profile=<id>`：token/cost 聚合，timeout 较长。
+- `GET /api/deck/tokens?days=<n>&profile=<id>`：API-first token/cost placeholder。Hermes Agent 尚未提供 token analytics API 时返回 zeroed stats + `unavailableReason`；Deck 不读取本地 runtime DB 合成聚合。
 
 ## Notifications
 
@@ -133,6 +133,6 @@ Delivery semantics:
 - `GET /api/deck/terminal/actions`、`POST /api/deck/terminal/run`：白名单 terminal actions。
 - `/api/deck/term/sessions*`：Live Terminal CRUD/input/resize/stream/tmux；需要启用 Live Terminal 且 `super_admin` 权限。Stream route uses SSE replay plus `: ka` keepalive and idempotently unsubscribes on client cancel, enqueue failure, keepalive failure, or subscriber close so retries do not leak tmux subscribers.
 - `POST /api/deck/uploads/parse`：解析 text/PDF/DOCX 等附件。
-- `GET /api/deck/cache-image`：admin-only image proxy/cache endpoint；Service Worker 不缓存此路由。
+- `GET /api/deck/cache-image`：super_admin-only image proxy/cache endpoint；只支持真实 image MIME/extensions（SVG 强制下载），Service Worker 不缓存此路由。
 
 - `/api/deck/lcm`：`super_admin/local-owner` LCM SQLite dashboard BFF。

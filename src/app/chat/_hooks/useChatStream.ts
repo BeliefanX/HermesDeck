@@ -200,6 +200,9 @@ function normalizeToolOutput(output: unknown): string {
   }
   return JSON.stringify(output);
 }
+function toolResultContent(output: unknown, type: string, payload: Record<string, unknown>): string {
+  return output == null ? JSON.stringify({ type, payload }, null, 2) : normalizeToolOutput(output);
+}
 
 // Heuristic — does this raw event type correspond to a tool args delta?
 function isToolArgsDelta(type: string): boolean {
@@ -241,10 +244,30 @@ function toolEventId(p: Record<string, unknown>, item: Record<string, unknown>, 
     || (p.tool_call_id as string)
     || (p.call_id as string)
     || (p.id as string)
+    || (p.event_id as string)
     || (item.id as string)
     || fallback
     || ''
   );
+}
+
+function stableToolFallbackId(type: string, name: string, payload: Record<string, unknown>, item: Record<string, unknown>): string {
+  const seed = JSON.stringify({
+    type,
+    name,
+    output: payload.output,
+    result: payload.result,
+    content: payload.content,
+    status: payload.status,
+    created_at: payload.created_at,
+    item,
+  });
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `tool_${name || 'tool'}_${(hash >>> 0).toString(36)}`;
 }
 
 function toolEventName(p: Record<string, unknown>, item: Record<string, unknown>): string {
@@ -316,7 +339,8 @@ export function useChatStream(params: UseChatStreamParams) {
     clearInflight();
     setBusy(false);
     setMessagesLoading(false);
-  }, [abortRef, profile, setBusy, setMessagesLoading]);
+    setAttachments([]);
+  }, [abortRef, profile, setAttachments, setBusy, setMessagesLoading]);
 
   // Apply OpenAI-Responses-style + Hermes-style tool/skill/subagent events to
   // the visible message list so the user sees calls + results in real-time.
@@ -529,8 +553,8 @@ export function useChatStream(params: UseChatStreamParams) {
       const tc = getToolSlot(inf.toolCalls, itemId);
       const toolName = tc?.name || String((item.name as string) || 'tool');
       const output = item.output ?? item.content;
-      if (output == null) return;
-      const text = normalizeToolOutput(output);
+      if (!itemId) return;
+      const text = toolResultContent(output, innerType, p);
       setMessages((m) => {
         const list = m[sid] || [];
         if (list.some((x) => x.role === 'tool' && x.toolCallId === itemId)) return m;
@@ -561,12 +585,11 @@ export function useChatStream(params: UseChatStreamParams) {
     // Hermes-shape tool result events
     if (isToolResultEvent(innerType)) {
       const fallbackName = toolEventName(p, item);
-      const itemId = toolEventId(p, item, fallbackName ? `tool_${fallbackName}` : '');
+      const itemId = toolEventId(p, item, stableToolFallbackId(innerType, fallbackName, p, item));
       const tc = getToolSlot(inf.toolCalls, itemId);
       const toolName = tc?.name || fallbackName;
       const output = p.output ?? p.result ?? p.content;
-      if (output == null) return;
-      const text = normalizeToolOutput(output);
+      const text = toolResultContent(output, innerType, p);
       setMessages((m) => {
         const list = m[sid] || [];
         if (list.some((x) => x.role === 'tool' && x.toolCallId === itemId)) return m;
@@ -944,19 +967,19 @@ export function useChatStream(params: UseChatStreamParams) {
     },
   ) => {
     const text = (textArg ?? input).trim();
-    if (!text || busy) return;
+    const liveAtts = opts?.attachmentsOverride
+      ?? attachments.filter((a) => a.status === 'ready').map(attachmentToPayload);
+    if ((!text && !liveAtts.length) || busy) return;
     if (!profile) {
       setError(t.profileUnavailable);
       return;
     }
-    const liveAtts = opts?.attachmentsOverride
-      ?? attachments.filter((a) => a.status === 'ready').map(attachmentToPayload);
     setError('');
     if (!textArg) setInput('');
     let sid = active;
     if (!sid) {
       sid = genSessionId();
-      const title = text.split('\n')[0].slice(0, 64) || t.newChat;
+      const title = text.split('\n')[0].slice(0, 64) || liveAtts[0]?.name || t.newChat;
       const created: LocalSession = {
         id: sid, profileId: profile, title, source: 'hermesdeck', model: selectedModel || undefined, reasoningEffort: reasoningEffort || undefined,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), messageCount: 0,
@@ -1336,9 +1359,10 @@ export function useChatStream(params: UseChatStreamParams) {
     openSessionAbortRef.current?.abort();
     setActive('');
     setError('');
+    setAttachments([]);
     setMessagesLoading(false);
     setTimeout(() => taRef.current?.focus(), 60);
-  }, [abortRef, setActive, setError, setMessagesLoading, taRef]);
+  }, [abortRef, setActive, setAttachments, setError, setMessagesLoading, taRef]);
 
   const regenerate = useCallback(async () => {
     if (busy) return;

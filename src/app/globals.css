@@ -1154,6 +1154,11 @@ p{line-height:1.6}
 .msg-row.is-tool{margin:2px 0}
 .tool-block-head{
   display:flex;align-items:center;gap:8px;
+  width:100%;
+  border:0;
+  background:transparent;
+  font:inherit;
+  text-align:left;
   padding:6px 10px;
   cursor:pointer;
   color:var(--muted-2);

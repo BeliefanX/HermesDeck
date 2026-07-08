@@ -193,19 +193,12 @@ function sanitizeAttachment(value: unknown, idx: number): DeckAttachment | null 
     ? kindRaw
     : mime.startsWith('image/') ? 'image' : mime.startsWith('text/') ? 'text' : 'file';
   const rawSize = typeof rec.size === 'number' && Number.isFinite(rec.size) ? rec.size : 0;
-  const dataUrl = stringValue(rec.dataUrl) || stringValue(rec.data_url);
   return {
     id: stringValue(rec.id) || `attachment_${idx}`,
     name: stringValue(rec.name) || stringValue(rec.filename) || `attachment_${idx}`,
     mime,
     size: Math.max(0, Math.trunc(rawSize)),
     kind,
-    text: stringValue(rec.text)?.slice(0, 100_000),
-    // Avoid making the server projection a huge binary blob store. Keep small
-    // inline artifacts only; large images/files should stay in Hermes output or
-    // browser cache and can be reattached by the user if needed.
-    dataUrl: dataUrl && dataUrl.length <= 120_000 ? dataUrl : undefined,
-    url: stringValue(rec.url),
   };
 }
 
@@ -435,6 +428,10 @@ function previewTitle(text: string, fallback: string): string {
   return first.length > 80 ? `${first.slice(0, 77)}…` : first;
 }
 
+function projectedTurnTitle(text: string, attachments: DeckAttachment[] | undefined, fallback: string): string {
+  return previewTitle(text || attachments?.map((attachment) => attachment.name.trim()).find(Boolean) || '', fallback);
+}
+
 function messageId(prefix: string): string {
   return `${prefix}_${Date.now()}_${randomUUID().slice(0, 8)}`;
 }
@@ -610,6 +607,25 @@ function toolEventId(payload: Record<string, unknown>, item: Record<string, unkn
     || fallback;
 }
 
+function stableToolFallbackId(type: string, name: string, payload: Record<string, unknown>, item: Record<string, unknown>): string {
+  const seed = sanitizeText({
+    type,
+    name,
+    output: payload.output,
+    result: payload.result,
+    content: payload.content,
+    status: payload.status,
+    created_at: payload.created_at,
+    item,
+  }, 20_000);
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `tool_${name || 'tool'}_${(hash >>> 0).toString(36)}`;
+}
+
 function normalizeToolOutput(output: unknown): string {
   if (typeof output === 'string') return output;
   if (Array.isArray(output)) {
@@ -621,6 +637,10 @@ function normalizeToolOutput(output: unknown): string {
     if (parts.length) return parts.join('\n');
   }
   return sanitizeText(output);
+}
+
+function toolResultContent(output: unknown, type: string, payload: Record<string, unknown>): string {
+  return output == null ? sanitizeText({ type, payload }, 20_000) : normalizeToolOutput(output);
 }
 
 function parseJsonRecord(value: string): Record<string, unknown> | null {
@@ -810,14 +830,8 @@ function isProjectableRunEvent(type: string, payload: Record<string, unknown>, i
     return Boolean(itemId && (item.output ?? item.content) != null);
   }
   if (isToolResultEvent(type)) {
-    const itemId = String(
-      (payload.item_id as string)
-      || (payload.tool_call_id as string)
-      || (payload.call_id as string)
-      || (item.id as string)
-      || ''
-    );
-    return Boolean(itemId && (payload.output ?? payload.result ?? payload.content) != null);
+    const fallbackName = toolEventName(payload, item);
+    return Boolean(toolEventId(payload, item, stableToolFallbackId(type, fallbackName, payload, item)));
   }
   if (isRunId(payload.run_id)) return true;
   return false;
@@ -858,7 +872,7 @@ export function startProjectedTurn(input: StartProjectedTurnInput): void {
       session = {
         id: canonicalId,
         profileId,
-        title: previewTitle(text, canonicalId),
+        title: projectedTurnTitle(text, attachments, canonicalId),
         source: 'hermesdeck',
         model: input.model,
         reasoningEffort: input.reasoningEffort,
@@ -888,7 +902,7 @@ export function startProjectedTurn(input: StartProjectedTurnInput): void {
     session.previousResponseId = responseIdValue(input.previousResponseId) || session.previousResponseId;
     session.status = 'running';
     session.updatedAt = now;
-    if (text) {
+    if (text || attachments?.length) {
       session.messages.push({
         id: messageId('u'),
         role: 'user',
@@ -1041,8 +1055,8 @@ export function recordProjectedRunEvent(input: RecordProjectedRunEventInput): vo
         const itemId = String((item.call_id as string) || (item.tool_call_id as string) || (item.id as string) || '');
         const slot = getProjectedToolSlot(session, itemId);
         const output = item.output ?? item.content;
-        if (itemId && output != null) {
-          const content = normalizeToolOutput(output);
+        if (itemId) {
+          const content = toolResultContent(output, innerType, payload);
           const approvalPayload = pendingApprovalPayloadFromToolOutput(output, content);
           if (approvalPayload) {
             const approvalRunId = isRunId(payload.run_id) ? payload.run_id.trim() : '';
@@ -1062,18 +1076,11 @@ export function recordProjectedRunEvent(input: RecordProjectedRunEventInput): vo
       }
     } else if (isToolResultEvent(innerType)) {
       const fallbackName = toolEventName(payload, item);
-      const itemId = String(
-        (payload.item_id as string)
-        || (payload.tool_call_id as string)
-        || (payload.call_id as string)
-        || (item.id as string)
-        || (fallbackName ? `tool_${fallbackName}` : '')
-        || ''
-      );
+      const itemId = toolEventId(payload, item, stableToolFallbackId(innerType, fallbackName, payload, item));
       const slot = getProjectedToolSlot(session, itemId);
       const output = payload.output ?? payload.result ?? payload.content;
-      if (itemId && output != null) {
-        const content = normalizeToolOutput(output);
+      if (itemId) {
+        const content = toolResultContent(output, innerType, payload);
         const approvalPayload = pendingApprovalPayloadFromToolOutput(output, content);
         if (approvalPayload) {
           const approvalRunId = isRunId(payload.run_id) ? payload.run_id.trim() : '';

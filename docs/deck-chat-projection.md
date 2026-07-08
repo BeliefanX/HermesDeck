@@ -40,7 +40,7 @@ Projection session 包含：
 - `ownerUserId/ownerRole`
 - `status`: `running | completed | failed`
 - `responseId/previousResponseId/aliases/lastError`
-- normalized messages，含 draft/final assistant message、tool-call rows、tool-result/tool rows、attachments、projection metadata 等。
+- normalized messages，含 draft/final assistant message、tool-call rows、tool-result/tool rows、attachment metadata、projection metadata 等；attachment bodies/pasted text/base64 data URLs/raw URLs 不写入 projection。
 
 ## Chat hooks
 

@@ -126,11 +126,21 @@ async function passkeyLoginOptions(req: NextRequest, body: Body) {
 async function finishPasskey(req: NextRequest, body: Body) {
   const token = body.mfaToken || '';
   const user = peekMfaToken(token);
-  if (!user) return NextResponse.json({ ok: false, error: 'Invalid MFA challenge.' }, { status: 401 });
+  const key = mfaLimitKey(req, user?.id || 'invalid');
+  const limit = rateLimitCheck(key);
+  if (!limit.allowed) return NextResponse.json({ ok: false, error: 'Too many failed attempts. Try again later.' }, { status: 429 });
+  if (!user) {
+    rateLimitRecordFailure(key);
+    return NextResponse.json({ ok: false, error: 'Invalid MFA challenge.' }, { status: 401 });
+  }
   try {
     const result = await verifyAuthentication(user, body.challengeId || '', body.response as AuthenticationResponseJSON, req);
-    if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: 401 });
+    if (!result.ok) {
+      rateLimitRecordFailure(key);
+      return NextResponse.json({ ok: false, error: result.error }, { status: 401 });
+    }
     consumeMfaToken(token);
+    rateLimitReset(key);
     return issueLogin(req, user.id);
   } catch (error) {
     return webAuthnConfigError(error);

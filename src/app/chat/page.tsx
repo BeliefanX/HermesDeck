@@ -252,6 +252,7 @@ function ChatPageInner() {
   const hasActiveServerDraft = activeMessages.some((m) => (
     m.role === 'assistant' && m.metadata?.projectionStatus === 'draft'
   ));
+  const composerBusy = busy || hasActiveServerDraft;
   const activeSession = useMemo(() => sessions.find((s) => s.id === active), [sessions, active]);
 
   useEffect(() => {
@@ -321,7 +322,7 @@ function ChatPageInner() {
   }, [activeSession, hydrated, setObservedModel]);
 
   const { toolNameByCallId, visibleMessages, hiddenToolCount } = useVisibleMessages(
-    activeMessages, showToolDetails, busy,
+    activeMessages, showToolDetails, composerBusy,
   );
 
   const { messagesRef, stickToBottomRef, showJumpToBottom, scrollToBottom, settleToBottom } = useChatScroll({
@@ -336,7 +337,7 @@ function ChatPageInner() {
   const {
     openSession, send, newChat, regenerate, regenerateStable,
   } = useChatStream({
-    profile, active, messages, responseIds, busy, input, attachments,
+    profile, active, messages, responseIds, busy: composerBusy, input, attachments,
     selectedModel, reasoningEffort, defaultReasoning, hydrated,
     setSessions, setMessages, setResponseIds, setActive,
     setBusy, setError, setInput, setAttachments, setMessagesLoading,
@@ -469,7 +470,8 @@ function ChatPageInner() {
   // Deck-side approximations of Hermes's `/goal` and `/queue` slash commands.
   // See useGoalAndQueue for the rationale (api_server doesn't expose either).
   const goalAndQueue = useGoalAndQueue({
-    active, busy, metaStore, updateMeta, input, setInput, send,
+    active, busy: composerBusy, metaStore, updateMeta, input, setInput, send,
+    canSendAttachmentsOnly: attachments.some((a) => a.status === 'ready'),
   });
 
   const clearCurrentMessages = useCallback(() => {
@@ -592,7 +594,7 @@ function ChatPageInner() {
   return (
     <ChatLayoutView
       t={t}
-      busy={busy}
+      busy={composerBusy}
       error={error}
       input={input}
       active={active}
