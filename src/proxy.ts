@@ -37,6 +37,10 @@ const PUBLIC_PATHS = new Set<string>([
   '/api/deck/auth/logout',
   '/api/deck/auth/session',
   '/api/deck/auth/register',
+  // Password-first MFA completes before a normal session cookie exists.
+  // The route validates purpose-bound mfaToken for login actions and still
+  // requires a protected session for enrollment/settings actions.
+  '/api/deck/auth/mfa',
 ]);
 
 function shouldSkip(path: string): boolean {

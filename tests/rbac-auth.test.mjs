@@ -3627,6 +3627,21 @@ test('csrf auth boundary uses inactive-aware session inspection', () => {
   assert.match(source, /error: 'Not authenticated\.'[\s\S]*status: 401/);
 });
 
+test('proxy auth boundary allows password-first MFA endpoint before session cookie exists', async () => {
+  const { proxy } = await import(`${pathToFileURL(proxyPath).href}?case=${Date.now()}-${importNonce++}`);
+
+  const mfaRes = proxy(new NextRequest('https://deck.example.test/api/deck/auth/mfa', { method: 'POST' }));
+  assert.notEqual(mfaRes.status, 401);
+
+  const protectedRes = proxy(new NextRequest('https://deck.example.test/api/deck/tokens', { method: 'GET' }));
+  assert.equal(protectedRes.status, 401);
+  assert.equal((await protectedRes.json()).error, 'Not authenticated.');
+
+  const source = readFileSync(proxyPath, 'utf8');
+  assert.match(source, /'\/api\/deck\/auth\/mfa'/);
+  assert.match(source, /purpose-bound mfaToken/);
+});
+
 test('proxy auth boundary classifies inactive signed sessions before unauthenticated failures', () => {
   const source = readFileSync(proxyPath, 'utf8');
   assert.match(source, /inspectProtectedSessionToken\(token\)/);
