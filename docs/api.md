@@ -71,7 +71,7 @@ type ChatStreamRequest = {
 
 行为：
 
-- body hard cap：8 MiB；发送给 Hermes `/v1/runs` 的 upstream body hard cap：1 MiB。
+- Deck route body hard cap：8 MiB；发送给 Hermes `/v1/runs` 的 upstream JSON body hard cap：10,000,000 bytes。
 - Agent runtime id 必须合法且当前用户可访问。
 - named Agent continuation 必须通过 Deck projection 证明 session/response 属于该 Agent，且普通用户必须是该 projection 的 `ownerUserId`；否则 403。admin/super_admin 只有在 route 已通过 Agent 授权后才可跨 owner 使用 proof。
 - 未被证明的 named-Agent session 会替换为 server-generated `deck_<uuid>`，并作为可信 session 传 upstream，避免产生额外 `api` 话题。

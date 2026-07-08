@@ -9,7 +9,7 @@ const TOPMODELS = [
 ];
 const SESSIONS = [
   { id: 1, title: 'BFF replay buffer — disk persistence', model: 'claude-haiku-4-5', when: '12m ago', tags: ['active'] },
-  { id: 2, title: 'Terminal allowlist review · shell:false', model: 'gpt-4o',            when: '3h ago',  tags: ['running'] },
+  { id: 2, title: 'Live Terminal session · SSE stream', model: 'gpt-4o',            when: '3h ago',  tags: ['running'] },
   { id: 3, title: 'PWA offline strategy & SW cache',         model: 'claude-haiku-4-5', when: '1d ago',  tags: [] },
   { id: 4, title: 'Models config page scaffold',             model: 'deepseek-v3',      when: '2d ago',  tags: [] },
 ];
@@ -23,8 +23,8 @@ function HeroCard() {
         color: 'var(--strong-text)', margin: '0 0 8px',
       }}>Hermes control deck</h1>
       <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.6, margin: 0, maxWidth: 540 }}>
-        Multi-session chat workbench. Profiles, Tools and the safe terminal in one console.
-        All data sourced from Hermes-native <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--value-text)' }}>state.db</span> and API Server — zero hard-coding in the frontend.
+        Multi-session chat workbench. Agents, Tools and Live Terminal in one console.
+        Run data comes from Hermes Agent API, Deck projection and local metadata — zero hard-coding in the frontend.
       </p>
       <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
         <HD.Btn variant="primary" icon="message">Open chat</HD.Btn>

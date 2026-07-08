@@ -54,3 +54,38 @@ test('bilingual UI controls and translations are wired into major HermesDeck sur
   assert.match(sw, /const SHELL_CACHE = `\$\{CACHE_VERSION\}-shell`/);
   assert.match(sw, /const RUNTIME_CACHE = `\$\{CACHE_VERSION\}-runtime`/);
 });
+
+test('dashboard and tools copy matches current Agent API data paths', () => {
+  const tools = read('src/app/tools/page.tsx');
+  assert.doesNotMatch(tools, /Hermes CLI/);
+  assert.match(tools, /Hermes Agent API/);
+  assert.match(tools, /Deck BFF/);
+
+  const dashboard = read('src/app/page.tsx');
+  assert.doesNotMatch(dashboard, /All data sourced from Hermes-native/);
+  assert.doesNotMatch(dashboard, /<Kbd>state\.db<\/Kbd>/);
+  assert.doesNotMatch(dashboard, /~\/\.hermes\/state\.db/);
+  assert.doesNotMatch(dashboard, /Safe terminal/);
+  assert.doesNotMatch(dashboard, /allow-listed cmds/);
+  assert.match(dashboard, /Hermes Agent API · Deck projection · local metadata/);
+  assert.match(dashboard, /Hermes Agent API · Deck 投影 · 本地元数据/);
+
+  const manifest = read('src/app/manifest.ts');
+  assert.doesNotMatch(manifest, /Safe terminal/);
+  assert.doesNotMatch(manifest, /profile switching/);
+  assert.match(manifest, /Live Terminal/);
+
+  const handoffCopy = [
+    read('docs/design-handoff/ui_kits/webui/Dashboard.jsx'),
+    read('docs/design-handoff/ui_kits/webui/Pages.jsx'),
+    read('docs/design-handoff/ui_kits/webui/Terminal.jsx'),
+    read('docs/design-handoff/ui_kits/webui/ChatView.jsx'),
+    read('docs/design-handoff/preview/type-mono.html'),
+    read('docs/design-handoff/preview/type-body.html'),
+    read('docs/design-handoff/preview/components-card.html'),
+    read('docs/design-handoff/preview/components-tags.html'),
+  ].join('\n');
+  assert.doesNotMatch(handoffCopy, /Safe terminal|safe terminal|安全终端|允许列表命令|Hermes CLI|state\.db|Terminal allowlist|allowlisted actions|allowlist|shell:false|hermes auth list|timeout 60s|truncate 4 KB|future versions will edit it/);
+  assert.match(handoffCopy, /Hermes Agent API/);
+  assert.match(handoffCopy, /Live Terminal/);
+});

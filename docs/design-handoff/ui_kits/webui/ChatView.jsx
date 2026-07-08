@@ -2,23 +2,23 @@
 const { useState, useRef, useEffect } = React;
 
 const INITIAL_SESSIONS = [
-  { id: 's1', title: 'BFF replay buffer — disk persistence', model: 'claude-haiku-4-5', pinned: true, when: '12m', tags: ['active'] },
-  { id: 's2', title: 'Terminal allowlist review',          model: 'gpt-4o',          pinned: false, when: '3h', tags: ['running'] },
+  { id: 's1', title: 'Deck projection — stream recovery', model: 'claude-haiku-4-5', pinned: true, when: '12m', tags: ['active'] },
+  { id: 's2', title: 'Live Terminal session review',      model: 'gpt-4o',          pinned: false, when: '3h', tags: ['running'] },
   { id: 's3', title: 'PWA offline strategy',            model: 'claude-haiku-4-5', pinned: false, when: '1d', tags: [] },
-  { id: 's4', title: 'Models config page scaffold',       model: 'deepseek-v3',     pinned: false, when: '2d', tags: [] },
-  { id: 's5', title: 'Tools allowlist draft',    model: 'claude-haiku-4-5', pinned: false, when: '4d', tags: [] },
+  { id: 's4', title: 'Agent model catalog review',       model: 'deepseek-v3',     pinned: false, when: '2d', tags: [] },
+  { id: 's5', title: 'Toolset discovery review',    model: 'claude-haiku-4-5', pinned: false, when: '4d', tags: [] },
   { id: 's6', title: 'Mermaid + KaTeX render pipeline', model: 'gpt-4o',          pinned: false, when: '6d', tags: [] },
 ];
 
 const INITIAL_MESSAGES = [
   {
     id: 'm1', role: 'user',
-    body: '帮我看一下 BFF 怎么把 Hermes 的 SSE 落盘到本地 replay buffer，我担心写放大。',
+    body: '帮我看一下 Deck BFF 怎么从 Hermes Agent API 流更新投影，我担心刷新后工具卡片丢失。',
     when: '12m ago',
   },
   {
     id: 'm2', role: 'assistant',
-    body: 'Hermes streams events at two layers:\n\n- `response.delta` — incremental tokens, highest frequency\n- `run-event` — tool calls, status transitions\n\nBFF writes them into a single append-only NDJSON, one file per session. Implementation is streaming fwrite + throttled fsync (250ms default), with the cursor stored as a file offset. On reconnect, the frontend asks for `?since=<cursor>` to fetch the delta.',
+    body: 'HermesDeck uses two layers:\n\n- `/v1/runs/{run_id}/events` — Agent API stream source\n- `run-event` — browser-visible tool/status events\n\nThe BFF forwards run events and updates the Deck-owned projection only at semantic boundaries such as assistant draft/final text, tool-call arguments done, and tool-result output. Browser reconnects use the Stream Hub resume path, then messages/projection polling can recover visible draft and tool rows.',
     when: '11m ago',
     code: {
       lang: 'typescript',
@@ -28,7 +28,7 @@ const INITIAL_MESSAGES = [
 ];
 
 const SLASH_COMMANDS = [
-  { cmd: '/run',     desc: 'Run an allowlisted tool in the sandbox', icon: 'play' },
+  { cmd: '/run',     desc: 'Use supported Deck command actions', icon: 'play' },
   { cmd: '/profile', desc: 'Switch execution profile',                icon: 'bot' },
   { cmd: '/model',   desc: 'Switch model',                            icon: 'cpu' },
   { cmd: '/clear',   desc: 'Clear current thread',                    icon: 'inbox' },

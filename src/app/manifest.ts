@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'HermesDeck',
     short_name: 'HermesDeck',
-    description: 'Hermes-native mobile console with multi-session chat and profile switching.',
+    description: 'Hermes-native mobile console with multi-session chat and Agent switching.',
     id: '/',
     start_url: '/chat?source=pwa',
     scope: '/',
@@ -23,7 +23,7 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       { name: 'New chat', short_name: 'Chat', url: '/chat?source=shortcut', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
-      { name: 'Safe terminal', short_name: 'Terminal', url: '/terminal?source=shortcut', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
+      { name: 'Live Terminal', short_name: 'Terminal', url: '/terminal?source=shortcut', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
     ],
   };
 }

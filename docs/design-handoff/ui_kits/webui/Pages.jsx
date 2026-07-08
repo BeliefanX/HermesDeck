@@ -1,7 +1,6 @@
 /* global React, HD */
-// Page-level recreations of the real Next.js routes from src/app/*/page.tsx,
-// translated to English-first chrome per the design-system voice rule.
-// Source files: profiles/page.tsx, models/page.tsx, tools/page.tsx,
+// Page-level prototype recreations. Product behavior and bilingual copy live in src/app/*.
+// Source files: profiles/page.tsx, tools/page.tsx,
 // settings/page.tsx, offline/page.tsx.
 const { useState, useMemo } = React;
 
@@ -49,12 +48,12 @@ function SectionHead({ kicker, title, right }) {
 const PROFILES = [
   { id: 'staging',     name: 'Staging',     active: true,  model: 'claude-haiku-4-5', gateway: 'hermes-api.local:7400' },
   { id: 'prod-readonly', name: 'Prod readonly', active: false, model: 'gpt-4o',          gateway: 'hermes-api.prod:7400' },
-  { id: 'sandbox',     name: 'Sandbox',     active: false, model: 'deepseek-v3',      gateway: 'model from Hermes config' },
+  { id: 'sandbox',     name: 'Sandbox',     active: false, model: 'deepseek-v3',      gateway: 'model from Hermes API' },
 ];
 
 function ProfilesPage() {
   return (
-    <Page intro={<>A profile is HermesDeck&rsquo;s agent &amp; execution-context unit. Each one keeps its own state directory at <Kbd>~/.hermes/profiles/&lt;id&gt;</Kbd>.</>}>
+    <Page intro={<>An Agent is HermesDeck&rsquo;s assigned runtime target. Product routes get runtime data through the Agent API and Deck BFF, not by reading local profile state.</>}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
         {PROFILES.map(p => (
           <HD.Card key={p.id}>
@@ -194,7 +193,7 @@ function ModelsPage() {
   const def = PROVIDERS[0].models.find(m => m.isDefault);
 
   return (
-    <Page intro={<>Currently connected providers and their previously used models. Data sourced from <Kbd>hermes auth list</Kbd>, <Kbd>~/.hermes/config.yaml</Kbd> and the sessions table in state.db.</>}>
+    <Page intro={<>Currently connected providers and their previously used models. Data sourced from Hermes Agent API, Deck projection and local metadata.</>}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
         <HD.MetricCard kicker="PROVIDERS" value={totals.providers} sub={`${totals.withCreds} with credentials`}/>
         <HD.MetricCard kicker="MODELS"    value={totals.models}    sub="used or set as default"/>
@@ -238,7 +237,7 @@ function ModelsPage() {
 
 // ─── TOOLS ──────────────────────────────────────────────────────────────
 const TOOLS = [
-  { name: 'fs.read',           kind: 'toolset', description: 'Read a file from a path within the workspace allowlist.' },
+  { name: 'fs.read',           kind: 'toolset', description: 'Read a file from approved workspace roots.' },
   { name: 'fs.search',         kind: 'toolset', description: 'Ripgrep-backed full-text search across mounted folders.' },
   { name: 'web.fetch',         kind: 'toolset', description: 'GET an exact URL; returns extracted text.' },
   { name: 'design-system',     kind: 'skill',   description: 'Apply HermesDeck brand tokens to a generated artifact.' },
@@ -287,7 +286,7 @@ function ToolsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '32px 0', color: 'var(--muted)' }}>
             <HD.Icon name="wrench" size={20}/>
             <span style={{ fontSize: 13, color: 'var(--muted)' }}>No matches</span>
-            <span style={{ fontSize: 11.5, color: 'var(--muted-2)' }}>{TOOLS.length === 0 ? 'Hermes CLI did not return a tools/skills list.' : 'Try a shorter keyword or another category.'}</span>
+            <span style={{ fontSize: 11.5, color: 'var(--muted-2)' }}>{TOOLS.length === 0 ? 'Hermes Agent API did not return a tools/skills list.' : 'Try a shorter keyword or another category.'}</span>
           </div>
         ) : filtered.map((t, i) => (
           <div key={t.name + i} style={{
@@ -348,7 +347,7 @@ function SettingsPage({ theme, setTheme }) {
   };
 
   return (
-    <Page intro="Basics: theme, connection info, local cache. Sensitive config is not exposed in the frontend; future versions will edit it via a guarded BFF.">
+    <Page intro="Basics: theme, connection info, local cache. Sensitive config preview/edit flows use guarded Deck BFF routes and remain admin-scoped.">
       <HD.Card>
         <SectionHead kicker="APPEARANCE" title="Theme"/>
         <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 12px' }}>Theme persists in the browser and is replayed by the SSR bootstrap script to avoid flashes.</p>
@@ -381,7 +380,7 @@ function SettingsPage({ theme, setTheme }) {
       <HD.Card>
         <SectionHead kicker="LOCAL CACHE" title="Browser-stored state"/>
         <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 14px', maxWidth: 620 }}>
-          HermesDeck keeps drafts, the session index and response_id chains in the browser, so offline browsing and multi-profile switching feel snappy.
+          HermesDeck keeps drafts, the session index and response_id chains in the browser, so offline browsing and assigned-Agent switching feel snappy.
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <HD.Tag icon="shieldCheck">on-device only</HD.Tag>

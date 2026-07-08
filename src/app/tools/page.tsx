@@ -53,7 +53,7 @@ export default function ToolsPage() {
 
   const t = useT({
     zh: {
-      intro: '能力注册表。从 Hermes CLI 实时发现——工具集、技能、MCP 服务器与插件。可按任务或状态过滤。',
+      intro: '能力注册表。通过 Hermes Agent API 与 Deck BFF 按 Agent 发现工具集、技能、MCP 服务器与插件。可按任务或状态过滤。',
       groupResearch: '研究',
       groupCoding: '编码',
       groupBrowser: '浏览器',
@@ -73,7 +73,7 @@ export default function ToolsPage() {
       subToolsets: 'Hermes 内建能力',
       subSkills: '内建 · Hub · 本地',
       subMcp: '外部服务器',
-      hermesFailed: 'Hermes CLI 调用失败：',
+      hermesFailed: '能力发现失败：',
       searchPlaceholder: '搜索工具、技能、MCP、分类…',
       searchAria: '搜索工具',
       kindLabel: '类型',
@@ -82,7 +82,7 @@ export default function ToolsPage() {
       hideDisabled: '隐藏已禁用',
       showDisabled: '显示已禁用',
       noMatches: '没有匹配项',
-      noToolsList: 'Hermes CLI 未返回工具/技能列表。',
+      noToolsList: 'Hermes Agent API 未返回工具/技能列表。',
       tryShorter: '试试更短的关键词、切换类型，或清除过滤。',
       titleToolsets: '工具集',
       titleSkills: '技能',
@@ -96,7 +96,7 @@ export default function ToolsPage() {
       noSkillPath: '未在磁盘上找到 SKILL.md',
     },
     en: {
-      intro: 'Capability registry. Discovered live from the Hermes CLI — toolsets, skills, MCP servers, and plugins. Filter by task or status.',
+      intro: 'Capability registry. Discovered per Agent through the Hermes Agent API and Deck BFF — toolsets, skills, MCP servers, and plugins. Filter by task or status.',
       groupResearch: 'Research',
       groupCoding: 'Coding',
       groupBrowser: 'Browser',
@@ -116,7 +116,7 @@ export default function ToolsPage() {
       subToolsets: 'builtin Hermes capabilities',
       subSkills: 'builtin · hub · local',
       subMcp: 'external servers',
-      hermesFailed: 'Hermes CLI failed: ',
+      hermesFailed: 'Capability discovery failed: ',
       searchPlaceholder: 'Search tool, skill, MCP, category…',
       searchAria: 'Search tools',
       kindLabel: 'KIND',
@@ -125,7 +125,7 @@ export default function ToolsPage() {
       hideDisabled: 'Hide disabled',
       showDisabled: 'Show disabled',
       noMatches: 'No matches',
-      noToolsList: 'Hermes CLI did not return a tools/skills list.',
+      noToolsList: 'Hermes Agent API did not return a tools/skills list.',
       tryShorter: 'Try a shorter keyword, change kind, or clear filters.',
       titleToolsets: 'Toolsets',
       titleSkills: 'Skills',

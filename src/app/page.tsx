@@ -30,12 +30,11 @@ export default function HomePage() {
     zh: {
       kickerCommandDeck: '指挥台',
       heroTitle: 'Hermes 控制台',
-      heroDescPre: '多会话聊天工作台。配置、运行、工具与安全终端集中于一处。所有数据均来自 Hermes 原生 ',
-      heroDescMid: ' 与 API Server —— 前端零硬编码。',
+      heroDesc: '多会话聊天工作台。配置、运行、工具与终端集中于一处。运行数据来自 Hermes Agent API、Deck 投影与本地元数据。',
       openChat: '打开对话',
       openTerminal: '打开终端',
       loadingValue: '加载中',
-      loadingDetail: '正在读取 Hermes 状态',
+      loadingDetail: '正在读取运行状态',
       apiBaseMissing: 'API Server 地址未返回',
       profileTag: 'Agent · ',
       scopeAllChip: '全部 Agent',
@@ -104,7 +103,7 @@ export default function HomePage() {
       kickerCapabilities: '能力清单',
       titleToolCategories: '工具分类',
       items: (n: number) => `${n} 项`,
-      cliNoTools: 'CLI 未返回工具 / 技能列表。',
+      cliNoTools: '能力 API 未返回工具 / 技能列表。',
       kickerQuickActions: '快捷操作',
       titleShortcuts: '快捷方式',
       live: '实时',
@@ -113,8 +112,8 @@ export default function HomePage() {
       tileSwitchProfile: '切换 Agent',
       tileCapabilities: '能力',
       tileCapabilitiesSub: '工具 · 技能 · MCP',
-      tileSafeTerminal: '安全终端',
-      tileSafeTerminalSub: '允许列表命令',
+      tileSafeTerminal: '终端',
+      tileSafeTerminalSub: '受控会话',
       tileSettings: '设置',
       tileSettingsSub: '主题 · 偏好',
       kickerRuntimeMeta: '运行时元数据',
@@ -124,7 +123,8 @@ export default function HomePage() {
       kvApiServer: 'API Server',
       kvDeckUptime: 'Deck 运行时长',
       kvStreaming: '流式传输',
-      kvState: '状态',
+      kvState: '数据来源',
+      kvStateValue: 'Hermes Agent API · Deck 投影 · 本地元数据',
       streamingValue: 'SSE · response.delta · run-event · done',
       unknown: '未知',
       dash: '—',
@@ -132,12 +132,11 @@ export default function HomePage() {
     en: {
       kickerCommandDeck: 'COMMAND DECK',
       heroTitle: 'Hermes control deck',
-      heroDescPre: 'Multi-session chat workbench. Agents, Tools and the safe terminal in one console. All data sourced from Hermes-native ',
-      heroDescMid: ' and API Server — zero hard-coding in the frontend.',
+      heroDesc: 'Multi-session chat workbench. Agents, Tools and terminal in one console. Runtime data comes from Hermes Agent API, Deck projection, and local metadata.',
       openChat: 'Open chat',
       openTerminal: 'Open terminal',
       loadingValue: 'Loading',
-      loadingDetail: 'Reading Hermes state',
+      loadingDetail: 'Reading runtime state',
       apiBaseMissing: 'API Server URL not returned',
       profileTag: 'Agent · ',
       scopeAllChip: 'All Agents',
@@ -206,7 +205,7 @@ export default function HomePage() {
       kickerCapabilities: 'CAPABILITIES',
       titleToolCategories: 'Tool categories',
       items: (n: number) => `${n} items`,
-      cliNoTools: 'CLI returned no tools / skills list.',
+      cliNoTools: 'Capability API returned no tools / skills list.',
       kickerQuickActions: 'QUICK ACTIONS',
       titleShortcuts: 'Shortcuts',
       live: 'live',
@@ -217,8 +216,8 @@ export default function HomePage() {
       tileCapabilitiesSub: 'tools · skills · MCP',
       tileRunTimeline: 'Run timeline',
       tileRunTimelineSub: 'SSE event stream',
-      tileSafeTerminal: 'Safe terminal',
-      tileSafeTerminalSub: 'allow-listed cmds',
+      tileSafeTerminal: 'Terminal',
+      tileSafeTerminalSub: 'controlled sessions',
       tileSettings: 'Settings',
       tileSettingsSub: 'theme · prefs',
       kickerRuntimeMeta: 'RUNTIME METADATA',
@@ -228,7 +227,8 @@ export default function HomePage() {
       kvApiServer: 'API Server',
       kvDeckUptime: 'Deck Uptime',
       kvStreaming: 'Streaming',
-      kvState: 'State',
+      kvState: 'Data sources',
+      kvStateValue: 'Hermes Agent API · Deck projection · local metadata',
       streamingValue: 'SSE · response.delta · run-event · done',
       unknown: 'unknown',
       dash: '—',
@@ -409,7 +409,7 @@ export default function HomePage() {
               {t.heroTitle}
             </h1>
             <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.6, margin: 0, maxWidth: 560 }}>
-              {t.heroDescPre}<Kbd>state.db</Kbd>{t.heroDescMid}
+              {t.heroDesc}
             </p>
           </div>
         </div>
@@ -863,7 +863,7 @@ export default function HomePage() {
           />
           <KvRow label={t.kvDeckUptime} value={loading ? t.loadingValue : health?.uptimeSeconds != null ? formatUptime(health.uptimeSeconds) : t.unknown} />
           <KvRow label={t.kvStreaming} value={<>{t.streamingValue}</>} />
-          <KvRow label={t.kvState} value={<>~/.hermes/state.db · ~/.hermes/profiles/&lt;id&gt;/state.db</>} />
+          <KvRow label={t.kvState} value={<>{t.kvStateValue}</>} />
         </div>
       </Card>
     </Page>
