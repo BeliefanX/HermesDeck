@@ -59,7 +59,7 @@ npm run dev
 ### Auth/RBAC
 
 - `GET /api/deck/auth/session` 查看当前用户与 capabilities。
-- `POST /api/deck/auth/mfa` 承载 TOTP/passkey enrollment 与登录二阶段；MFA pre-auth token 和 WebAuthn challenge 必须按 purpose 分开，且正式 `hermesdeck_session` 只能在第二因子完成后签发。
+- `POST /api/deck/auth/mfa` 承载 TOTP/passkey enrollment 与登录二阶段；proxy 必须允许它在无 session cookie 时进入 route。Route 内 login actions 校验 purpose-bound `mfaToken`，enrollment/settings actions 仍要求受保护 session；正式 `hermesdeck_session` 只能在第二因子完成后签发。
 - 普通用户访问 Agent 前必须有 assignment，且不得访问未分配 Agent/default。
 - catalog outage 应显示上游不可用，而不是给普通用户从本地目录补齐；不要把 catalog/health proof 缺失描述成用户无权限。`super_admin/local-owner` 本机管理面可用的 config/skills/LCM/Live Terminal 不等于 runtime fallback。
 
@@ -75,6 +75,10 @@ curl -N \
 ```
 
 预期：先收到 `event: hub/status`，长工具调用期间每 15 秒有 `: keep-alive ...` 注释，结束时 `event: done` 或 `event: error`。当前路径是 Hermes API Server only。前端默认发送 2,100,000ms timeout；服务端最多允许 35 分钟，反代 read timeout 应大于这个值。
+
+### Live Terminal SSE
+
+`src/app/api/deck/term/sessions/[id]/stream/route.ts` subscribes before replay, sends `ready`/buffered `data`/`replay-end`, then `: ka` every 25s. Cleanup is idempotent: cancel, subscriber close, enqueue failure, or keepalive failure must clear the interval and call `unsubscribe()` so browser/EventSource retries do not leak subscribers or hit `Too many subscribers for this session`.
 
 Resume：
 

@@ -47,7 +47,7 @@ Deck auth store 默认在 `~/.hermesdeck/auth.json`（可用 `HERMESDECK_AUTH_DI
 - `admin`：可管理普通用户、按 assignment 使用 API-backed Agents；不拥有本机 raw file/LCM/Live Terminal 权限。
 - `user`：只能访问被分配的 Agents。
 
-MFA：TOTP 2FA 与 passkey/WebAuthn 都是密码后的并列第二因子；没有 passwordless 登录。已启用 MFA 的用户在密码正确后只得到短期 password-MFA token，TOTP 或 passkey 验证成功后才写正式 `hermesdeck_session`。TOTP setup 显示 QR code，并保留 manual secret/URI fallback；passkey registration 需要 current password/受保护 session，但不要求 TOTP。TOTP 尝试按 user id + client IP 限速；WebAuthn registration/login challenge 是 5 分钟进程内状态并按 purpose 隔离，不能跨 enrollment/login/MFA token 混用。
+MFA：TOTP 2FA 与 passkey/WebAuthn 都是密码后的并列第二因子；没有 passwordless 登录。已启用 MFA 的用户在密码正确后只得到短期 password-MFA token，TOTP 或 passkey 验证成功后才写正式 `hermesdeck_session`。因此 `/api/deck/auth/mfa` 在 proxy 层 intentionally public，但 route 只让 login actions 使用 purpose-bound `mfaToken`，enrollment/settings actions 仍要求受保护 session。TOTP setup 显示 QR code，并保留 manual secret/URI fallback；passkey registration 需要 current password/受保护 session，但不要求 TOTP。TOTP 尝试按 user id + client IP 限速；WebAuthn registration/login challenge 是 5 分钟进程内状态并按 purpose 隔离，不能跨 enrollment/login/MFA token 混用。
 
 Fail-closed 规则：
 
@@ -107,4 +107,4 @@ VAPID config comes from environment only: `HERMESDECK_VAPID_PUBLIC_KEY`, `HERMES
 
 - Config editor 是 `super_admin/local-owner` 管理面，只允许 profile base 内的已知文件；`config.yaml` 保存前用 PyYAML（可用时）校验；保存用临时文件 + rename，mode 0600，mtime 乐观锁。
 - Terminal Action 是白名单命令入口并做 secret redaction。
-- Live Terminal 需要 `HERMESDECK_LIVE_TERMINAL=1`，由 tmux + node-pty 提供真实 shell；仅 active `super_admin` 应使用。
+- Live Terminal 需要 `HERMESDECK_LIVE_TERMINAL=1`，由 tmux + node-pty 提供真实 shell；仅 active `super_admin` 应使用。Stream subscriptions replay buffered output, send `: ka` keepalives, and must unregister on cancel/close/enqueue failure so EventSource retries do not exhaust the per-session subscriber cap.

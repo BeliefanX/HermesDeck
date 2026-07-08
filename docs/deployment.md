@@ -6,7 +6,7 @@ HermesDeck 部署为一个本地 Node/Next 服务，加一个 6117 同源 revers
 
 ```text
 Browser / PWA
-  -> https://deck.example.com
+  -> https://hermesdeck.beliefanx.me
   -> Caddy/Nginx/Tailscale Funnel/etc.
   -> 127.0.0.1:6117  (Deck visible entrypoint)
   -> 127.0.0.1:6118  (Next internal target)
@@ -35,7 +35,7 @@ Local-only/LAN 开发也使用 `http://<host>:6117`。6118 仅是 Next 目标端
   <key>EnvironmentVariables</key>
   <dict>
     <key>NODE_ENV</key><string>production</string>
-    <key>HERMESDECK_PUBLIC_ORIGIN</key><string>https://deck.example.com</string>
+    <key>HERMESDECK_PUBLIC_ORIGIN</key><string>https://hermesdeck.beliefanx.me</string>
     <key>HERMESDECK_FORCE_SECURE_COOKIE</key><string>1</string>
     <key>HERMESDECK_VAPID_PUBLIC_KEY</key><string>...</string>
     <key>HERMESDECK_VAPID_PRIVATE_KEY</key><string>...</string>
@@ -56,7 +56,7 @@ Local-only/LAN 开发也使用 `http://<host>:6117`。6118 仅是 Next 目标端
 ### Caddy
 
 ```caddyfile
-deck.example.com {
+hermesdeck.beliefanx.me {
   encode zstd gzip
   reverse_proxy 127.0.0.1:6117 {
     flush_interval -1
@@ -73,7 +73,7 @@ deck.example.com {
 ```nginx
 server {
   listen 443 ssl http2;
-  server_name deck.example.com;
+  server_name hermesdeck.beliefanx.me;
 
   location / {
     proxy_pass http://127.0.0.1:6117;

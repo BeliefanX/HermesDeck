@@ -13,24 +13,37 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   let unsubscribe: (() => void) | null = null;
   let keepalive: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const cleanup = () => {
+        if (closed) return;
+        closed = true;
+        if (keepalive) clearInterval(keepalive);
+        keepalive = null;
+        unsubscribe?.();
+        unsubscribe = null;
+        try { controller.close(); } catch {}
+      };
+      const enqueue = (chunk: string) => {
+        if (closed) return;
+        try { controller.enqueue(encoder.encode(chunk)); } catch { cleanup(); }
+      };
       const send = (event: string, data: unknown) => {
-        try {
-          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-        } catch { /* controller closed */ }
+        enqueue(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
       };
 
       let sub: Awaited<ReturnType<typeof subscribe>>;
       try {
         sub = await subscribe(id, {
           send,
-          close: () => { try { controller.close(); } catch {} },
+          close: cleanup,
         });
+        unsubscribe = sub.unsubscribe;
       } catch (e) {
         send('error', { error: e instanceof Error ? e.message : String(e) });
-        try { controller.close(); } catch {}
+        cleanup();
         return;
       }
 
@@ -38,14 +51,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       for (const chunk of sub.replay) send('data', chunk);
       send('replay-end', { count: sub.replay.length });
 
-      unsubscribe = sub.unsubscribe;
       keepalive = setInterval(() => {
-        try { controller.enqueue(encoder.encode(`: ka\n\n`)); } catch {}
+        enqueue(`: ka\n\n`);
       }, 25_000);
     },
     cancel() {
       if (keepalive) clearInterval(keepalive);
       if (unsubscribe) unsubscribe();
+      keepalive = null;
+      unsubscribe = null;
+      closed = true;
     },
   });
 

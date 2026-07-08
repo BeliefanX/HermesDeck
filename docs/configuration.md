@@ -15,20 +15,19 @@ HermesDeck 配置分三层：Deck 进程环境、Deck-owned auth/data store、He
 
 ## Deck 环境变量
 
-- `HERMESDECK_PUBLIC_ORIGIN`：写请求 same-origin allowlist。生产 HTTPS 必设，例如 `https://deck.example.com`；多个 origin 可按代码解析支持的分隔方式填写。
+- `HERMESDECK_PUBLIC_ORIGIN`：写请求 same-origin allowlist。生产 HTTPS 必设，例如 `https://hermesdeck.beliefanx.me`；多个 origin 可按代码解析支持的分隔方式填写。
 - `HERMESDECK_AUTH_DIR`：Deck auth store 目录，默认 `~/.hermesdeck`。
 - `HERMESDECK_DATA_DIR`：Deck data/projection 目录；默认 `HERMESDECK_AUTH_DIR` 或 `~/.hermesdeck`。
 - `HERMESDECK_FORCE_SECURE_COOKIE=1`：强制 session cookie `Secure`，适合 TLS 反代后部署。
 - `HERMESDECK_TRUST_PROXY=1`：登录限速信任 proxy forwarded 地址；仅在可信反代后启用。
-- `HERMESDECK_WEBAUTHN_ORIGIN`：passkey/WebAuthn expected origin；必须是单个 browser-visible origin。生产 HTTPS 反代建议显式设置，例如 `https://deck.example.com`。
-- `HERMESDECK_WEBAUTHN_RP_ID`：passkey relying-party id；通常是上面 origin 的 hostname，例如 `deck.example.com`。省略时从请求 origin 推导。Passkey 不支持 `127.0.0.1` 或 LAN IP 作为 RP ID；本机测试请用 `http://localhost:6117`，手机/外网请用 HTTPS 域名。
+- `HERMESDECK_WEBAUTHN_ORIGIN`：passkey/WebAuthn expected origin；必须是单个 browser-visible origin。生产 HTTPS 反代建议显式设置，例如 `https://hermesdeck.beliefanx.me`。
+- `HERMESDECK_WEBAUTHN_RP_ID`：passkey relying-party id；通常是上面 origin 的 hostname，例如 `hermesdeck.beliefanx.me`。省略时从请求 origin 推导。Passkey 不支持 `127.0.0.1` 或 LAN IP 作为 RP ID；本机测试请用 `http://localhost:6117`，手机/外网请用 HTTPS 域名。
 - `HERMESDECK_WEBAUTHN_RP_NAME`：passkey relying-party display name，默认 `HermesDeck`。
 - `HERMESDECK_LIVE_TERMINAL=1`：启用 Live Terminal。默认关闭。
 - `HERMESDECK_TMUX_BIN`：tmux 可执行文件路径，默认 `tmux`。
-- `HERMESDECK_TMUX_CONF`：tmux config，默认 `/dev/null`。
 - `HERMESDECK_DEBUG_HEALTH=1`：生产中 health response 显示未脱敏 URL；仅排查时使用。
 - `HERMESDECK_VAPID_PUBLIC_KEY` / `HERMESDECK_VAPID_PRIVATE_KEY`：启用 Web Push chat notifications 的 VAPID key pair。缺任一项时 `/api/deck/notifications/config` 返回 `available:false`，Settings 中不能订阅 push。
-- `HERMESDECK_VAPID_SUBJECT`：VAPID subject，例如 `mailto:ops@example.com` 或 `https://deck.example.com`。可省略；默认取 `HERMESDECK_PUBLIC_ORIGIN` 的第一个 origin。生产建议显式设置。
+- `HERMESDECK_VAPID_SUBJECT`：VAPID subject，例如 `mailto:ops@example.com` 或 `https://hermesdeck.beliefanx.me`。可省略；默认取 `HERMESDECK_PUBLIC_ORIGIN` 的第一个 origin。生产建议显式设置。
 - `HERMES_HOME`：Hermes root。若指向 `.../profiles/<id>`，Deck 会归一到 root。用于 config editor/Agent env discovery；不是 runtime DB source。
 - `HERMES_PROFILE`：初始 active Agent hint（legacy env name），仅当 API-backed catalog 中存在该 Agent runtime id 时生效。
 
@@ -41,7 +40,7 @@ Default Agent（Hermes default profile）连接优先级：
 3. `~/.hermes/.env` 中 `API_SERVER_HOST`/`HERMES_API_SERVER_HOST` + `API_SERVER_PORT`/`HERMES_API_SERVER_PORT`。
 4. 默认 `http://127.0.0.1:8642`。
 
-API key: default Agent reads process env `HERMES_API_KEY`/`API_SERVER_KEY`, then default `.env`; named Agents read only their backing Hermes Agent profile `.env`. When a key exists, Deck sends `Authorization: Bearer …`.
+API key: default Agent reads process env `HERMES_API_KEY`/`API_SERVER_KEY`, then default `.env`; named Agents read only their backing Hermes Agent profile `.env`. When a key exists, Deck sends a redacted Authorization bearer header.
 
 Named Agent 连接：backing `~/.hermes/profiles/<id>/.env` 必须提供 API base/port，且 `API_SERVER_ENABLED` 不能显式为 false/0/no。缺少 base 时，Deck 返回 Agent routing error，不把请求路由到 default API。Named routing proof 接受 explicit identity、distinct API base 或 distinct API key；shared/default base+key 且 `/health` 无 identity 时 fail closed。
 
@@ -93,12 +92,12 @@ Phase 1/2 当前实现：
 
 ## MFA
 
-- TOTP 与 passkey 都是密码后的并列第二因子；Deck 不支持 passwordless passkey 登录。
-- Login 对已启用 MFA 的用户只返回短期 password-MFA token，不写 `hermesdeck_session`；`POST /api/deck/auth/mfa` 完成 TOTP 或 passkey 验证后才签发正式 cookie。
+- TOTP 与 passkey 都是密码后的并列第二因子；Deck 不提供 passwordless 登录。
+- Login 对已启用 MFA 的用户只返回短期 password-MFA token，不写 `hermesdeck_session`；`POST /api/deck/auth/mfa` 在 proxy 层是 public，因为登录二阶段还没有 session cookie。Route 本身只允许 login actions 使用 purpose-bound `mfaToken`，enrollment/settings actions 仍要求受保护 session；完成 TOTP 或 passkey 验证后才签发正式 cookie。
 - TOTP enrollment 返回 QR data URL，并显示 manual secret/`otpauth://` URI fallback；TOTP secrets 与 passkey public-key/counter metadata 存在 `auth.json`；文件仍由 Deck 以 0600 写入。TOTP 暴力尝试按 user id + client IP 限速。
 - Passkey registration 需要 current password/受保护 session，但不要求 TOTP 已启用。
 - Passkey/WebAuthn challenge 是 5 分钟进程内状态；Deck 重启或多进程切换会让正在进行的注册/登录挑战失效。<!-- ponytail: in-memory challenge state is enough for single-process Deck; use a durable challenge store if multi-process deployment matters. -->
-- Settings 负责启用/关闭 MFA；TOTP disable 要 current password + 当前 TOTP。管理员可 reset 普通用户 MFA，`super_admin` 仍不可被降级/删除/普通修改。
+- Settings 负责启用/关闭 MFA；TOTP disable 要 current password + 当前 TOTP。Admin PATCH user 可用 `mfaReset:true` 清空可管理用户的 TOTP/passkeys；`super_admin` 仍不可被降级/删除/普通修改。
 
 ## PWA cache
 

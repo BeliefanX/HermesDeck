@@ -29,12 +29,12 @@
 - `GET /api/deck/auth/session`：返回当前 Deck 用户、role、capabilities、assigned Agents（wire 字段仍为 `assignedProfileIds`/profile ids 以兼容旧客户端）。
 - `POST /api/deck/auth/login`：登录；支持限速；可在 `HERMESDECK_TRUST_PROXY=1` 时信任代理来源 IP。
 - `GET /api/deck/auth/mfa`：返回当前用户可用 MFA factors。
-- `POST /api/deck/auth/mfa`：MFA enrollment 与登录二阶段。Actions：`totp-enroll-start`（返回 `secret`、`otpauth`、server-generated `qrDataUrl`）、`totp-enroll-confirm`、`totp-disable`、`passkey-register-options`、`passkey-register-verify`、`login-totp`、`passkey-login-options`、`passkey-login-verify`。Mutating requests 走 same-origin/body-size guard；passkey registration 要 current password/受保护 session，但不要求 TOTP；login 二阶段只接受 password-MFA token，不接受 WebAuthn challenge id 代替。
+- `POST /api/deck/auth/mfa`：MFA enrollment 与登录二阶段。Actions：`totp-enroll-start`（返回 `secret`、`otpauth`、server-generated `qrDataUrl`）、`totp-enroll-confirm`、`totp-disable`、`passkey-register-options`、`passkey-register-verify`、`login-totp`、`passkey-login-options`、`passkey-login-verify`。该 path 在 proxy 层 intentionally public；route 对 login actions 校验 purpose-bound password-MFA `mfaToken`，对 enrollment/settings actions 仍要求受保护 session。Mutating requests 走 same-origin/body-size guard；passkey registration 要 current password/受保护 session，但不要求 TOTP；login 二阶段不接受 WebAuthn challenge id 代替 `mfaToken`。
 - `POST /api/deck/auth/logout`：清除 session。
 - `POST /api/deck/auth/register`：创建待审批普通用户。
 - `PUT /api/deck/auth/credentials`：当前用户更新 username/password。
 - `GET /api/deck/admin/users`、`POST /api/deck/admin/users`：admin/super_admin 管理用户。
-- `GET/PATCH/DELETE /api/deck/admin/users/[id]`：用户状态、角色、删除等；`super_admin` 不可修改/删除，只有 `super_admin` 能授予/改变角色。
+- `GET/PATCH/DELETE /api/deck/admin/users/[id]`：用户状态、角色、删除等；PATCH 可传 `mfaReset:true` 清空可管理用户的 TOTP/passkeys。`super_admin` 不可修改/删除，只有 `super_admin` 能授予/改变角色。
 - `GET/PUT /api/deck/admin/users/[id]/profiles`：管理用户 Agent assignment；路径名保留 `profiles` 仅为 API 兼容。
 
 RBAC：`super_admin` 可访问全部 API-backed Agents，并拥有 `super_admin/local-owner` 本机管理面（config/skills/LCM/Live Terminal）；`admin` 和普通 `user` 只能访问分配给自己的 Agents（`admin` 另外拥有普通用户管理权限）。每条 Agent-scoped route 都必须在服务端授权；普通用户不得访问未分配 Agent/default，也没有本地 runtime data fallback。admin/super_admin catalog fallback 仅在两个 strict API catalog endpoints 都返回 404 时枚举 bounded immediate local profile dirs，并且每个 candidate 必须 `/health` 证明。
@@ -130,7 +130,7 @@ Delivery semantics:
 - `GET /api/deck/skills`、`PUT /api/deck/skills`：`super_admin/local-owner` raw local skill 文件读写；保存使用 realpath containment、mtime optimistic lock、atomic write。
 - `GET/PUT /api/deck/config?profile=<id>`：`super_admin/local-owner` 读写 Agent 对应 Hermes Agent profile 的 `config.yaml`、`SOUL.md`、`memories/USER.md`、`memories/MEMORY.md`；不是 runtime 数据源。
 - `GET /api/deck/terminal/actions`、`POST /api/deck/terminal/run`：白名单 terminal actions。
-- `/api/deck/term/sessions*`：Live Terminal CRUD/input/resize/stream/tmux；需要启用 Live Terminal 且 `super_admin` 权限。
+- `/api/deck/term/sessions*`：Live Terminal CRUD/input/resize/stream/tmux；需要启用 Live Terminal 且 `super_admin` 权限。Stream route uses SSE replay plus `: ka` keepalive and idempotently unsubscribes on client cancel, enqueue failure, keepalive failure, or subscriber close so retries do not leak tmux subscribers.
 - `POST /api/deck/uploads/parse`：解析 text/PDF/DOCX 等附件。
 - `GET /api/deck/cache-image`：admin-only image proxy/cache endpoint；Service Worker 不缓存此路由。
 
