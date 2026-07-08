@@ -586,6 +586,30 @@ function isToolResultEvent(type: string): boolean {
     || type === 'response.tool_result';
 }
 
+function isToolStartEvent(type: string): boolean {
+  return type === 'tool.started' || type === 'tool.start' || type === 'tool.call';
+}
+
+function toolEventName(payload: Record<string, unknown>, item: Record<string, unknown>): string {
+  const fn = safeRecord(item.function);
+  return stringValue(payload.tool_name)
+    || stringValue(payload.tool)
+    || stringValue(payload.name)
+    || stringValue(item.name)
+    || stringValue(fn?.name)
+    || 'tool';
+}
+
+function toolEventId(payload: Record<string, unknown>, item: Record<string, unknown>, fallback = ''): string {
+  return stringValue(payload.item_id)
+    || stringValue(payload.tool_call_id)
+    || stringValue(payload.call_id)
+    || stringValue(payload.id)
+    || stringValue(payload.event_id)
+    || stringValue(item.id)
+    || fallback;
+}
+
 function normalizeToolOutput(output: unknown): string {
   if (typeof output === 'string') return output;
   if (Array.isArray(output)) {
@@ -759,7 +783,7 @@ function insertRunEventMessage(session: ProjectedSession, input: {
     id: `re_${randomUUID().slice(0, 8)}`,
     role: 'tool',
     content,
-    toolName: 'run-event',
+    toolName: input.type,
     toolCallId: key,
     createdAt: input.now,
     metadata: { observedFrom: 'deck-stream', projectionKind: 'run-event', eventType: input.type, eventKey: key },
@@ -967,6 +991,20 @@ export function recordProjectedRunEvent(input: RecordProjectedRunEventInput): vo
         args,
         now,
       });
+    } else if (isToolStartEvent(innerType)) {
+      const name = toolEventName(payload, item);
+      const itemId = toolEventId(payload, item, `tool_${name}`);
+      const argsValue = payload.arguments ?? payload.args ?? payload.input;
+      const args = typeof argsValue === 'string'
+        ? argsValue
+        : (argsValue == null ? '' : normalizeToolOutput(argsValue));
+      changed = upsertToolCallMessage(session, {
+        primary: itemId,
+        itemId,
+        name,
+        args: args.slice(0, 200_000),
+        now,
+      });
     } else if (isToolArgsDone(innerType)) {
       const itemId = String((payload.item_id as string) || (item.id as string) || '');
       const args = typeof payload.arguments === 'string'
@@ -1023,11 +1061,13 @@ export function recordProjectedRunEvent(input: RecordProjectedRunEventInput): vo
         }
       }
     } else if (isToolResultEvent(innerType)) {
+      const fallbackName = toolEventName(payload, item);
       const itemId = String(
         (payload.item_id as string)
         || (payload.tool_call_id as string)
         || (payload.call_id as string)
         || (item.id as string)
+        || (fallbackName ? `tool_${fallbackName}` : '')
         || ''
       );
       const slot = getProjectedToolSlot(session, itemId);
@@ -1045,7 +1085,7 @@ export function recordProjectedRunEvent(input: RecordProjectedRunEventInput): vo
         }
         changed = insertToolResultMessage(session, {
           itemId,
-          toolName: slot?.name || stringValue(payload.tool_name) || stringValue(item.name) || 'tool',
+          toolName: slot?.name || fallbackName,
           content,
           now,
         }) || changed;

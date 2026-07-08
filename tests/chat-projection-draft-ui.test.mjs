@@ -59,7 +59,10 @@ test('chat tool cards render concrete tool names before generic labels', () => {
   assert.match(messageRow, /const toolNames = calls\.map\(\(c\) => c\.name\)/);
   assert.match(messageRow, /<span className="tool-block-names">\{toolNames\}<\/span>\n\s+<span className="tool-block-title">/);
   assert.match(messageRow, /<span className="tool-block-names">\{toolName \|\| 'tool'\}<\/span>\n\s+<span className="tool-block-title">\{title\}<\/span>/);
-  assert.match(messageRow, /titleOverride=\{isRunEvent \? 'Agent API event' : undefined\}/);
+  assert.match(messageRow, /runEventDisplay\?\.toolName \|\| resolvedToolName/);
+  assert.match(messageRow, /titleOverride=\{runEventDisplay\?\.title\}/);
+  assert.match(messageRow, /title: 'Run event'/);
+  assert.match(messageRow, /title: 'Tool call'/);
 });
 
 test('active projected drafts are hydrated from the server and polled to final content', () => {

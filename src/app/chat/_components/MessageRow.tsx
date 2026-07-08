@@ -46,6 +46,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
   const isApproval = m.role === 'assistant' && m.metadata?.projectionKind === 'approval';
   const isAsyncDelegation = isAsyncDelegationResultMessage(m);
   const isRunEvent = isTool && m.metadata?.projectionKind === 'run-event';
+  const runEventDisplay = isRunEvent ? runEventCardDisplay(m) : null;
   const isToolCall = m.role === 'assistant' && (m.toolCalls?.length || 0) > 0 && !m.content;
   const isSubagentRow =
     (isToolCall && (m.toolCalls || []).some((c) => isSubagentTool(c.name)))
@@ -77,9 +78,9 @@ export const ChatMessageRow = memo(function ChatMessageRow({
           <ToolCallSummary calls={m.toolCalls || []} />
         ) : isTool || isAsyncDelegation ? (
           <ToolResultSummary
-            toolName={isAsyncDelegation ? ASYNC_DELEGATION_TOOL_NAME : resolvedToolName}
+            toolName={isAsyncDelegation ? ASYNC_DELEGATION_TOOL_NAME : (runEventDisplay?.toolName || resolvedToolName)}
             content={m.content}
-            titleOverride={isRunEvent ? 'Agent API event' : undefined}
+            titleOverride={runEventDisplay?.title}
           />
         ) : m.content ? (
           <MessageContent content={m.content} streaming={isLastAssistant && busy} />
@@ -111,6 +112,43 @@ function parseToolPayload(raw: string): { value: unknown; formatted: string; isJ
   } catch {
     return { value: null, formatted: raw, isJson: false };
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function stringField(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function runEventCardDisplay(message: DeckMessage): { toolName: string; title: string } {
+  const eventType = typeof message.metadata?.eventType === 'string' && message.metadata.eventType
+    ? message.metadata.eventType
+    : message.toolName || 'run-event';
+  const parsed = parseToolPayload(message.content);
+  const outer = asRecord(parsed.value);
+  const payload = asRecord(outer?.payload) || outer || {};
+  const item = asRecord(payload.item) || {};
+  const fn = asRecord(item.function) || {};
+  const concreteName = stringField(
+    payload.tool_name,
+    payload.tool,
+    payload.name,
+    item.name,
+    fn.name,
+  );
+  const lower = eventType.toLowerCase();
+  if (lower === 'tool.started' || lower === 'tool.start' || lower === 'tool.call') {
+    return { toolName: concreteName || eventType, title: 'Tool call' };
+  }
+  if (lower === 'tool.result' || lower === 'tool.completed' || lower === 'tool.output') {
+    return { toolName: concreteName || eventType, title: 'Tool result' };
+  }
+  return { toolName: eventType, title: 'Run event' };
 }
 
 const ApprovalBlock = memo(function ApprovalBlock({ message, profile, sessionId }: { message: DeckMessage; profile: string; sessionId: string }) {

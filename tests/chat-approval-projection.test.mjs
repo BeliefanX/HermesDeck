@@ -146,9 +146,23 @@ test('generic Agent run events persist as hidden tool-detail rows with 90-day re
     const event = messages.find((message) => message.metadata?.projectionKind === 'run-event');
     assert.ok(event);
     assert.equal(event.role, 'tool');
-    assert.equal(event.toolName, 'run-event');
+    assert.equal(event.toolName, 'run.status');
     assert.match(event.content, /run_raw_event_1/);
     assert.match(event.content, /scheduler/);
+
+    projection.recordProjectedRunEvent({
+      sessionId: 'run-event-session',
+      profileId: 'default',
+      viewer,
+      type: 'tool.started',
+      payload: { event: 'tool.started', run_id: 'run_raw_event_1', tool: 'lcm_grep', input: { query: 'docs' } },
+    });
+    const afterToolStart = projection.getProjectedMessages('run-event-session', 'default', { viewer });
+    const toolCall = afterToolStart.find((message) => message.metadata?.projectionKind === 'tool-call' && message.toolName === 'lcm_grep');
+    assert.ok(toolCall);
+    assert.equal(toolCall.role, 'assistant');
+    assert.equal(toolCall.toolCalls?.[0]?.name, 'lcm_grep');
+    assert.ok(!afterToolStart.some((message) => message.metadata?.projectionKind === 'run-event' && message.metadata?.eventType === 'tool.started'));
 
     const source = readFileSync(new URL('../src/lib/server/deck-chat-projection.ts', import.meta.url), 'utf8');
     assert.match(source, /const COMPLETED_SESSION_TTL_MS = 90 \* 24 \* 60 \* 60 \* 1000;/);

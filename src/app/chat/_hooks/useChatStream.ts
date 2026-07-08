@@ -599,7 +599,7 @@ export function useChatStream(params: UseChatStreamParams) {
           id: `re_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           role: 'tool',
           content,
-          toolName: 'run-event',
+          toolName: innerType,
           toolCallId: key,
           createdAt: new Date().toISOString(),
           metadata: { observedFrom: 'deck-stream', projectionKind: 'run-event', eventType: innerType, eventKey: key },

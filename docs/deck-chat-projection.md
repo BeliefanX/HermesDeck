@@ -52,7 +52,7 @@ Projection session 包含：
 - `onDone`：写入 assistant final content、response id、attachments，并标记 completed。
 - `onError`：标记 failed 并保存 last error。
 
-聊天窗口渲染这些 projected tool rows 时，标题顺序是“具体工具名 → 通用状态标签”。例如 `lcm_grep Tool result` 或 `mcp_codegraph_codegraph_node Tool call`，从而复用同一 UI 组件显示内置工具、MCP 工具、LCM/Hindsight 等插件工具。`projectionKind='run-event'` 的 raw Agent API 生命周期/状态记录使用 `run-event Agent API event`，避免误标为工具结果。`delegate_task` 有两个展示形态：immediate background ack 显示为 `Subagent dispatched`；后续 history 中以 `[ASYNC DELEGATION COMPLETE — deleg_<8hex>]` 或 `[ASYNC DELEGATION BATCH COMPLETE — deleg_<8hex>]` 开头的完成消息，会在 server message hydration 和 client visible-message selector 中归一化为 assistant-side `delegate_task` subagent result。
+聊天窗口渲染这些 projected tool rows 时，标题顺序是“具体工具名 → 通用状态标签”。例如 `lcm_grep Tool result` 或 `mcp_codegraph_codegraph_node Tool call`，从而复用同一 UI 组件显示内置工具、MCP 工具、LCM/Hindsight 等插件工具。`projectionKind='run-event'` 的 raw Agent API 生命周期/状态记录也沿用同一格式，例如 `run.created Run event`；`tool.started` 等工具边界事件应物化为真实工具调用卡，不显示成 raw run-event。`delegate_task` 有两个展示形态：immediate background ack 显示为 `Subagent dispatched`；后续 history 中以 `[ASYNC DELEGATION COMPLETE — deleg_<8hex>]` 或 `[ASYNC DELEGATION BATCH COMPLETE — deleg_<8hex>]` 开头的完成消息，会在 server message hydration 和 client visible-message selector 中归一化为 assistant-side `delegate_task` subagent result。
 
 ## Named-Agent proof
 
