@@ -14,7 +14,6 @@ import {
   attachmentToPayload,
   type AttachmentItem,
 } from '@/lib/attachments';
-import { interpret, type TimelineItem } from '@/lib/timeline';
 import type { DeckAttachment, DeckMessage } from '@/lib/types';
 import type { ChatT } from '../_lib/i18n';
 import { type LocalSession, genSessionId } from '../_lib/storage';
@@ -42,7 +41,6 @@ interface UseChatStreamParams {
   setError: React.Dispatch<React.SetStateAction<string>>;
   setInput: React.Dispatch<React.SetStateAction<string>>;
   setAttachments: React.Dispatch<React.SetStateAction<AttachmentItem[]>>;
-  setTimeline: React.Dispatch<React.SetStateAction<TimelineItem[]>>;
   setMessagesLoading: React.Dispatch<React.SetStateAction<boolean>>;
   /** Stores the token usage observed from each session's latest completed turn. */
   setUsage: React.Dispatch<React.SetStateAction<Record<string, TurnUsage>>>;
@@ -221,9 +219,29 @@ function isToolResultEvent(type: string): boolean {
     || type === 'response.function_call.output'
     || type === 'response.tool_result';
 }
+function isToolStartEvent(type: string): boolean {
+  return type === 'tool.started' || type === 'tool.start' || type === 'tool.call';
+}
 function isFunctionCallItemType(t: unknown): boolean {
   if (typeof t !== 'string') return false;
   return t === 'function_call' || t === 'tool_call' || t === 'mcp_call' || t === 'tool_use';
+}
+
+function toolEventId(p: Record<string, unknown>, item: Record<string, unknown>, fallback = ''): string {
+  return String(
+    (p.item_id as string)
+    || (p.tool_call_id as string)
+    || (p.call_id as string)
+    || (p.id as string)
+    || (item.id as string)
+    || fallback
+    || ''
+  );
+}
+
+function toolEventName(p: Record<string, unknown>, item: Record<string, unknown>): string {
+  const fn = (item.function && typeof item.function === 'object') ? item.function as Record<string, unknown> : null;
+  return String((p.tool_name as string) || (p.tool as string) || (p.name as string) || (item.name as string) || (fn?.name as string) || 'tool');
 }
 
 interface InflightLive {
@@ -267,17 +285,13 @@ export function useChatStream(params: UseChatStreamParams) {
     profile, active, messages, responseIds, busy, input, attachments,
     selectedModel, reasoningEffort, defaultReasoning, hydrated,
     setSessions, setMessages, setResponseIds, setActive,
-    setBusy, setError, setInput, setAttachments, setTimeline, setMessagesLoading,
+    setBusy, setError, setInput, setAttachments, setMessagesLoading,
     setUsage,
     abortRef, taRef, stickToBottomRef, t,
   } = params;
 
-  const deltaRef = useRef<{ item: TimelineItem; lastTs: number } | null>(null);
   const openSessionSeqRef = useRef(0);
   const openSessionAbortRef = useRef<AbortController | null>(null);
-  // Monotonic counter for timeline item ids — pairs with Date.now() and a
-  // random tail to avoid collisions when two events fire in the same ms.
-  const timelineSeqRef = useRef(0);
   const regenerateRef = useRef<() => void>(() => {});
   // Per-stream live state. Owned by start*Stream — handlers read it in-flight.
   const inflightRef = useRef<InflightLive | null>(null);
@@ -285,66 +299,16 @@ export function useChatStream(params: UseChatStreamParams) {
   // Resume already attempted? Avoid running twice in StrictMode dev.
   const resumeAttemptedRef = useRef(false);
 
-  const pushTimeline = useCallback((item: TimelineItem) => {
-    setTimeline((prev) => [item, ...prev].slice(0, 80));
-  }, [setTimeline]);
-
-  const clearTimeline = useCallback(() => {
-    setTimeline([]);
-    deltaRef.current = null;
-  }, [setTimeline]);
-
   useEffect(() => {
     if (profileRef.current === profile) return;
     profileRef.current = profile;
     abortRef.current?.abort();
     openSessionAbortRef.current?.abort();
     inflightRef.current = null;
-    deltaRef.current = null;
     clearInflight();
     setBusy(false);
     setMessagesLoading(false);
-    clearTimeline();
-  }, [abortRef, clearTimeline, profile, setBusy, setMessagesLoading]);
-
-  const handleEvent = useCallback((eventType: string, payload: unknown) => {
-    if (eventType !== 'run-event') return;
-    const obj = payload as { type?: string; payload?: unknown; ts?: number };
-    const innerType = obj?.type || 'event';
-    const result = interpret({ type: innerType, payload: obj?.payload ?? obj, ts: obj?.ts ?? Date.now() });
-
-    if (result.mergeDelta) {
-      const cur = deltaRef.current;
-      if (cur && Date.now() - cur.lastTs < 60_000) {
-        cur.item.count = (cur.item.count || 1) + 1;
-        cur.item.summary = `${cur.item.count} text chunks`;
-        cur.lastTs = Date.now();
-        setTimeline((prev) => prev.map((x) => (x.id === cur.item.id ? { ...cur.item } : x)));
-      } else {
-        // Use the seq counter (bumped per-call) plus a longer random tail for
-        // the id — `Date.now()` alone collides for rapid back-to-back deltas
-        // emitted within the same millisecond, which made the timeline animate
-        // weirdly when two items shared a key.
-        const newItem: TimelineItem = {
-          id: `delta-${Date.now()}-${++timelineSeqRef.current}-${Math.random().toString(36).slice(2, 8)}`,
-          kind: 'message',
-          title: 'Streaming…',
-          summary: '1 text chunk',
-          ts: Date.now(),
-          count: 1,
-          raw: innerType,
-        };
-        deltaRef.current = { item: newItem, lastTs: Date.now() };
-        pushTimeline(newItem);
-      }
-      return;
-    }
-
-    if (result.item) {
-      deltaRef.current = null;
-      pushTimeline(result.item);
-    }
-  }, [pushTimeline, setTimeline]);
+  }, [abortRef, profile, setBusy, setMessagesLoading]);
 
   // Apply OpenAI-Responses-style + Hermes-style tool/skill/subagent events to
   // the visible message list so the user sees calls + results in real-time.
@@ -406,6 +370,56 @@ export function useChatStream(params: UseChatStreamParams) {
               content: '',
               createdAt: new Date().toISOString(),
               toolCalls: [{ id: itemId, name, arguments: initArgs }],
+            },
+            { id: newTextId, role: 'assistant', content: '', createdAt: new Date().toISOString() },
+          ],
+        };
+      });
+      return;
+    }
+
+    // Hermes /v1/runs generic tool start events.
+    if (isToolStartEvent(innerType)) {
+      const name = toolEventName(p, item);
+      const itemId = toolEventId(p, item, `tool_${name}`);
+      if (!itemId || getToolSlot(inf.toolCalls, itemId)) return;
+      const argsValue = p.arguments ?? p.args ?? p.input;
+      const args = typeof argsValue === 'string' ? argsValue : (argsValue == null ? '' : normalizeToolOutput(argsValue));
+      const newAssistantId = `tc_${itemId}_${Math.random().toString(36).slice(2, 6)}`;
+      const newTextId = `a_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      rememberToolSlot(inf.toolCalls, itemId, { assistantId: newAssistantId, name, args, itemId });
+      const prevTextId = inf.textAssistantId;
+      inf.textAssistantId = newTextId;
+      writeInflight({
+        hubKey: inf.hubKey,
+        sessionId: inf.sessionId,
+        lastSeq: inf.lastSeq,
+        profile,
+        textAssistantId: newTextId,
+        startedAt: Date.now(),
+        toolCalls: serializeToolCalls(inf.toolCalls),
+      });
+      setMessages((m) => {
+        const list = m[sid] || [];
+        let next = list;
+        if (list.length) {
+          const last = list[list.length - 1];
+          if (last.id === prevTextId && last.role === 'assistant'
+              && !last.content && !(last.toolCalls?.length) && !(last.attachments?.length)) {
+            next = list.slice(0, -1);
+          }
+        }
+        return {
+          ...m,
+          [sid]: [
+            ...next,
+            {
+              id: newAssistantId,
+              role: 'assistant',
+              content: '',
+              createdAt: new Date().toISOString(),
+              toolName: name,
+              toolCalls: [{ id: itemId, name, arguments: args }],
             },
             { id: newTextId, role: 'assistant', content: '', createdAt: new Date().toISOString() },
           ],
@@ -538,15 +552,10 @@ export function useChatStream(params: UseChatStreamParams) {
 
     // Hermes-shape tool result events
     if (isToolResultEvent(innerType)) {
-      const itemId = String(
-        (p.item_id as string)
-        || (p.tool_call_id as string)
-        || (p.call_id as string)
-        || (item.id as string)
-        || ''
-      );
+      const fallbackName = toolEventName(p, item);
+      const itemId = toolEventId(p, item, fallbackName ? `tool_${fallbackName}` : '');
       const tc = getToolSlot(inf.toolCalls, itemId);
-      const toolName = tc?.name || String((p.tool_name as string) || (item.name as string) || 'tool');
+      const toolName = tc?.name || fallbackName;
       const output = p.output ?? p.result ?? p.content;
       if (output == null) return;
       const text = normalizeToolOutput(output);
@@ -612,10 +621,6 @@ export function useChatStream(params: UseChatStreamParams) {
     openSessionAbortRef.current = ac;
     setActive(s.id);
     setError('');
-    // The event timeline is global, not per-session. When actually switching
-    // threads, drop the previous session's events so they don't bleed into the
-    // one we're opening (newChat already does this; openSession used not to).
-    if (s.id !== active) clearTimeline();
     const cached = messages[s.id];
     const needsFetch = !cached || (s.messageCount || 0) > cached.length;
     setMessagesLoading(needsFetch && !cached?.length);
@@ -633,7 +638,7 @@ export function useChatStream(params: UseChatStreamParams) {
         }
       }
     }
-  }, [abortRef, active, clearTimeline, messages, profile, setActive, setError, setMessages, setMessagesLoading]);
+  }, [abortRef, active, messages, profile, setActive, setError, setMessages, setMessagesLoading]);
 
   // Build the SSE callbacks shared by streamChat and resumeChatStreamClient.
   // Captures `sid` + the IDs the run uses for live state mutation.
@@ -696,8 +701,6 @@ export function useChatStream(params: UseChatStreamParams) {
           init.onSidReconcile(incoming);
           sid = incoming;
         }
-        const item = interpret({ type: `status.${phase}`, ts: Date.now() }).item;
-        if (item) { deltaRef.current = null; pushTimeline(item); }
       },
       onDelta(delta) {
         if (init.isAbortedRef.current) return;
@@ -756,7 +759,6 @@ export function useChatStream(params: UseChatStreamParams) {
           const turnUsage = extractUsage(innerPayload);
           if (turnUsage) setUsage((u) => ({ ...u, [sid]: turnUsage }));
         }
-        handleEvent(type, payload);
       },
       onDone(data) {
         if (init.isAbortedRef.current) return;
@@ -800,8 +802,6 @@ export function useChatStream(params: UseChatStreamParams) {
             }),
           }));
         }
-        const item = interpret({ type: 'run.completed', payload: data, ts: Date.now() }).item;
-        if (item) { deltaRef.current = null; pushTimeline(item); }
         clearInflight();
       },
       onError(message) {
@@ -815,12 +815,10 @@ export function useChatStream(params: UseChatStreamParams) {
             ? { ...x, content: x.content + (x.content ? '\n\n' : '') + `${t.errorPrefix} ${message}` }
             : x),
         }));
-        const item = interpret({ type: 'error', payload: { error: message }, ts: Date.now() }).item;
-        if (item) { deltaRef.current = null; pushTimeline(item); }
         clearInflight();
       },
     };
-  }, [applyToolEventToMessages, handleEvent, profile, pushTimeline, resolveApprovalInMessages, setError, setMessages, setResponseIds, setSessions, setUsage, t, upsertApprovalToMessages]);
+  }, [applyToolEventToMessages, profile, resolveApprovalInMessages, setError, setMessages, setResponseIds, setSessions, setUsage, t, upsertApprovalToMessages]);
 
   const recoverTransportDrop = useCallback(async (init: {
     hubKey: string;
@@ -975,7 +973,6 @@ export function useChatStream(params: UseChatStreamParams) {
       : [];
     if (sentAttachments.length) setAttachments([]);
     setBusy(true);
-    clearTimeline();
     // The user just hit Send — they want to see the response, so re-arm
     // sticky-bottom even if they had scrolled up to read history earlier.
     stickToBottomRef.current = true;
@@ -1104,7 +1101,7 @@ export function useChatStream(params: UseChatStreamParams) {
       }
     }
   }, [
-    abortRef, active, attachments, buildCallbacks, busy, clearTimeline, defaultReasoning, input,
+    abortRef, active, attachments, buildCallbacks, busy, defaultReasoning, input,
     profile, reasoningEffort, recoverTransportDrop, responseIds, selectedModel, stickToBottomRef, t,
     setActive, setAttachments, setBusy, setError, setInput, setMessages, setResponseIds, setSessions,
   ]);
@@ -1122,11 +1119,6 @@ export function useChatStream(params: UseChatStreamParams) {
     // for the UI selection — hubKey is internal to the resume call.
     setActive((cur) => cur || sessionId);
     setBusy(true);
-    // Wipe any stale timeline carried over from the previous page lifetime so
-    // the resumed run renders into a clean side panel instead of stacking on
-    // top of unrelated old events.
-    clearTimeline();
-
     let liveSid = sessionId;
     const list = (messages[sessionId] || []);
     const streamId = nextStreamId++;
@@ -1308,9 +1300,8 @@ export function useChatStream(params: UseChatStreamParams) {
     setActive('');
     setError('');
     setMessagesLoading(false);
-    clearTimeline();
     setTimeout(() => taRef.current?.focus(), 60);
-  }, [abortRef, clearTimeline, setActive, setError, setMessagesLoading, taRef]);
+  }, [abortRef, setActive, setError, setMessagesLoading, taRef]);
 
   const regenerate = useCallback(async () => {
     if (busy) return;
@@ -1338,7 +1329,6 @@ export function useChatStream(params: UseChatStreamParams) {
   const regenerateStable = useCallback(() => regenerateRef.current(), []);
 
   return {
-    pushTimeline, clearTimeline, handleEvent,
     openSession, send, newChat, regenerate, regenerateStable,
   };
 }

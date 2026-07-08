@@ -28,7 +28,6 @@ function pctLabel(n: number, total: number): string {
 /**
  * Live breakdown of the chat session's context window — total tokens plus a
  * per-section split (system + tools, user, assistant, tool I/O, attachments).
- * Shares the chat side panel with the compact run-event timeline.
  */
 export function ContextWindowPanel({
   messages,

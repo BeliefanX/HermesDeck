@@ -48,7 +48,7 @@ Projection session 包含：
 
 - `onStart`：在 upstream pump 前写入 user message 与 draft assistant message。
 - `onCanonicalSessionId`：当 Hermes API Server 返回 `X-Hermes-Session-Id` 时 reconcile old/new session id。
-- `onRunEvent`：raw run-events 仍转发给浏览器，并由右侧观测面板通用渲染 `tool.started`/`tool.completed` 的 `payload.tool` 名称；projection 只在语义边界（tool/function call added、arguments done、output item done、tool result/output）物化为 messages。`arguments.delta` 不做 durable projection write，刷新后的持久参数以 `arguments.done`/done item 为准。它会关联 Responses `itemId`（如 `fc_*`）和稳定 `callId`（如 `call_*`），将工具输出数组中的 text parts 归一化为文本。
+- `onRunEvent`：raw run-events 仍转发给浏览器，并由聊天窗口主体里的工具卡片通用渲染 `tool.started`/`tool.completed` 的 `payload.tool` 名称；右侧不再有运行事件小窗。projection 只在语义边界（tool/function call added、arguments done、output item done、tool result/output）物化为 messages。`arguments.delta` 不做 durable projection write，刷新后的持久参数以 `arguments.done`/done item 为准。它会关联 Responses `itemId`（如 `fc_*`）和稳定 `callId`（如 `call_*`），将工具输出数组中的 text parts 归一化为文本。
 - `onDone`：写入 assistant final content、response id、attachments，并标记 completed。
 - `onError`：标记 failed 并保存 last error。
 

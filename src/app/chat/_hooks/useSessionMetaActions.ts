@@ -26,7 +26,7 @@ import type { LocalSession } from '../_lib/storage';
  */
 export function useSessionMetaActions({
   metaStore, setMetaStoreRaw, active, profile, showArchived, t,
-  setSessions, setMessages, setResponseIds, setActive, setError, clearTimeline,
+  setSessions, setMessages, setResponseIds, setActive, setError,
 }: {
   metaStore: MetaStore;
   setMetaStoreRaw: React.Dispatch<React.SetStateAction<MetaStore>>;
@@ -39,7 +39,6 @@ export function useSessionMetaActions({
   setResponseIds: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setActive: React.Dispatch<React.SetStateAction<string>>;
   setError: React.Dispatch<React.SetStateAction<string>>;
-  clearTimeline: () => void;
 }) {
   const persistServerMeta = useCallback((store: MetaStore) => {
     deckApi.saveSessionMeta(profile, serverBackedMetaStore(store)).catch((err) => {

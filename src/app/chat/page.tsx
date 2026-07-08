@@ -4,7 +4,6 @@ import { useSearchParams } from 'next/navigation';
 import { deckApi, ApiError, apiErrorDetail } from '@/lib/api';
 import type { DeckMessage, ToolSummary } from '@/lib/types';
 import { useActiveProfile } from '@/lib/profile-context';
-import type { TimelineItem } from '@/lib/timeline';
 import { shortTitle } from '@/lib/format';
 import { type AttachmentItem } from '@/lib/attachments';
 import { type MetaStore, emptyStore, gcMetaStore, loadMetaStore, mergeServerMetaPreservingLocalGoals, saveMetaStore, serverBackedMetaStore } from '@/lib/session-meta';
@@ -107,8 +106,6 @@ function ChatPageInner() {
     reasoningEffort, setReasoningEffort,
     defaultReasoning, reasoningLevels, reasoningTouchedRef,
   } = useChatModels(profile);
-
-  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
 
   // Token usage from each session's latest completed turn, keyed by session id.
   // Powers the context-window breakdown panel.
@@ -337,13 +334,12 @@ function ChatPageInner() {
   );
 
   const {
-    pushTimeline, clearTimeline, handleEvent,
     openSession, send, newChat, regenerate, regenerateStable,
   } = useChatStream({
     profile, active, messages, responseIds, busy, input, attachments,
     selectedModel, reasoningEffort, defaultReasoning, hydrated,
     setSessions, setMessages, setResponseIds, setActive,
-    setBusy, setError, setInput, setAttachments, setTimeline, setMessagesLoading,
+    setBusy, setError, setInput, setAttachments, setMessagesLoading,
     setUsage: setUsageBySession,
     abortRef, taRef, stickToBottomRef, t,
   });
@@ -467,7 +463,7 @@ function ChatPageInner() {
     applyNewFolder, applyRenameFolder, applyDeleteFolder,
   } = useSessionMetaActions({
     metaStore, setMetaStoreRaw, active, profile, showArchived, t,
-    setSessions, setMessages, setResponseIds, setActive, setError, clearTimeline,
+    setSessions, setMessages, setResponseIds, setActive, setError,
   });
 
   // Deck-side approximations of Hermes's `/goal` and `/queue` slash commands.
@@ -481,8 +477,7 @@ function ChatPageInner() {
     setMessages((m) => ({ ...m, [active]: [] }));
     setResponseIds((r) => { const next = { ...r }; delete next[active]; return next; });
     setUsageBySession((u) => { const next = { ...u }; delete next[active]; return next; });
-    clearTimeline();
-  }, [active, clearTimeline, setMessages, setResponseIds, setUsageBySession]);
+  }, [active, setMessages, setResponseIds, setUsageBySession]);
 
   const toggleFolderCollapsed = useCallback((id: string) => {
     setCollapsedFolders((cur) => ({ ...cur, [id]: !cur[id] }));
@@ -628,7 +623,6 @@ function ChatPageInner() {
       slashCommands={slashCommands}
       slashIdx={slashIdx}
       tools={tools}
-      timeline={timeline}
       contextUsage={usageBySession[active]}
       abortRef={abortRef}
       taRef={taRef}
