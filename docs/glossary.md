@@ -6,7 +6,7 @@ Deck/BFF/UI layer for Hermes Agent. It owns browser UX, Deck auth/RBAC, Agent-sc
 
 ## Deck user / account
 
-A login identity managed by HermesDeck (`auth.json`): username, password hash, role, status and assigned Agent ids. A Deck user/account is not a Hermes Agent profile.
+A login identity managed by HermesDeck (`auth.json`): username, password hash, optional TOTP/passkey MFA metadata, role, status and assigned Agent ids. A Deck user/account is not a Hermes Agent profile.
 
 ## Agent
 

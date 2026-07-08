@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, statSync, existsSy
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { randomBytes, scryptSync } from 'node:crypto';
+import { randomBytes, scryptSync, createHmac } from 'node:crypto';
 import { register as registerLoader } from 'node:module';
 import { NextRequest } from 'next/server.js';
 
@@ -44,6 +44,7 @@ const cronRoutePath = resolve('src/app/api/deck/cron/route.ts');
 const hermesCronModulePath = resolve('src/lib/server/hermes/cron.ts');
 const registerRoutePath = resolve('src/app/api/deck/auth/register/route.ts');
 const loginRoutePath = resolve('src/app/api/deck/auth/login/route.ts');
+const mfaRoutePath = resolve('src/app/api/deck/auth/mfa/route.ts');
 const adminUserRoutePath = resolve('src/app/api/deck/admin/users/[id]/route.ts');
 const adminUserProfilesRoutePath = resolve('src/app/api/deck/admin/users/[id]/profiles/route.ts');
 const deckProfilesRoutePath = resolve('src/app/api/deck/profiles/route.ts');
@@ -3925,4 +3926,151 @@ test('API-only runtime helpers no longer use direct runtime storage or Hermes CL
   assert.match(readFileSync(resolve('src/lib/server/hermes/stats.ts'), 'utf8'), /getSessionsForStats/);
   assert.match(readFileSync(resolve('src/lib/server/hermes/lcm.ts'), 'utf8'), /read-only adapter over hermes-lcm's existing on-disk SQLite state/);
   assert.doesNotMatch(readFileSync(resolve('src/lib/server/hermes/health.ts'), 'utf8'), /9120|\/api\/sessions|Dashboard sidecar|HERMES_DASHBOARD_BASE/);
+});
+
+
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function b32decode(value) {
+  let bits = 0, acc = 0;
+  const out = [];
+  for (const ch of value.toUpperCase().replace(/=|\s/g, '')) {
+    const idx = B32.indexOf(ch);
+    if (idx < 0) throw new Error('bad base32');
+    acc = (acc << 5) | idx;
+    bits += 5;
+    if (bits >= 8) { out.push((acc >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  return Buffer.from(out);
+}
+function totp(secret, now = Date.now()) {
+  const counter = Math.floor(now / 30000);
+  const msg = Buffer.alloc(8);
+  msg.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
+  msg.writeUInt32BE(counter >>> 0, 4);
+  const h = createHmac('sha1', b32decode(secret)).update(msg).digest();
+  const o = h[h.length - 1] & 15;
+  const n = ((h[o] & 0x7f) << 24) | ((h[o + 1] & 255) << 16) | ((h[o + 2] & 255) << 8) | (h[o + 3] & 255);
+  return String(n % 1000000).padStart(6, '0');
+}
+async function loadRoute(routePath) {
+  return import(`${pathToFileURL(routePath).href}?case=${Date.now()}-${importNonce++}`);
+}
+async function loadRouteCase(routePath, caseTag) {
+  return import(`${pathToFileURL(routePath).href}?case=${caseTag}`);
+}
+function makeJsonRequest(url, body, cookie) {
+  const headers = { origin: 'https://deck.example.test', 'content-type': 'application/json' };
+  if (cookie) headers.cookie = cookie;
+  return new NextRequest(url, { method: 'POST', headers, body: JSON.stringify(body) });
+}
+
+test('TOTP MFA enrollment gates login session issuance until second factor succeeds', async () => {
+  process.env.HERMESDECK_PUBLIC_ORIGIN = 'https://deck.example.test';
+  const home = makeHome();
+  const auth = await loadAuth(home);
+  let store = withSuppressedBootstrapLog(() => auth.readAuth());
+  const user = Object.values(store.users)[0];
+  const password = 'mfa-password-123';
+  const freshCreds = auth.createPasswordRecord(password, user.passwordVersion + 1);
+  writeStore(home, { ...store, users: { ...store.users, [user.id]: { ...user, ...freshCreds, bootstrap: undefined } } });
+  const sessionCookie = `hermesdeck_session=${auth.issueSessionToken(user.id)}`;
+  const mfaRoute = await loadRoute(mfaRoutePath);
+
+  let res = await mfaRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/mfa', { action: 'totp-enroll-start', currentPassword: 'wrong' }, sessionCookie));
+  assert.equal(res.status, 401);
+  res = await mfaRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/mfa', { action: 'totp-enroll-start', currentPassword: password }, sessionCookie));
+  assert.equal(res.status, 200);
+  const start = await res.json();
+  assert.match(start.secret, /^[A-Z2-7]+$/);
+  res = await mfaRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/mfa', { action: 'totp-enroll-confirm', currentPassword: password, secret: start.secret, code: totp(start.secret) }, sessionCookie));
+  assert.equal(res.status, 200);
+
+  const loginRoute = await loadRoute(loginRoutePath);
+  res = await loginRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/login', { username: user.username, password }));
+  assert.equal(res.status, 200);
+  assert.equal(res.cookies.get('hermesdeck_session'), undefined);
+  const login = await res.json();
+  assert.equal(login.mfaRequired, true);
+  assert.equal(login.factors.totp, true);
+});
+
+test('TOTP MFA rate limit survives freshly minted pre-auth tokens', async () => {
+  const home = makeHome();
+  const auth = await loadAuth(home);
+  const store = withSuppressedBootstrapLog(() => auth.readAuth());
+  const user = Object.values(store.users)[0];
+  const userId = `mfa_rate_${Date.now()}`;
+  const username = `mfa-rate-${Date.now()}`;
+  const password = 'mfa-rate-password-123';
+  const secret = 'JBSWY3DPEHPK3PXP';
+  writeStore(home, {
+    ...store,
+    users: {
+      [userId]: {
+        ...user,
+        id: userId,
+        username,
+        ...auth.createPasswordRecord(password, user.passwordVersion + 1),
+        mfa: { totp: { enabled: true, secret, enabledAt: new Date().toISOString() } },
+        bootstrap: undefined,
+      },
+    },
+  });
+  const caseTag = `${Date.now()}-${importNonce++}`;
+  const loginRoute = await loadRouteCase(loginRoutePath, caseTag);
+  const mfaRoute = await loadRouteCase(mfaRoutePath, caseTag);
+  let mfaToken = '';
+  for (let i = 0; i < 6; i++) {
+    if (i % 3 === 0) {
+      const okLogin = await loginRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/login', { username, password }));
+      assert.equal(okLogin.status, 200);
+      mfaToken = (await okLogin.json()).mfaToken;
+    }
+    const res = await mfaRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/mfa', { action: 'login-totp', mfaToken, code: '000000' }));
+    assert.equal(res.status, 401);
+  }
+  const loginRes = await loginRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/login', { username, password }));
+  const freshToken = (await loginRes.json()).mfaToken;
+  const blocked = await mfaRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/mfa', { action: 'login-totp', mfaToken: freshToken, code: '000000' }));
+  assert.equal(blocked.status, 429);
+});
+
+test('WebAuthn challenge IDs cannot be used as password MFA tokens', async () => {
+  const home = makeHome();
+  const auth = await loadAuth(home);
+  const store = withSuppressedBootstrapLog(() => auth.readAuth());
+  const user = Object.values(store.users)[0];
+  const userId = `mfa_purpose_${Date.now()}`;
+  const username = `mfa-purpose-${Date.now()}`;
+  const password = 'mfa-purpose-password-123';
+  const secret = 'JBSWY3DPEHPK3PXP';
+  writeStore(home, {
+    ...store,
+    users: {
+      [userId]: {
+        ...user,
+        id: userId,
+        username,
+        ...auth.createPasswordRecord(password, user.passwordVersion + 1),
+        mfa: {
+          totp: { enabled: true, secret, enabledAt: new Date().toISOString() },
+          passkeys: [{ id: 'fake-passkey', publicKey: Buffer.from('fake-public-key').toString('base64url'), counter: 0, createdAt: new Date().toISOString() }],
+        },
+        bootstrap: undefined,
+      },
+    },
+  });
+  const caseTag = `${Date.now()}-${importNonce++}`;
+  const loginRoute = await loadRouteCase(loginRoutePath, caseTag);
+  const mfaRoute = await loadRouteCase(mfaRoutePath, caseTag);
+  const loginRes = await loginRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/login', { username, password }));
+  assert.equal(loginRes.status, 200);
+  const login = await loginRes.json();
+  const optionsRes = await mfaRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/mfa', { action: 'passkey-login-options', mfaToken: login.mfaToken }));
+  const options = await optionsRes.json();
+  assert.equal(optionsRes.status, 200, options.error);
+  const { challengeId } = options;
+  const res = await mfaRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/mfa', { action: 'login-totp', mfaToken: challengeId, code: totp(secret) }));
+  assert.equal(res.status, 401);
+  assert.equal(res.cookies.get('hermesdeck_session'), undefined);
 });

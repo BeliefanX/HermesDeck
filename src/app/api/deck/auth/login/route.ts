@@ -11,6 +11,7 @@ import {
   toSafeUserContext,
 } from '@/lib/server/auth';
 import { guardRequestBody, readLimitedJson, isSameOrigin } from '@/lib/server/csrf';
+import { hasMfa, makeMfaToken, userMfaFactors } from '@/lib/server/mfa';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +69,16 @@ export async function POST(req: NextRequest) {
       status: 'pending',
       message: 'Your account is pending administrator approval.',
       user: toSafeUserContext(auth.user),
+    });
+  }
+
+  if (hasMfa(auth.user)) {
+    return NextResponse.json({
+      ok: true,
+      pending: false,
+      mfaRequired: true,
+      mfaToken: makeMfaToken(auth.user.id),
+      factors: userMfaFactors(auth.user),
     });
   }
 

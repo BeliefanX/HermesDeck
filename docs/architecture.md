@@ -15,7 +15,7 @@ HermesDeck 是 Hermes Agent 的 Deck/BFF/UI 层。它在同一个 Next.js 进程
 - `src/app/*`：Next App Router 页面与 Route Handlers。
 - `src/lib/api.ts`：浏览器端 `deckApi`，只调用同源 `/api/deck/*`。
 - `src/lib/server/hermes/*`：BFF 到 Hermes Agent API Server 的适配层（profiles/models/chat/cron 等）。
-- `src/lib/server/auth.ts` 与 `src/lib/server/rbac.ts`：Deck auth store、cookie session、角色能力、Agent assignment 与 fail-closed 检查。代码中的 `profile`/`profileId` 字段是 legacy/compat Agent runtime id。
+- `src/lib/server/auth.ts`、`src/lib/server/mfa.ts` 与 `src/lib/server/rbac.ts`：Deck auth store、cookie session、TOTP/passkey MFA、角色能力、Agent assignment 与 fail-closed 检查。代码中的 `profile`/`profileId` 字段是 legacy/compat Agent runtime id。
 - `src/lib/server/deck-chat-projection.ts`：Deck-owned chat UX/proof projection。
 - `src/lib/server/notifications.ts` 与 `src/lib/notification-events.ts`：Deck-owned Web Push subscription/preferences store、chat notification dispatch、page-open Cron notification parsing。
 - `public/sw.js`：PWA shell/runtime cache 策略。
@@ -46,6 +46,8 @@ Deck auth store 默认在 `~/.hermesdeck/auth.json`（可用 `HERMESDECK_AUTH_DI
 - `super_admin`：唯一且不可降级/停用，拥有所有 admin 能力，并拥有本机 config/skills/LCM/Live Terminal 管理面。
 - `admin`：可管理普通用户、按 assignment 使用 API-backed Agents；不拥有本机 raw file/LCM/Live Terminal 权限。
 - `user`：只能访问被分配的 Agents。
+
+MFA：TOTP 2FA 与 passkey/WebAuthn 都是密码后的第二因子；没有 passwordless 登录。已启用 MFA 的用户在密码正确后只得到短期 password-MFA token，TOTP 或 passkey 验证成功后才写正式 `hermesdeck_session`。TOTP 尝试按 user id + client IP 限速；WebAuthn registration/login challenge 是 5 分钟进程内状态并按 purpose 隔离，不能跨 enrollment/login/MFA token 混用。
 
 Fail-closed 规则：
 

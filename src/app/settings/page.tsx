@@ -48,6 +48,14 @@ export default function SettingsPage() {
   const [accountSaving, setAccountSaving] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [accountSuccess, setAccountSuccess] = useState<string | null>(null);
+  const [mfaState, setMfaState] = useState<{ totp: boolean; passkey: boolean } | null>(null);
+  const [mfaPassword, setMfaPassword] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+  const [mfaOtpauth, setMfaOtpauth] = useState<string | null>(null);
+  const [mfaMessage, setMfaMessage] = useState<string | null>(null);
+  const [mfaError, setMfaError] = useState<string | null>(null);
+  const [mfaBusy, setMfaBusy] = useState(false);
   const [notificationState, setNotificationState] = useState<DeckNotificationConfigResponse | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>('unknown');
   const [notificationBusy, setNotificationBusy] = useState(false);
@@ -230,6 +238,7 @@ export default function SettingsPage() {
     setThemeMounted(true);
     refreshHealth();
     void refreshNotifications();
+    void refreshMfa();
     measureStorage();
   }, [refreshNotifications]);
 
@@ -303,6 +312,57 @@ export default function SettingsPage() {
   async function refreshHealth() {
     setRefreshing(true);
     try { setHealth(await deckApi.health()); } catch {} finally { setRefreshing(false); }
+  }
+
+  async function mfaPost(body: Record<string, unknown>) {
+    const res = await fetch('/api/deck/auth/mfa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) throw new Error(data?.error || 'MFA request failed.');
+    return data;
+  }
+
+  async function refreshMfa() {
+    try {
+      const res = await fetch('/api/deck/auth/mfa', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setMfaState(data.mfa);
+    } catch {}
+  }
+
+  async function startTotpEnroll() {
+    setMfaBusy(true); setMfaError(null); setMfaMessage(null);
+    try {
+      const data = await mfaPost({ action: 'totp-enroll-start', currentPassword: mfaPassword });
+      setMfaSecret(data.secret); setMfaOtpauth(data.otpauth); setMfaMessage('Scan or enter the secret, then confirm with a code.');
+    } catch (err) { setMfaError(localizeError(err instanceof Error ? err.message : 'MFA request failed.', lang)); }
+    finally { setMfaBusy(false); }
+  }
+
+  async function confirmTotpEnroll() {
+    if (!mfaSecret) return;
+    setMfaBusy(true); setMfaError(null); setMfaMessage(null);
+    try { await mfaPost({ action: 'totp-enroll-confirm', currentPassword: mfaPassword, secret: mfaSecret, code: mfaCode }); setMfaSecret(null); setMfaOtpauth(null); setMfaPassword(''); setMfaCode(''); setMfaMessage('TOTP enabled.'); await refreshMfa(); }
+    catch (err) { setMfaError(localizeError(err instanceof Error ? err.message : 'MFA request failed.', lang)); }
+    finally { setMfaBusy(false); }
+  }
+
+  async function disableTotp() {
+    setMfaBusy(true); setMfaError(null); setMfaMessage(null);
+    try { await mfaPost({ action: 'totp-disable', currentPassword: mfaPassword, code: mfaCode }); setMfaPassword(''); setMfaCode(''); setMfaMessage('TOTP disabled.'); await refreshMfa(); }
+    catch (err) { setMfaError(localizeError(err instanceof Error ? err.message : 'MFA request failed.', lang)); }
+    finally { setMfaBusy(false); }
+  }
+
+  async function addPasskey() {
+    setMfaBusy(true); setMfaError(null); setMfaMessage(null);
+    try {
+      const opt = await mfaPost({ action: 'passkey-register-options', currentPassword: mfaPassword, name: 'Passkey' });
+      const { startRegistration } = await import('@simplewebauthn/browser');
+      const response = await startRegistration({ optionsJSON: opt.options });
+      await mfaPost({ action: 'passkey-register-verify', challengeId: opt.challengeId, response, name: 'Passkey' });
+      setMfaPassword(''); setMfaMessage('Passkey added.'); await refreshMfa();
+    } catch (err) { setMfaError(localizeError(err instanceof Error ? err.message : 'MFA request failed.', lang)); }
+    finally { setMfaBusy(false); }
   }
 
   async function enableNotifications() {
@@ -523,6 +583,30 @@ export default function SettingsPage() {
           <Btn variant="primary" icon={<KeyRound size={13} />} onClick={saveAccount} disabled={accountSaving}>
             {accountSaving ? tAcc.saving : tAcc.save}
           </Btn>
+        </div>
+      </Card>
+
+      <Card>
+        <SectionHead kicker="MFA" title="Two-factor authentication" />
+        <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 14px', maxWidth: 620 }}>
+          Add TOTP or a passkey as a second factor after password login. Passkeys are not used for passwordless login.
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          <Tag variant={mfaState?.totp ? 'green' : 'yellow'}>TOTP: {mfaState?.totp ? 'enabled' : 'off'}</Tag>
+          <Tag variant={(mfaState?.passkey) ? 'green' : 'yellow'}>Passkeys: {mfaState?.passkey ? 'enabled' : 'off'}</Tag>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          <label style={fieldStyle}><span style={labelStyle}>Current password</span><input type="password" value={mfaPassword} onChange={(e) => setMfaPassword(e.target.value)} style={inputStyle} autoComplete="current-password" /></label>
+          <label style={fieldStyle}><span style={labelStyle}>TOTP code</span><input inputMode="numeric" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} style={inputStyle} autoComplete="one-time-code" /></label>
+        </div>
+        {mfaSecret ? <div style={{ marginTop: 12, fontSize: 12, wordBreak: 'break-all', color: 'var(--text)' }}>Secret: <Kbd>{mfaSecret}</Kbd><br />URI: {mfaOtpauth}</div> : null}
+        {mfaError ? <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--red)' }}>{mfaError}</div> : null}
+        {mfaMessage ? <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--green)' }}>{mfaMessage}</div> : null}
+        <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Btn onClick={startTotpEnroll} disabled={mfaBusy || !mfaPassword}>Start TOTP</Btn>
+          <Btn onClick={confirmTotpEnroll} disabled={mfaBusy || !mfaSecret || !mfaCode}>Confirm TOTP</Btn>
+          <Btn variant="danger" onClick={disableTotp} disabled={mfaBusy || !mfaState?.totp || !mfaPassword || !mfaCode}>Disable TOTP</Btn>
+          <Btn onClick={addPasskey} disabled={mfaBusy || !mfaPassword}>Add passkey</Btn>
         </div>
       </Card>
 

@@ -21,6 +21,8 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.2",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-unicode11": "^0.9.0",
     "@xterm/addon-web-links": "^0.12.0",

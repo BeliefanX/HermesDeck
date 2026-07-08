@@ -51,6 +51,21 @@ export type DeckModelPreference = {
 
 export type DeckUserProfilePreferences = Record<string, DeckModelPreference>;
 
+export type DeckPasskey = {
+  id: string;
+  publicKey: string;
+  counter: number;
+  transports?: string[];
+  name?: string;
+  createdAt: string;
+  lastUsedAt?: string;
+};
+
+export type DeckUserMfa = {
+  totp?: { enabled: boolean; secret: string; enabledAt: string };
+  passkeys?: DeckPasskey[];
+};
+
 export type DeckUser = {
   id: string;
   username: string;
@@ -66,6 +81,7 @@ export type DeckUser = {
   // not Deck user/account profiles.
   assignedProfileIds: string[];
   preferences: { profiles: DeckUserProfilePreferences };
+  mfa?: DeckUserMfa;
   createdAt: string;
   updatedAt: string;
   approvedAt?: string;
@@ -93,6 +109,7 @@ export type SafeDeckUserContext = {
     canUseTerminal: boolean;
     canManageOwnCredentials: boolean;
   };
+  mfa: { totpEnabled: boolean; passkeyCount: number };
 };
 
 export type SafeAdminDeckUser = SafeDeckUserContext & {
@@ -112,6 +129,7 @@ export type AdminUserPatch = {
   email?: unknown;
   status?: unknown;
   role?: unknown;
+  mfaReset?: unknown;
 };
 
 export type AdminUserMutationResult =
@@ -262,6 +280,22 @@ function validateProfiles(value: unknown): DeckUserProfilePreferences {
   return result;
 }
 
+function validateMfa(value: unknown): DeckUserMfa | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const out: DeckUserMfa = {};
+  if (isPlainObject(value.totp) && value.totp.enabled === true && typeof value.totp.secret === 'string' && typeof value.totp.enabledAt === 'string') {
+    out.totp = { enabled: true, secret: value.totp.secret, enabledAt: value.totp.enabledAt };
+  }
+  if (Array.isArray(value.passkeys)) {
+    out.passkeys = value.passkeys.flatMap((raw): DeckPasskey[] => {
+      if (!isPlainObject(raw) || typeof raw.id !== 'string' || typeof raw.publicKey !== 'string' || !Number.isInteger(raw.counter) || typeof raw.createdAt !== 'string') return [];
+      const transports = Array.isArray(raw.transports) ? raw.transports.filter((t): t is string => typeof t === 'string') : undefined;
+      return [{ id: raw.id, publicKey: raw.publicKey, counter: raw.counter as number, transports, name: parseOptionalString(raw.name), createdAt: raw.createdAt, lastUsedAt: parseOptionalString(raw.lastUsedAt) }];
+    });
+  }
+  return out.totp || out.passkeys?.length ? out : undefined;
+}
+
 function validateUser(raw: unknown, key: string): DeckUser {
   if (!isPlainObject(raw)) throw new AuthStoreError('Invalid v2 auth store: user record must be an object.');
   if (raw.id !== key || typeof raw.id !== 'string' || raw.id.length < 1 || raw.id.length > 128) {
@@ -297,6 +331,7 @@ function validateUser(raw: unknown, key: string): DeckUser {
     passwordVersion,
     assignedProfileIds: [...new Set(raw.assignedProfileIds as string[])],
     preferences: { profiles: validateProfiles(preferencesRaw.profiles) },
+    mfa: validateMfa(raw.mfa),
     createdAt: raw.createdAt as string,
     updatedAt: raw.updatedAt as string,
     approvedAt: parseOptionalString(raw.approvedAt),
@@ -591,6 +626,7 @@ export function toSafeUserContext(user: DeckUser): SafeDeckUserContext {
     // API/persistence compatibility alias; prefer assignedAgentIds in new code.
     assignedProfileIds: [...user.assignedProfileIds],
     capabilities: capabilitiesFor(user),
+    mfa: { totpEnabled: user.mfa?.totp?.enabled === true, passkeyCount: user.mfa?.passkeys?.length || 0 },
   };
 }
 
@@ -698,6 +734,10 @@ export function updateDeckUserByAdmin(actorUserId: string, targetUserId: string,
       next.rejectedAt = now;
       next.rejectedBy = actor.id;
     }
+    changed = true;
+  }
+  if (patch.mfaReset === true) {
+    next.mfa = undefined;
     changed = true;
   }
 
@@ -943,6 +983,57 @@ export function updatePassword(currentPassword: string, nextPassword: string, us
     },
   });
   return { ok: true };
+}
+
+export function getDeckUserById(userId: string): DeckUser | null {
+  return getUser(readAuth(), userId) || null;
+}
+
+export function setUserTotp(userId: string, secret: string | null): { ok: true } | { ok: false; error: string } {
+  const rec = readAuth();
+  const target = getUser(rec, userId);
+  if (!target) return { ok: false, error: 'User not found.' };
+  const mfa: DeckUserMfa = { ...(target.mfa || {}) };
+  if (secret) mfa.totp = { enabled: true, secret, enabledAt: new Date().toISOString() };
+  else delete mfa.totp;
+  const next: DeckUser = { ...target, mfa: mfa.totp || mfa.passkeys?.length ? mfa : undefined, updatedAt: new Date().toISOString() };
+  saveAuth({ ...rec, users: { ...rec.users, [target.id]: next } });
+  return { ok: true };
+}
+
+export function addPasskeyToUser(userId: string, passkey: DeckPasskey): { ok: true } | { ok: false; error: string } {
+  const rec = readAuth();
+  const target = getUser(rec, userId);
+  if (!target) return { ok: false, error: 'User not found.' };
+  const passkeys = [...(target.mfa?.passkeys || []).filter((p) => p.id !== passkey.id), passkey];
+  const next: DeckUser = { ...target, mfa: { ...(target.mfa || {}), passkeys }, updatedAt: new Date().toISOString() };
+  saveAuth({ ...rec, users: { ...rec.users, [target.id]: next } });
+  return { ok: true };
+}
+
+export function updatePasskeyCounter(userId: string, passkeyId: string, counter: number): { ok: true } | { ok: false; error: string } {
+  const rec = readAuth();
+  const target = getUser(rec, userId);
+  if (!target) return { ok: false, error: 'User not found.' };
+  const passkeys = (target.mfa?.passkeys || []).map((p) => p.id === passkeyId ? { ...p, counter, lastUsedAt: new Date().toISOString() } : p);
+  const next: DeckUser = { ...target, mfa: { ...(target.mfa || {}), passkeys }, updatedAt: new Date().toISOString() };
+  saveAuth({ ...rec, users: { ...rec.users, [target.id]: next } });
+  return { ok: true };
+}
+
+export function resetUserMfaByAdmin(actorUserId: string, targetUserId: string): AdminUserMutationResult {
+  const rec = readAuth();
+  const actor = getUser(rec, actorUserId);
+  const target = getUser(rec, targetUserId);
+  if (!actor || actor.status !== 'active' || (actor.role !== 'admin' && actor.role !== 'super_admin')) {
+    return { ok: false, code: 'forbidden', error: 'Only active admins can reset MFA.' };
+  }
+  if (!target) return { ok: false, code: 'not_found', error: 'User not found.' };
+  const access = actorCanManageTarget(actor, target, 'update');
+  if (!access.ok) return { ok: false, code: 'forbidden', error: access.error };
+  const next: DeckUser = { ...target, mfa: undefined, updatedAt: new Date().toISOString() };
+  saveAuth({ ...rec, users: { ...rec.users, [target.id]: next } });
+  return { ok: true, user: toSafeAdminDeckUser(next) };
 }
 
 // --- Login rate limit ------------------------------------------------------

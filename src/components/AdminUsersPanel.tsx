@@ -15,6 +15,7 @@ type AdminUser = {
   role: DeckRole;
   status: DeckStatus;
   assignedProfileIds: string[];
+  mfa?: { totpEnabled?: boolean; passkeyCount?: number };
   immutable: boolean;
   createdAt: string;
   updatedAt: string;
@@ -296,6 +297,9 @@ export function AdminUsersPanel() {
                   ) : null}
                   {canChangeRole && user.role === 'admin' ? (
                     <Btn size="sm" icon={<UserCog size={12} />} disabled={disabled} onClick={() => patchUser(user, { role: 'user' }, t.demoted(user.username))}>{t.demote}</Btn>
+                  ) : null}
+                  {(user.mfa?.totpEnabled || (user.mfa?.passkeyCount || 0) > 0) ? (
+                    <Btn size="sm" variant="danger" disabled={disabled} onClick={() => patchUser(user, { mfaReset: true }, `Reset MFA for ${user.username}.`)}>Reset MFA</Btn>
                   ) : null}
                 </div>
               </div>

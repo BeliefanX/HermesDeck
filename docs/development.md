@@ -49,7 +49,7 @@ npm run dev
 - `src/lib/server/hermes/chat-stream.ts`：`/v1/runs` start + `/v1/runs/{run_id}/events` upstream SSE pump/keep-alive/text delta filtering；chat timeout clamp 是 `[1000, 2100000]` ms。
 - `src/lib/chat-timeouts.ts`：35 分钟 chat stream default/hard cap（Hermes active subagent 30 分钟 + 5 分钟余量），前端与服务端共享。
 - `src/lib/server/hermes/cron.ts`：cron Agent routing proof。
-- `src/lib/server/auth.ts`、`rbac.ts`：Deck users/roles/capabilities/Agent scope（代码中 `profile`/`profileId` 是 legacy Agent runtime id）。
+- `src/lib/server/auth.ts`、`mfa.ts`、`rbac.ts`：Deck users/roles/capabilities/MFA/Agent scope（代码中 `profile`/`profileId` 是 legacy Agent runtime id）。
 - `src/lib/server/deck-chat-projection.ts`：projection store lock/atomic write/prune。
 - `src/lib/server/notifications.ts`、`src/lib/notification-events.ts`：Web Push chat dispatch、notification preferences/subscriptions store、page-open Cron notification helpers。
 - `public/sw.js`：PWA cache policy。
@@ -59,6 +59,7 @@ npm run dev
 ### Auth/RBAC
 
 - `GET /api/deck/auth/session` 查看当前用户与 capabilities。
+- `POST /api/deck/auth/mfa` 承载 TOTP/passkey enrollment 与登录二阶段；MFA pre-auth token 和 WebAuthn challenge 必须按 purpose 分开，且正式 `hermesdeck_session` 只能在第二因子完成后签发。
 - 普通用户访问 Agent 前必须有 assignment，且不得访问未分配 Agent/default。
 - catalog outage 应显示上游不可用，而不是给普通用户从本地目录补齐；不要把 catalog/health proof 缺失描述成用户无权限。`super_admin/local-owner` 本机管理面可用的 config/skills/LCM/Live Terminal 不等于 runtime fallback。
 
@@ -104,7 +105,13 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 - Web Push chat notifications require VAPID env (`HERMESDECK_VAPID_PUBLIC_KEY`, `HERMESDECK_VAPID_PRIVATE_KEY`, optional `HERMESDECK_VAPID_SUBJECT`) and HTTPS/localhost secure context.
 - Settings owns permission/subscription UX. `/api/deck/notifications/*` routes require Deck auth; writes are guarded by CSRF/same-origin.
 - Chat complete/failed is server-side Web Push and may fire after the chat tab closes. Cron notifications are page-open only and use `new Notification(...)`; do not add docs implying closed-page Cron support.
-- Focused tests: `node --experimental-strip-types --test tests/notifications.test.mjs tests/notification-events.test.mjs`.
+- Focused tests: `node --experimental-strip-types --test tests/notifications.test.mjs tests/notification-events.test.mjs`。
+
+### MFA
+
+- TOTP 使用 Node `crypto`，不要为 Base32/TOTP 引入额外依赖。
+- WebAuthn/passkey server verification 使用 SimpleWebAuthn；不要手写 COSE/CBOR/signature 验证。
+- 关键回归在 `npm run test:rbac`：MFA 登录不提前发 session、fresh pre-auth token 不能重置 TOTP 限速、WebAuthn challenge id 不能充当 password-MFA token。
 
 ## Documentation rules
 

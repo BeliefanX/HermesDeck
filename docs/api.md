@@ -28,6 +28,8 @@
 
 - `GET /api/deck/auth/session`：返回当前 Deck 用户、role、capabilities、assigned Agents（wire 字段仍为 `assignedProfileIds`/profile ids 以兼容旧客户端）。
 - `POST /api/deck/auth/login`：登录；支持限速；可在 `HERMESDECK_TRUST_PROXY=1` 时信任代理来源 IP。
+- `GET /api/deck/auth/mfa`：返回当前用户可用 MFA factors。
+- `POST /api/deck/auth/mfa`：MFA enrollment 与登录二阶段。Actions：`totp-enroll-start`、`totp-enroll-confirm`、`totp-disable`、`passkey-register-options`、`passkey-register-verify`、`login-totp`、`passkey-login-options`、`passkey-login-verify`。Mutating requests 走 same-origin/body-size guard；login 二阶段只接受 password-MFA token，不接受 WebAuthn challenge id 代替。
 - `POST /api/deck/auth/logout`：清除 session。
 - `POST /api/deck/auth/register`：创建待审批普通用户。
 - `PUT /api/deck/auth/credentials`：当前用户更新 username/password。
@@ -36,6 +38,8 @@
 - `GET/PUT /api/deck/admin/users/[id]/profiles`：管理用户 Agent assignment；路径名保留 `profiles` 仅为 API 兼容。
 
 RBAC：`super_admin` 可访问全部 API-backed Agents，并拥有 `super_admin/local-owner` 本机管理面（config/skills/LCM/Live Terminal）；`admin` 和普通 `user` 只能访问分配给自己的 Agents（`admin` 另外拥有普通用户管理权限）。每条 Agent-scoped route 都必须在服务端授权；普通用户不得访问未分配 Agent/default，也没有本地 runtime data fallback。admin/super_admin catalog fallback 仅在两个 strict API catalog endpoints 都返回 404 时枚举 bounded immediate local profile dirs，并且每个 candidate 必须 `/health` 证明。
+
+MFA：`POST /api/deck/auth/login` 对已启用 TOTP/passkey 的用户返回 `mfaRequired:true` 与短期 `mfaToken`，不会设置 `hermesdeck_session`。完成 `login-totp` 或 `passkey-login-verify` 后才签发正式 session cookie。Passkey 是 MFA-only，不提供 username-only/passwordless 认证。
 
 ## Health and Agent catalog
 
