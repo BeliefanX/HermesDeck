@@ -147,15 +147,14 @@ const ToolCallSummary = memo(function ToolCallSummary({ calls }: { calls: Array<
   const subagent = calls.some((c) => isSubagentTool(c.name));
   const Icon = subagent ? Network : Wrench;
   const title = subagent ? 'Delegate to subagent' : 'Tool call';
+  const toolNames = calls.map((c) => c.name).filter(Boolean).join(' · ') || 'tool';
   return (
     <div className={`tool-block${subagent ? ' subagent' : ''}`}>
       <div className="tool-block-head" onClick={() => setOpen((v) => !v)} role="button" aria-expanded={open}>
         <Icon size={12} />
+        <span className="tool-block-names">{toolNames}</span>
         <span className="tool-block-title">
           {title} {calls.length > 1 && <span className="muted">×{calls.length}</span>}
-        </span>
-        <span className="tool-block-names">
-          {calls.map((c) => c.name).filter(Boolean).join(' · ') || 'tool'}
         </span>
         <ChevronDown size={12} className={`tool-block-chev ${open ? 'open' : ''}`} />
       </div>
@@ -218,8 +217,8 @@ const ToolResultSummary = memo(function ToolResultSummary({ toolName, content }:
     <div className={`tool-block result${subagent ? ' subagent' : ''}`}>
       <div className="tool-block-head" onClick={() => setOpen((v) => !v)} role="button" aria-expanded={open}>
         <Icon size={12} />
+        <span className="tool-block-names">{toolName || 'tool'}</span>
         <span className="tool-block-title">{title}</span>
-        {toolName && <span className="tool-block-names">{toolName}</span>}
         <ChevronDown size={12} className={`tool-block-chev ${open ? 'open' : ''}`} />
       </div>
       {!open && preview && <div className="tool-block-preview">{preview}</div>}

@@ -52,6 +52,8 @@ Projection session 包含：
 - `onDone`：写入 assistant final content、response id、attachments，并标记 completed。
 - `onError`：标记 failed 并保存 last error。
 
+聊天窗口渲染这些 projected tool rows 时，标题顺序是“具体工具名 → 通用状态标签”。例如 `lcm_grep Tool result` 或 `mcp_codegraph_codegraph_node Tool call`，从而复用同一 UI 组件显示内置工具、MCP 工具、LCM/Hindsight 等插件工具。
+
 ## Named-Agent proof
 
 Projection 是 named-Agent continuation 的 proof source：

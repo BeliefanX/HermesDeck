@@ -31,6 +31,12 @@ test('visible message filtering keeps only the latest empty assistant typing tar
   assert.deepEqual(visible.map((m) => m.id), ['u1', 'tool-call', 'latest-empty']);
 });
 
+test('chat tool cards render concrete tool names before generic labels', () => {
+  assert.match(messageRow, /const toolNames = calls\.map\(\(c\) => c\.name\)/);
+  assert.match(messageRow, /<span className="tool-block-names">\{toolNames\}<\/span>\n\s+<span className="tool-block-title">/);
+  assert.match(messageRow, /<span className="tool-block-names">\{toolName \|\| 'tool'\}<\/span>\n\s+<span className="tool-block-title">\{title\}<\/span>/);
+});
+
 test('active projected drafts are hydrated from the server and polled to final content', () => {
   assert.match(chatPage, /deckApi\.messages\(active, profile\)/);
   assert.match(chatPage, /projectionStatus === 'draft'/);
