@@ -186,25 +186,30 @@ export async function hermesApiGet<T>(path: string, timeoutMs = 5000, profileId 
   return response.json() as Promise<T>;
 }
 
-export async function hermesApiDelete<T>(path: string, timeoutMs = 5000, profileId = 'default'): Promise<T> {
+export async function hermesApiRequest<T>(method: string, path: string, body?: unknown, timeoutMs = 5000, profileId = 'default'): Promise<T> {
   const apiBase = getHermesApiBase(profileId);
   if (!apiBase) {
-    throw new Error(`Hermes Agent API DELETE ${path} failed: profile '${profileId}' has no configured API server base`);
+    throw new Error(`Hermes Agent API ${method} ${path} failed: profile '${profileId}' has no configured API server base`);
   }
   const base = apiBase.replace(/\/+$/, '');
   const response = await fetch(`${base}${path.startsWith('/') ? path : `/${path}`}`, {
-    method: 'DELETE',
+    method,
     cache: 'no-store',
     headers: apiHeaders(profileId),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     const text = await response.text().catch(() => '');
     const detail = text ? `: ${redactSecrets(text).slice(0, 240)}` : '';
-    throw new Error(`Hermes Agent API DELETE ${path} failed with ${response.status}${detail}`);
+    throw new Error(`Hermes Agent API ${method} ${path} failed with ${response.status}${detail}`);
   }
   if (response.status === 204) return { ok: true } as T;
   return response.json() as Promise<T>;
+}
+
+export async function hermesApiDelete<T>(path: string, timeoutMs = 5000, profileId = 'default'): Promise<T> {
+  return hermesApiRequest<T>('DELETE', path, undefined, timeoutMs, profileId);
 }
 
 export function redactSecrets(text: string): string {

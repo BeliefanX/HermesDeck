@@ -1,7 +1,7 @@
-// Live tmux-backed terminal manager. Each "session" here owns one node-pty
-// child running `tmux new-session -A -s <name>`, so reconnects re-attach to
-// the same tmux session and survive page reloads. Output is fanned out to
-// SSE subscribers and a small ring buffer is replayed on reconnect.
+// Live tmux-backed terminal manager. Sessions live in the user's default tmux
+// server (the same one Terminal.app sees); Deck creates/attaches node-pty
+// clients on demand. Output is fanned out to SSE subscribers and a small ring
+// buffer is replayed on reconnect.
 //
 // Hardening assumptions: this is a self-hosted local dev tool, but we still
 // validate IDs to keep them out of shell argv, cap subscriber counts, and
@@ -13,7 +13,7 @@
 // into the child env. Operators who need additional env vars must set
 // HERMESDECK_TERMINAL_ENV_PASSTHROUGH explicitly.
 
-import { execFile, spawn as cpSpawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
@@ -49,21 +49,19 @@ type IPty = {
 
 type Entry = {
   meta: LiveTerminalSession;
-  pty: IPty;
+  pty?: IPty;
+  attachPromise?: Promise<IPty>;
   buffer: string[];      // ring buffer of recent chunks
   bufferBytes: number;   // running total
   subscribers: Map<string, Subscriber>;
   lastActivity: number;
-  lastSubscriberLeftAt: number; // 0 when at least one subscriber is attached
 };
 
 const TMUX = process.env.HERMESDECK_TMUX_BIN || 'tmux';
-const TMUX_CONF = process.env.HERMESDECK_TMUX_CONF || '/dev/null';
-const SOCKET_NAME = 'hermesdeck';
 const MAX_SESSIONS = 8;
 const MAX_SUBSCRIBERS_PER_SESSION = 8;
 const BUFFER_LIMIT_BYTES = 256 * 1024;
-const ABANDONED_REAP_MS = 10 * 60 * 1000; // kill live PTYs nobody has watched in 10 minutes
+const SAFE_TMUX_NAME = /^[a-zA-Z0-9_-]{4,64}$/;
 
 const sessions = new Map<string, Entry>();
 let ptyModulePromise: Promise<typeof import('node-pty')> | null = null;
@@ -85,7 +83,7 @@ function ensureEnabled() {
 
 function validateId(input: unknown): string {
   const id = String(input || '');
-  if (!/^[a-zA-Z0-9_-]{4,64}$/.test(id)) throw new Error('Invalid terminal id');
+  if (!SAFE_TMUX_NAME.test(id)) throw new Error('Invalid terminal id');
   return id;
 }
 
@@ -146,8 +144,118 @@ function buildChildEnv(extras: Record<string, string>): NodeJS.ProcessEnv {
 }
 
 async function tmux(args: string[], opts: { timeout?: number } = {}): Promise<{ stdout: string; stderr: string }> {
-  const fullArgs = ['-L', SOCKET_NAME, '-f', TMUX_CONF, ...args];
-  return execFileAsync(TMUX, fullArgs, { timeout: opts.timeout ?? 4000, maxBuffer: 256 * 1024, shell: false });
+  return execFileAsync(TMUX, args, { timeout: opts.timeout ?? 4000, maxBuffer: 256 * 1024, shell: false });
+}
+
+type TmuxSessionRow = { name: string; createdAt: number; cols: number; rows: number };
+
+async function listTmuxSessions(): Promise<TmuxSessionRow[]> {
+  try {
+    const { stdout } = await tmux(['list-sessions', '-F', '#{session_name}\t#{session_created}\t#{session_width}\t#{session_height}']);
+    return stdout.split('\n').filter(Boolean).map((line) => {
+      const [name, created, cols, rows] = line.split('\t');
+      return {
+        name,
+        createdAt: Number(created) > 0 ? Number(created) * 1000 : Date.now(),
+        cols: clampDim(cols, 20, 400, 100),
+        rows: clampDim(rows, 5, 200, 30),
+      };
+    }).filter((row) => SAFE_TMUX_NAME.test(row.name));
+  } catch {
+    return [];
+  }
+}
+
+function entryFromTmux(row: TmuxSessionRow): Entry {
+  return {
+    meta: {
+      id: row.name,
+      tmuxName: row.name,
+      label: row.name,
+      createdAt: row.createdAt,
+      cols: row.cols,
+      rows: row.rows,
+      alive: true,
+    },
+    buffer: [],
+    bufferBytes: 0,
+    subscribers: new Map(),
+    lastActivity: Date.now(),
+  };
+}
+
+async function importTmuxSession(name: string): Promise<Entry | null> {
+  for (const row of await listTmuxSessions()) {
+    if (row.name !== name) continue;
+    const entry = entryFromTmux(row);
+    sessions.set(entry.meta.id, entry);
+    return entry;
+  }
+  return null;
+}
+
+function spawnTmuxClient(entry: Entry, args: string[], cols = entry.meta.cols, rows = entry.meta.rows): Promise<IPty> {
+  if (entry.pty) return Promise.resolve(entry.pty);
+  if (entry.attachPromise) return entry.attachPromise;
+  entry.attachPromise = loadPty().then((pty) => {
+    const child = pty.spawn(TMUX, args, {
+      name: 'xterm-256color',
+      cols,
+      rows,
+      cwd: process.env.HOME || os.homedir() || '/',
+      env: buildChildEnv({
+        TERM: 'xterm-256color',
+        COLORTERM: 'truecolor',
+        // Force a UTF-8 locale so the spawned shell handles multi-byte input
+        // (CJK, emoji, accented Latin). If the dev server's parent has nothing
+        // set — common when launched from a daemon, plain `node`, or a stripped
+        // env — zsh falls back to C locale and silently drops non-ASCII bytes.
+        // We respect existing values if the user really wants e.g. zh_CN.UTF-8.
+        LANG: process.env.LANG || 'en_US.UTF-8',
+        LC_ALL: process.env.LC_ALL || process.env.LANG || 'en_US.UTF-8',
+        LC_CTYPE: process.env.LC_CTYPE || process.env.LC_ALL || process.env.LANG || 'en_US.UTF-8',
+        HERMESDECK_TMUX_SESSION: entry.meta.tmuxName,
+      }),
+    }) as unknown as IPty;
+
+    entry.pty = child;
+    entry.attachPromise = undefined;
+    child.onData((data) => {
+      appendToBuffer(entry, data);
+      broadcast(entry, 'data', data);
+    });
+    child.onExit((e) => {
+      entry.pty = undefined;
+      entry.attachPromise = undefined;
+      broadcast(entry, 'exit', { exitCode: e.exitCode, signal: e.signal ?? null });
+      for (const sub of entry.subscribers.values()) { try { sub.close(); } catch {} }
+      entry.subscribers.clear();
+      tmux(['has-session', '-t', entry.meta.tmuxName]).then(() => {
+        entry.meta.alive = true;
+      }).catch(() => {
+        entry.meta.alive = false;
+        sessions.delete(entry.meta.id);
+      });
+    });
+    return child;
+  }).catch((e) => {
+    entry.attachPromise = undefined;
+    entry.meta.alive = false;
+    throw e;
+  });
+  return entry.attachPromise;
+}
+
+async function ensureAttached(entry: Entry): Promise<IPty> {
+  if (!entry.meta.alive) throw new Error('Session not found');
+  return spawnTmuxClient(entry, ['attach-session', '-t', entry.meta.tmuxName]);
+}
+
+async function getEntry(id: string): Promise<Entry> {
+  const safeId = validateId(id);
+  const entry = sessions.get(safeId) || await importTmuxSession(safeId);
+  if (!entry || !entry.meta.alive) throw new Error('Session not found');
+  return entry;
 }
 
 function appendToBuffer(entry: Entry, data: string) {
@@ -168,7 +276,22 @@ function broadcast(entry: Entry, event: 'data' | 'meta' | 'exit', payload: unkno
 
 export async function listSessions(): Promise<LiveTerminalSession[]> {
   if (!liveTerminalEnabled()) return [];
-  // Trust local state; tmux ls is informational and may fail when no server is running.
+  const rows = await listTmuxSessions();
+  const liveNames = new Set(rows.map((row) => row.name));
+  for (const row of rows) {
+    const existing = sessions.get(row.name);
+    if (existing) {
+      existing.meta.alive = true;
+      existing.meta.createdAt = row.createdAt;
+      existing.meta.cols = row.cols;
+      existing.meta.rows = row.rows;
+      continue;
+    }
+    if (sessions.size < MAX_SESSIONS) sessions.set(row.name, entryFromTmux(row));
+  }
+  for (const [id, entry] of sessions) {
+    if (!liveNames.has(entry.meta.tmuxName) && !entry.pty && !entry.attachPromise) sessions.delete(id);
+  }
   return Array.from(sessions.values()).map((e) => ({ ...e.meta }));
 }
 
@@ -177,47 +300,18 @@ export async function createSession(input: { label?: string; cols?: number; rows
   if (sessions.size >= MAX_SESSIONS) {
     throw new Error(`Live terminal session limit reached (${MAX_SESSIONS})`);
   }
-  // First session of this server boot? Wipe any leftover tmux server on our
-  // private socket so the new server reads our `-f` config (status off, mouse,
-  // truecolor, etc.). Subsequent sessions reuse the same server, which is
-  // fine — it's already configured.
-  if (sessions.size === 0) {
-    try { await execFileAsync(TMUX, ['-L', SOCKET_NAME, 'kill-server'], { timeout: 2000, shell: false }); } catch {}
-  }
   const label = validateLabel(input.label || 'shell');
   const cols = clampDim(input.cols, 20, 400, 100);
   const rows = clampDim(input.rows, 5, 200, 30);
-  const id = randomUUID().slice(0, 12);
-  const tmuxName = `hd-${id}`;
+  const id = `hd-${randomUUID().slice(0, 12)}`;
+  const tmuxName = id;
 
-  // Pass a stable tmux config path; operators can override HERMESDECK_TMUX_CONF
-  // for custom status/mouse/truecolor settings without build-time file tracing.
+  // Use the user's default tmux server/socket so Terminal.app can see/attach it.
   // -A attaches if a session with that name already exists, otherwise creates.
-  const pty = await loadPty();
-  const child = pty.spawn(TMUX, [
-    '-L', SOCKET_NAME,
-    '-f', TMUX_CONF,
+  const tmuxArgs = [
     'new-session', '-A', '-s', tmuxName,
     '-x', String(cols), '-y', String(rows),
-  ], {
-    name: 'xterm-256color',
-    cols,
-    rows,
-    cwd: process.env.HOME || os.homedir() || '/',
-    env: buildChildEnv({
-      TERM: 'xterm-256color',
-      COLORTERM: 'truecolor',
-      // Force a UTF-8 locale so the spawned shell handles multi-byte input
-      // (CJK, emoji, accented Latin). If the dev server's parent has nothing
-      // set — common when launched from a daemon, plain `node`, or a stripped
-      // env — zsh falls back to C locale and silently drops non-ASCII bytes.
-      // We respect existing values if the user really wants e.g. zh_CN.UTF-8.
-      LANG: process.env.LANG || 'en_US.UTF-8',
-      LC_ALL: process.env.LC_ALL || process.env.LANG || 'en_US.UTF-8',
-      LC_CTYPE: process.env.LC_CTYPE || process.env.LC_ALL || process.env.LANG || 'en_US.UTF-8',
-      HERMESDECK_TMUX_SESSION: tmuxName,
-    }),
-  }) as unknown as IPty;
+  ];
 
   const meta: LiveTerminalSession = {
     id,
@@ -231,27 +325,18 @@ export async function createSession(input: { label?: string; cols?: number; rows
 
   const entry: Entry = {
     meta,
-    pty: child,
     buffer: [],
     bufferBytes: 0,
     subscribers: new Map(),
     lastActivity: Date.now(),
-    lastSubscriberLeftAt: Date.now(), // marked "abandoned" until first subscriber attaches
   };
-
-  child.onData((data) => {
-    appendToBuffer(entry, data);
-    broadcast(entry, 'data', data);
-  });
-  child.onExit((e) => {
-    entry.meta.alive = false;
-    broadcast(entry, 'exit', { exitCode: e.exitCode, signal: e.signal ?? null });
-    for (const sub of entry.subscribers.values()) { try { sub.close(); } catch {} }
-    entry.subscribers.clear();
-    sessions.delete(id);
-  });
-
   sessions.set(id, entry);
+  try {
+    await spawnTmuxClient(entry, tmuxArgs, cols, rows);
+  } catch (e) {
+    sessions.delete(id);
+    throw e;
+  }
   return { ...meta };
 }
 
@@ -274,25 +359,23 @@ function auditPtyInput(id: string, data: string) {
   }
 }
 
-export function writeSession(id: string, data: string) {
+export async function writeSession(id: string, data: string) {
   ensureEnabled();
-  const entry = sessions.get(validateId(id));
-  if (!entry || !entry.meta.alive) throw new Error('Session not found');
+  const entry = await getEntry(id);
   if (typeof data !== 'string') throw new Error('Invalid data');
   if (data.length > 64 * 1024) throw new Error('Input chunk too large');
   auditPtyInput(entry.meta.id, data);
-  entry.pty.write(data);
+  (await ensureAttached(entry)).write(data);
 }
 
-export function resizeSession(id: string, cols: number, rows: number) {
+export async function resizeSession(id: string, cols: number, rows: number) {
   ensureEnabled();
-  const entry = sessions.get(validateId(id));
-  if (!entry || !entry.meta.alive) throw new Error('Session not found');
+  const entry = await getEntry(id);
   const c = clampDim(cols, 20, 400, entry.meta.cols);
   const r = clampDim(rows, 5, 200, entry.meta.rows);
   entry.meta.cols = c;
   entry.meta.rows = r;
-  entry.pty.resize(c, r);
+  (await ensureAttached(entry)).resize(c, r);
   // Inform tmux too — useful when more than one client has different sizes.
   tmux(['refresh-client', '-t', entry.meta.tmuxName, '-S']).catch(() => {});
   broadcast(entry, 'meta', { cols: c, rows: r });
@@ -300,11 +383,13 @@ export function resizeSession(id: string, cols: number, rows: number) {
 
 export async function killSession(id: string) {
   ensureEnabled();
-  const entry = sessions.get(validateId(id));
+  const safeId = validateId(id);
+  const entry = sessions.get(safeId) || await importTmuxSession(safeId);
   if (!entry) return;
   // Ask tmux to tear down its session; the pty exits when tmux detaches.
   try { await tmux(['kill-session', '-t', entry.meta.tmuxName]); } catch {}
-  try { entry.pty.kill(); } catch {}
+  try { entry.pty?.kill(); } catch {}
+  sessions.delete(entry.meta.id);
 }
 
 export type Subscription = {
@@ -314,23 +399,21 @@ export type Subscription = {
   unsubscribe: () => void;
 };
 
-export function subscribe(id: string, sub: Omit<Subscriber, 'id'>): Subscription {
+export async function subscribe(id: string, sub: Omit<Subscriber, 'id'>): Promise<Subscription> {
   ensureEnabled();
-  const entry = sessions.get(validateId(id));
-  if (!entry || !entry.meta.alive) throw new Error('Session not found');
+  const entry = await getEntry(id);
+  await ensureAttached(entry);
   if (entry.subscribers.size >= MAX_SUBSCRIBERS_PER_SESSION) {
     throw new Error('Too many subscribers for this session');
   }
   const subId = randomUUID();
   entry.subscribers.set(subId, { id: subId, ...sub });
-  entry.lastSubscriberLeftAt = 0;
   return {
     replay: [...entry.buffer],
     cols: entry.meta.cols,
     rows: entry.meta.rows,
     unsubscribe: () => {
       entry.subscribers.delete(subId);
-      if (entry.subscribers.size === 0) entry.lastSubscriberLeftAt = Date.now();
     },
   };
 }
@@ -339,8 +422,7 @@ export type TmuxWindow = { index: number; name: string; active: boolean };
 
 export async function listWindows(id: string): Promise<TmuxWindow[]> {
   ensureEnabled();
-  const entry = sessions.get(validateId(id));
-  if (!entry) throw new Error('Session not found');
+  const entry = await getEntry(id);
   try {
     const { stdout } = await tmux([
       'list-windows', '-t', entry.meta.tmuxName,
@@ -364,8 +446,7 @@ export async function tmuxCommand(
   body: { action: 'new-window' | 'kill-window' | 'select-window' | 'rename-window' | 'split-pane' | 'select-pane'; windowIndex?: number; name?: string; direction?: 'h' | 'v'; paneTarget?: string },
 ): Promise<{ ok: true }> {
   ensureEnabled();
-  const entry = sessions.get(validateId(id));
-  if (!entry) throw new Error('Session not found');
+  const entry = await getEntry(id);
   if (!body || typeof body.action !== 'string' || !TMUX_ACTIONS.has(body.action)) {
     throw new Error('Invalid tmux action');
   }
@@ -400,10 +481,7 @@ export async function tmuxCommand(
     case 'select-pane': {
       const dir = body.paneTarget;
       const args = ['select-pane', '-t', target];
-      if (dir === 'U') args.push('-U');
-      else if (dir === 'D') args.push('-D');
-      else if (dir === 'L') args.push('-L');
-      else if (dir === 'R') args.push('-R');
+      if (dir === 'U' || dir === 'D' || dir === 'L' || dir === 'R') args.push(`-${dir}`);
       await tmux(args);
       break;
     }
@@ -413,25 +491,14 @@ export async function tmuxCommand(
   return { ok: true };
 }
 
-// Garbage-collect both dead (exited) sessions and live-but-abandoned sessions
-// (every browser tab disconnected without DELETE). Without the abandoned-reap,
-// orphaned PTYs accumulate forever after MAX_SESSIONS is reached.
+// Garbage-collect dead (exited) sessions only. Live sessions survive browser
+// disconnects like tmux detach; users can kill them explicitly from the UI.
 setInterval(() => {
   const now = Date.now();
   for (const entry of sessions.values()) {
     if (!entry.meta.alive && now - entry.lastActivity > 5 * 60 * 1000) {
       sessions.delete(entry.meta.id);
       continue;
-    }
-    if (
-      entry.meta.alive &&
-      entry.subscribers.size === 0 &&
-      entry.lastSubscriberLeftAt > 0 &&
-      now - entry.lastSubscriberLeftAt > ABANDONED_REAP_MS
-    ) {
-      try { entry.pty.kill(); } catch {}
-      try { execFileAsync(TMUX, ['-L', SOCKET_NAME, 'kill-session', '-t', entry.meta.tmuxName], { timeout: 2000, shell: false }).catch(() => {}); } catch {}
-      sessions.delete(entry.meta.id);
     }
   }
 }, 60_000).unref?.();
@@ -440,10 +507,9 @@ setInterval(() => {
 // before Next's own SIGTERM handler tears the runtime down.
 function shutdown() {
   for (const entry of sessions.values()) {
-    try { entry.pty.kill(); } catch {}
+    try { entry.pty?.kill(); } catch {}
   }
   sessions.clear();
-  try { cpSpawn(TMUX, ['-L', SOCKET_NAME, 'kill-server'], { stdio: 'ignore' }).unref(); } catch {}
 }
 process.prependListener('SIGINT', shutdown);
 process.prependListener('SIGTERM', shutdown);

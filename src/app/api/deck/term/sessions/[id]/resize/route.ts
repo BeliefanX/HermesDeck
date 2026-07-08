@@ -17,7 +17,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
     const parsed = await readLimitedJson<{ cols?: unknown; rows?: unknown }>(req, 16_000, {});
     if (!parsed.ok) return parsed.response;
-    resizeSession(id, Number(parsed.value?.cols), Number(parsed.value?.rows));
+    await resizeSession(id, Number(parsed.value?.cols), Number(parsed.value?.rows));
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });

@@ -29,8 +29,12 @@ Deck 运行时数据来自 Hermes Agent API Server：
 - Agents：`/v1/profiles`、`/api/profiles`，选择返回内容最完整的 API-backed Agent catalog。admin/super_admin 只有在两个 strict catalog endpoints 都返回 404 时，才可使用 bounded local catalog fallback：仅枚举 `default` 和 immediate local profile dirs，且每个 candidate 必须通过对应 `/health` routing/key proof。普通用户不使用本地枚举。
 - models：按 Agent 调 `/v1/models`，不从本地文件合成模型清单。
 - chat：按 Agent 调 `/v1/runs` + `/v1/runs/{run_id}/events`，必要时传 `X-Hermes-Session-Id`。
+- run control：`/api/deck/chat/runs/{runId}` 和 `/stop` 只在 Deck projection 已绑定 `profile/session/run` 后转发 Agent `/v1/runs/{run_id}`。
+- capabilities/status：按 Agent 调 `/v1/capabilities` 与 `/health/detailed`，普通用户只得到低敏 status。
 - cron：按 Agent 调 `/api/jobs?include_disabled=true&profile=<id>`，必须从响应或 job rows 得到 routing proof。
-- tools/skills：优先从 Agent `/v1/skills` + `/v1/toolsets` 发现；raw local skill 文件读写只属于 `super_admin/local-owner` 编辑器。
+- cron detail/actions：先用 profile-scoped job list 证明 job 属于该 Agent，再转发 `/api/jobs/{job_id}` 和 pause/resume/run/update/delete；写操作 admin-only + CSRF。
+- sessions：list/messages/delete/update/fork 都走 Agent `/api/sessions*`，update 只转发 `title/end_reason`；Deck pin/tags/folder 仍是 Deck metadata。
+- tools/skills：优先从 Agent `/v1/skills` + `/v1/toolsets` 发现；`/api/deck/skill-catalog` 只暴露 metadata；raw local skill 文件读写只属于 `super_admin/local-owner` 编辑器。
 - stats/messages/tokens/tools/lcm 等：通过 BFF 对应 adapter 暴露给 UI。LCM SQLite dashboard 是 `super_admin/local-owner` 本机管理面。
 
 Deck 的 `super_admin/local-owner` 管理面可以编辑 Agent 背后的 Hermes Agent profile 文件（`config.yaml`、`SOUL.md`、`memories/USER.md`、`memories/MEMORY.md`）、raw local skill 文件，并查看 LCM SQLite dashboard；这些编辑器不是运行时数据源。文档中不要把 Hermes 本地数据库、CLI 或本地 catalog 描述为普通生产路径，也不要把 Hermes Agent profile 描述成 Deck 用户 profile。

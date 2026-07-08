@@ -2,12 +2,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { deckApi, ApiError } from '@/lib/api';
-import type { DeckHealth, DeckSession, DeckStats, ToolSummary, TokenStats } from '@/lib/types';
+import type { DeckHealth, DeckSession, DeckStats, ToolSummary } from '@/lib/types';
 import { sourceMeta, sourceTone, shortTitle, relTime } from '@/lib/format';
 import {
   MessageSquare, Terminal, Bot, ChevronRight, Activity, Wrench, Sparkles, Plug, Boxes,
-  HeartPulse, Database, Hash, Cpu, BarChart3, Server, Radio,
-  ArrowDownRight, ArrowUpRight, DollarSign, Zap, TrendingUp, CalendarDays, Flame, Clock,
+  HeartPulse, Hash, Cpu, BarChart3, Server, Radio, Clock,
   GitBranch,
 } from 'lucide-react';
 import {
@@ -22,8 +21,6 @@ import {
   DASHBOARD_ACTIVITY_HOURS,
   buildSessionAggregates,
   buildToolBreakdown,
-  fmtCost,
-  fmtTokens,
   formatUptime,
   pct,
 } from './_lib/dashboard';
@@ -101,7 +98,7 @@ export default function HomePage() {
       noSessions: '尚无会话。在对话页发送消息即可创建第一个会话。',
       kickerWorkbenchState: '工作台状态',
       emptyWorkbenchTitle: '当前没有可汇总的会话',
-      emptyWorkbenchDesc: 'Agent 与 API 状态会先显示在这里；发送第一条消息后，活跃度、来源分布和令牌用量会自动填充。',
+      emptyWorkbenchDesc: 'Agent 与 API 状态会先显示在这里；发送第一条消息后，活跃度和来源分布会自动填充。',
       emptyProfileReady: 'Agent 已就绪',
       emptyApiReady: 'API Server 正在响应',
       emptySessionReady: 'Chat 尚未产生会话',
@@ -141,49 +138,6 @@ export default function HomePage() {
       kvState: '状态',
       streamingValue: 'SSE · response.delta · run-event · done',
       unknown: '未知',
-      kickerTokenAllTime: '令牌用量 · 累计',
-      tokens: '令牌',
-      cost: '成本',
-      sessionsLabel: (n: string) => `${n} 个会话`,
-      apiCallsLabel: (n: string) => `${n} 次 API 调用`,
-      splitInput: '输入',
-      splitOutput: '输出',
-      splitCacheRead: '缓存读取',
-      splitReasoning: '推理',
-      kickerLast24h: '近 24 小时',
-      kicker14dTotal: '14 天累计',
-      sessionsShort: (n: number) => `${n} 个会话`,
-      rollingWindow: '滚动窗口',
-      kicker14dTrend: '14 天令牌趋势',
-      ariaTokenUsage14d: '14 天令牌用量',
-      tickMinus14d: '−14天',
-      tickMinus7d: '−7天',
-      kickerTokenTrend: '令牌趋势',
-      titleDailyIO: '每日输入 / 输出',
-      windowDays: (n: number) => `${n} 天窗口`,
-      ariaDailyStacked: '每日输入/输出堆叠图',
-      windowCost: '窗口成本',
-      kickerActivityRhythm: '活跃节奏',
-      titleUsageCadence: '使用节奏',
-      byHourWeekday: '按小时 / 星期',
-      kickerWeekday: '按星期分布',
-      peakDay: (day: string, tok: string) => ({ day, tok }),
-      labelPeakPrefix: '高峰 ',
-      labelPeakTokens: ' 令牌',
-      kickerHourly: '小时分布 (0–23)',
-      ariaHourlyTokens: '每小时令牌用量',
-      labelPeakHourSuffix: ' 令牌',
-      kickerByModel: '按模型',
-      titleTopModels: '热门模型 · 14 天',
-      viewAll: '查看全部',
-      kickerBySource: '按来源',
-      titleTopSources: '热门来源 · 14 天',
-      tokenView: '令牌视图',
-      noTokenUsage: '窗口期内无令牌用量。',
-      tokenAnalyticsUnavailable: '令牌分析暂不可用：Hermes Agent 尚未提供令牌分析 API。',
-      noSourceRecords: '窗口期内无来源记录。',
-      sessionsPlain: (n: number) => `${n} 个会话`,
-      dayNames: ['一', '二', '三', '四', '五', '六', '日'],
       dash: '—',
     },
     en: {
@@ -246,7 +200,7 @@ export default function HomePage() {
       noSessions: 'No sessions yet. Send a message in chat to create your first one.',
       kickerWorkbenchState: 'WORKBENCH STATE',
       emptyWorkbenchTitle: 'No sessions to summarize yet',
-      emptyWorkbenchDesc: 'Agent and API health show up first; after your first message, activity, source mix, and token usage will fill in here.',
+      emptyWorkbenchDesc: 'Agent and API health show up first; after your first message, activity and source mix will fill in here.',
       emptyProfileReady: 'Agent is ready',
       emptyApiReady: 'API Server is responding',
       emptySessionReady: 'Chat has not created a session yet',
@@ -288,49 +242,6 @@ export default function HomePage() {
       kvState: 'State',
       streamingValue: 'SSE · response.delta · run-event · done',
       unknown: 'unknown',
-      kickerTokenAllTime: 'TOKEN USAGE · ALL TIME',
-      tokens: 'tokens',
-      cost: 'cost',
-      sessionsLabel: (n: string) => `${n} sessions`,
-      apiCallsLabel: (n: string) => `${n} api calls`,
-      splitInput: 'Input',
-      splitOutput: 'Output',
-      splitCacheRead: 'Cache read',
-      splitReasoning: 'Reasoning',
-      kickerLast24h: 'LAST 24H',
-      kicker14dTotal: '14D TOTAL',
-      sessionsShort: (n: number) => `${n} sessions`,
-      rollingWindow: 'rolling window',
-      kicker14dTrend: '14D TOKEN TREND',
-      ariaTokenUsage14d: '14-day token usage',
-      tickMinus14d: '−14d',
-      tickMinus7d: '−7d',
-      kickerTokenTrend: 'TOKEN TREND',
-      titleDailyIO: 'Daily input / output',
-      windowDays: (n: number) => `${n}d window`,
-      ariaDailyStacked: 'Daily input/output stacked chart',
-      windowCost: 'window cost',
-      kickerActivityRhythm: 'ACTIVITY RHYTHM',
-      titleUsageCadence: 'Usage cadence',
-      byHourWeekday: 'by hour / weekday',
-      kickerWeekday: 'WEEKDAY DISTRIBUTION',
-      peakDay: (day: string, tok: string) => ({ day, tok }),
-      labelPeakPrefix: 'peak ',
-      labelPeakTokens: ' tokens',
-      kickerHourly: 'HOURLY (0–23)',
-      ariaHourlyTokens: 'Hourly token usage',
-      labelPeakHourSuffix: ' tokens',
-      kickerByModel: 'BY MODEL',
-      titleTopModels: 'Top models · 14d',
-      viewAll: 'View all',
-      kickerBySource: 'BY SOURCE',
-      titleTopSources: 'Top sources · 14d',
-      tokenView: 'token view',
-      noTokenUsage: 'No token usage in window.',
-      tokenAnalyticsUnavailable: 'Token analytics unavailable: Hermes Agent does not expose token analytics yet.',
-      noSourceRecords: 'No source records in window.',
-      sessionsPlain: (n: number) => `${n} sessions`,
-      dayNames: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
       dash: '—',
     },
   });
@@ -338,7 +249,6 @@ export default function HomePage() {
   const { activeProfile, profiles, hydrated } = useActiveProfile();
   const { capabilities } = useDeckSession();
   const canUseTerminal = capabilities.canUseTerminal;
-  const canViewTokenAnalytics = capabilities.canManageUsers;
   // Empty `profiles` alone can also mean the authoritative Hermes catalog is
   // temporarily unavailable. In that case ProfileProvider keeps admin/super_admin
   // usable with an RBAC-authorized emergency active profile (usually `default`).
@@ -352,7 +262,6 @@ export default function HomePage() {
   const [health, setHealth] = useState<DeckHealth | null>(null);
   const [sessions, setSessions] = useState<DeckSession[]>([]);
   const [tools, setTools] = useState<ToolSummary[]>([]);
-  const [tokens, setTokens] = useState<TokenStats | null>(null);
   const [stats, setStats] = useState<DeckStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -363,7 +272,6 @@ export default function HomePage() {
     if (noAssignedAgents) {
       setSessions([]);
       setTools([]);
-      setTokens(null);
       setStats(null);
       setLoadError('');
       setLoading(false);
@@ -385,21 +293,19 @@ export default function HomePage() {
       const ac = new AbortController();
       inflight = ac;
       try {
-        const [h, s, tl, k, st] = await Promise.allSettled([
+        const [h, s, tl, st] = await Promise.allSettled([
           deckApi.health(ac.signal),
           // The recent-sessions sample (heatmap, spark stats, recent list) is
           // always the *active* profile's threads — never silently 'default'.
           // The scope toggle drives only the aggregate `stats` request below.
           deckApi.sessions(activeProfile, ac.signal),
           deckApi.tools(activeProfile, ac.signal),
-          canViewTokenAnalytics ? deckApi.tokens(14, ac.signal, profileForScope) : Promise.resolve(null),
           deckApi.stats(profileForScope, ac.signal),
         ]);
         if (!alive || mySeq !== seq) return;
         if (h.status === 'fulfilled') setHealth(h.value);
         if (s.status === 'fulfilled') setSessions(s.value.sessions);
         if (tl.status === 'fulfilled') setTools(tl.value.tools);
-        if (k.status === 'fulfilled') setTokens(k.value);
         if (st.status === 'fulfilled') setStats(st.value);
         const failures: string[] = [];
         if (s.status === 'rejected') failures.push(`sessions: ${apiErrorDetail(s.reason)}`);
@@ -425,7 +331,7 @@ export default function HomePage() {
       inflight?.abort();
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [hydrated, scope, activeProfile, noAssignedAgents, canViewTokenAnalytics]);
+  }, [hydrated, scope, activeProfile, noAssignedAgents]);
 
   // Resolve the active-profile metadata for display (badges, "active · X" subs).
   // Falls back to the server-marked active profile when the global active id
@@ -542,14 +448,6 @@ export default function HomePage() {
         <Card>
           <div style={{ color: 'var(--red)', fontSize: 13, lineHeight: 1.5 }}>
             Dashboard data load failed: {loadError}
-          </div>
-        </Card>
-      )}
-
-      {tokens?.unavailableReason && (
-        <Card>
-          <div style={{ color: 'var(--yellow)', fontSize: 12, lineHeight: 1.5 }}>
-            {t.tokenAnalyticsUnavailable}
           </div>
         </Card>
       )}
@@ -681,25 +579,6 @@ export default function HomePage() {
           />
         </div>
       </Card>
-
-      {canViewTokenAnalytics && (
-        <>
-          {/* Token usage hero */}
-          <TokenUsageCard tokens={tokens} loading={loading} />
-
-          {/* Token charts: daily stacked + weekday/hour heatmap */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 14 }}>
-            <TokenDailyChart tokens={tokens} loading={loading} />
-            <TokenHourlyHeatmap tokens={tokens} loading={loading} />
-          </div>
-
-          {/* Top models + Top sources by tokens */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 14 }}>
-            <TopModelsByTokens tokens={tokens} loading={loading} />
-            <TopSourcesByTokens tokens={tokens} loading={loading} />
-          </div>
-        </>
-      )}
 
       {/* Profiles + Recent sessions */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 14 }}>
@@ -1089,498 +968,5 @@ function KvRow({ label, value, first }: { label: string; value: React.ReactNode;
       <span style={{ fontSize: 11.5, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 500 }}>{label}</span>
       <span style={{ fontSize: 12.5, color: 'var(--text)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>{value}</span>
     </div>
-  );
-}
-
-// ───────────────────────── Token usage hero ─────────────────────────
-
-function TokenUsageCard({ tokens, loading }: { tokens: TokenStats | null; loading: boolean }) {
-  const t = useT({
-    zh: {
-      kickerTokenAllTime: '令牌用量 · 累计',
-      tokens: '令牌',
-      cost: '成本',
-      loadingValue: '加载中',
-      sessionsLabel: (n: string) => `${n} 个会话`,
-      apiCallsLabel: (n: string) => `${n} 次 API 调用`,
-      splitInput: '输入',
-      splitOutput: '输出',
-      splitCacheRead: '缓存读取',
-      splitReasoning: '推理',
-      kickerLast24h: '近 24 小时',
-      kicker14dTotal: '14 天累计',
-      sessionsShort: (n: number) => `${n} 个会话`,
-      rollingWindow: '滚动窗口',
-      kicker14dTrend: '14 天令牌趋势',
-      ariaTokenUsage14d: '14 天令牌用量',
-      tickMinus14d: '−14天',
-      tickMinus7d: '−7天',
-      tickNow: '现在',
-      dash: '—',
-    },
-    en: {
-      kickerTokenAllTime: 'TOKEN USAGE · ALL TIME',
-      tokens: 'tokens',
-      cost: 'cost',
-      loadingValue: 'Loading',
-      sessionsLabel: (n: string) => `${n} sessions`,
-      apiCallsLabel: (n: string) => `${n} api calls`,
-      splitInput: 'Input',
-      splitOutput: 'Output',
-      splitCacheRead: 'Cache read',
-      splitReasoning: 'Reasoning',
-      kickerLast24h: 'LAST 24H',
-      kicker14dTotal: '14D TOTAL',
-      sessionsShort: (n: number) => `${n} sessions`,
-      rollingWindow: 'rolling window',
-      kicker14dTrend: '14D TOKEN TREND',
-      ariaTokenUsage14d: '14-day token usage',
-      tickMinus14d: '−14d',
-      tickMinus7d: '−7d',
-      tickNow: 'now',
-      dash: '—',
-    },
-  });
-
-  const tt = tokens?.totals;
-  const day = tokens?.last24h;
-  const totalDailyTokens = (tokens?.daily || []).reduce((s, d) => s + d.total, 0);
-  const sparkPeak = (tokens?.daily || []).reduce((m, d) => Math.max(m, d.total), 0);
-  const cacheRatio = tt && tt.input > 0 ? Math.round((tt.cacheRead / Math.max(tt.input, 1)) * 100) : 0;
-
-  return (
-    <Card hero>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 18, minWidth: 0 }}>
-        {/* Left: total + splits */}
-        <div style={{ minWidth: 0 }}>
-          <Kicker>{t.kickerTokenAllTime}</Kicker>
-          <div
-            style={{
-              fontSize: 36,
-              lineHeight: 1.05,
-              fontWeight: 680,
-              letterSpacing: '-.04em',
-              color: 'var(--strong-text)',
-              fontVariantNumeric: 'tabular-nums',
-              margin: '6px 0 12px',
-            }}
-          >
-            {loading ? t.loadingValue : fmtTokens(tt?.total ?? 0)}
-            <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--muted)', marginLeft: 6 }}>{t.tokens}</span>
-          </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-            <Tag icon={<DollarSign size={11} />}>{t.cost} <b style={{ marginLeft: 4 }}>{loading ? t.loadingValue : fmtCost(tt?.cost ?? 0)}</b></Tag>
-            <Tag icon={<Activity size={11} />}>{loading ? t.loadingValue : t.sessionsLabel((tt?.sessions ?? 0).toLocaleString())}</Tag>
-            <Tag icon={<Zap size={11} />}>{loading ? t.loadingValue : t.apiCallsLabel((tt?.apiCalls ?? 0).toLocaleString())}</Tag>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <SplitBar label={t.splitInput} icon={<ArrowDownRight size={12} />} value={tt?.input || 0} total={tt?.total || 0} fill="var(--accent)" />
-            <SplitBar label={t.splitOutput} icon={<ArrowUpRight size={12} />} value={tt?.output || 0} total={tt?.total || 0} fill="var(--green)" />
-            {tt && tt.cacheRead > 0 && (
-              <SplitBar
-                label={t.splitCacheRead}
-                icon={<Database size={12} />}
-                value={tt.cacheRead}
-                total={tt.total}
-                fill="var(--cyan)"
-                rightExtra={<span style={{ marginLeft: 4, color: 'var(--muted-2)', fontSize: 10 }}>{cacheRatio}%</span>}
-              />
-            )}
-            {tt && tt.reasoning > 0 && (
-              <SplitBar label={t.splitReasoning} icon={<Sparkles size={12} />} value={tt.reasoning} total={tt.total} fill="var(--yellow)" />
-            )}
-          </div>
-        </div>
-
-        {/* Right: 24h KPI + 14d sparkline */}
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 12,
-              marginBottom: 14,
-              padding: '10px 0',
-              borderTop: '1px solid var(--hairline)',
-              borderBottom: '1px solid var(--hairline)',
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <Kicker>{t.kickerLast24h}</Kicker>
-              <div style={{ fontSize: 20, fontWeight: 650, color: 'var(--strong-text)', fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>
-                {loading ? t.loadingValue : fmtTokens(day?.total ?? 0)}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{loading ? t.loadingValue : t.sessionsShort(day?.sessions ?? 0)}</div>
-            </div>
-            <div style={{ minWidth: 0, borderLeft: '1px solid var(--hairline)', paddingLeft: 12 }}>
-              <Kicker>{t.kicker14dTotal}</Kicker>
-              <div style={{ fontSize: 20, fontWeight: 650, color: 'var(--strong-text)', fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>
-                {loading ? t.loadingValue : fmtTokens(totalDailyTokens)}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{t.rollingWindow}</div>
-            </div>
-          </div>
-          <Kicker style={{ marginBottom: 6 }}>{t.kicker14dTrend}</Kicker>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 64 }} aria-label={t.ariaTokenUsage14d}>
-            {(tokens?.daily || []).map((d) => {
-              const pctVal = sparkPeak ? (d.total / sparkPeak) * 100 : 0;
-              const isPeak = d.total === sparkPeak && d.total > 0;
-              return (
-                <div
-                  key={d.date}
-                  title={`${d.date} · ${fmtTokens(d.total)} · ${fmtCost(d.cost)}`}
-                  style={{
-                    flex: 1,
-                    height: `${d.total > 0 ? Math.max(pctVal, 14) : 3}%`,
-                    background: isPeak ? 'var(--accent)' : d.total > 0 ? 'var(--accent-strong)' : 'var(--surface-bg)',
-                    borderRadius: 2,
-                  }}
-                />
-              );
-            })}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--muted-2)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
-            <span>{t.tickMinus14d}</span><span>{t.tickMinus7d}</span><span>{t.tickNow}</span>
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-function SplitBar({
-  label, icon, value, total, fill, rightExtra,
-}: {
-  label: string; icon: React.ReactNode; value: number; total: number; fill: string; rightExtra?: React.ReactNode;
-}) {
-  const pctVal = total ? (value / total) * 100 : 0;
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(64px, 110px) minmax(0, 1fr) minmax(54px, 90px)', gap: 12, alignItems: 'center', minWidth: 0 }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--text)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {icon}{label}
-      </span>
-      <div style={{ height: 8, background: 'var(--surface-bg)', borderRadius: 4, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pctVal}%`, background: fill, borderRadius: 4 }} />
-      </div>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--value-text)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-        {fmtTokens(value)}{rightExtra}
-      </span>
-    </div>
-  );
-}
-
-// ───────────────────────── Token daily stacked chart ─────────────────────────
-
-function TokenDailyChart({ tokens, loading }: { tokens: TokenStats | null; loading: boolean }) {
-  const t = useT({
-    zh: {
-      kickerTokenTrend: '令牌趋势',
-      titleDailyIO: '每日输入 / 输出',
-      windowDays: (n: number) => `${n} 天窗口`,
-      ariaDailyStacked: '每日输入/输出堆叠图',
-      splitInput: '输入',
-      splitOutput: '输出',
-      windowCost: '窗口成本',
-      loadingValue: '加载中',
-      dash: '—',
-    },
-    en: {
-      kickerTokenTrend: 'TOKEN TREND',
-      titleDailyIO: 'Daily input / output',
-      windowDays: (n: number) => `${n}d window`,
-      ariaDailyStacked: 'Daily input/output stacked chart',
-      splitInput: 'Input',
-      splitOutput: 'Output',
-      windowCost: 'window cost',
-      loadingValue: 'Loading',
-      dash: '—',
-    },
-  });
-
-  const daily = tokens?.daily || [];
-  const peak = daily.reduce((m, d) => Math.max(m, d.input + d.output), 0);
-  const totalCost = daily.reduce((s, d) => s + d.cost, 0);
-
-  return (
-    <Card>
-      <SectionHead
-        kicker={t.kickerTokenTrend}
-        title={t.titleDailyIO}
-        right={<Tag icon={<TrendingUp size={11} />}>{t.windowDays(tokens?.windowDays || 14)}</Tag>}
-      />
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 110, paddingTop: 4 }} aria-label={t.ariaDailyStacked}>
-        {loading && Array.from({ length: 14 }).map((_, i) => (
-          <div key={i} style={{ flex: 1, height: `${20 + (i * 7) % 60}%`, background: 'var(--surface-bg)', borderRadius: 2 }} />
-        ))}
-        {!loading && daily.map((d) => {
-          const total = d.input + d.output;
-          const heightPct = peak ? (total / peak) * 100 : 0;
-          const inputPct = total ? (d.input / total) * 100 : 0;
-          return (
-            <div
-              key={d.date}
-              title={`${d.date}\n${t.splitInput} ${fmtTokens(d.input)}  ${t.splitOutput} ${fmtTokens(d.output)}\n${fmtCost(d.cost)}`}
-              style={{
-                flex: 1,
-                height: `${total > 0 ? Math.max(heightPct, 14) : 3}%`,
-                display: 'flex',
-                flexDirection: 'column',
-                borderRadius: 2,
-                overflow: 'hidden',
-                background: total > 0 ? undefined : 'var(--surface-bg)',
-              }}
-            >
-              <div style={{ height: `${inputPct}%`, background: 'var(--accent-strong)' }} />
-              <div style={{ height: `${100 - inputPct}%`, background: 'var(--green)' }} />
-            </div>
-          );
-        })}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--hairline)', fontSize: 11, color: 'var(--muted)' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent-strong)' }} /> {t.splitInput}
-        </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--green)' }} /> {t.splitOutput}
-        </span>
-        <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>
-          {t.windowCost} {loading ? t.loadingValue : fmtCost(totalCost)}
-        </span>
-      </div>
-    </Card>
-  );
-}
-
-// ───────────────────────── Token hourly heatmap ─────────────────────────
-
-function TokenHourlyHeatmap({ tokens, loading }: { tokens: TokenStats | null; loading: boolean }) {
-  const t = useT({
-    zh: {
-      kickerActivityRhythm: '活跃节奏',
-      titleUsageCadence: '使用节奏',
-      byHourWeekday: '按小时 / 星期',
-      kickerWeekday: '按星期分布',
-      kickerHourly: '小时分布 (0–23)',
-      ariaHourlyTokens: '每小时令牌用量',
-      peakLabel: '高峰',
-      tokensSuffix: '令牌',
-      noData: '暂无数据',
-      loadingValue: '加载中',
-      dayNames: ['一', '二', '三', '四', '五', '六', '日'],
-      dash: '—',
-    },
-    en: {
-      kickerActivityRhythm: 'ACTIVITY RHYTHM',
-      titleUsageCadence: 'Usage cadence',
-      byHourWeekday: 'by hour / weekday',
-      kickerWeekday: 'WEEKDAY DISTRIBUTION',
-      kickerHourly: 'HOURLY (0–23)',
-      ariaHourlyTokens: 'Hourly token usage',
-      peakLabel: 'peak',
-      tokensSuffix: 'tokens',
-      noData: 'no data',
-      loadingValue: 'Loading',
-      dayNames: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-      dash: '—',
-    },
-  });
-
-  const hourly = tokens?.hourly || Array(24).fill(0);
-  const weekday = tokens?.weekday || Array(7).fill(0);
-  const peakHour = hourly.reduce((m, v) => Math.max(m, v), 0);
-  const peakDay = weekday.reduce((m, v) => Math.max(m, v), 0);
-  const peakHourIdx = hourly.indexOf(peakHour);
-  const peakDayIdx = weekday.indexOf(peakDay);
-
-  return (
-    <Card>
-      <SectionHead
-        kicker={t.kickerActivityRhythm}
-        title={t.titleUsageCadence}
-        right={<Tag icon={<CalendarDays size={11} />}>{t.byHourWeekday}</Tag>}
-      />
-      <div style={{ marginBottom: 16 }}>
-        <Kicker style={{ marginBottom: 6 }}>{t.kickerWeekday}</Kicker>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, alignItems: 'flex-end', height: 60 }}>
-          {weekday.map((v, i) => {
-            const intensity = peakDay ? v / peakDay : 0;
-            return (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }} title={`${t.dayNames[i]} · ${fmtTokens(v)}`}>
-                <div style={{ width: '100%', height: 36, background: 'var(--surface-bg)', borderRadius: 4, position: 'relative', overflow: 'hidden' }}>
-                  <div style={{ position: 'absolute', inset: 0, background: 'var(--accent)', opacity: 0.12 + intensity * 0.78, borderRadius: 4 }} />
-                </div>
-                <span style={{ fontSize: 10, color: 'var(--muted-2)', fontFamily: 'var(--font-mono)' }}>{t.dayNames[i]}</span>
-              </div>
-            );
-          })}
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
-          {loading ? t.loadingValue : peakDay > 0 ? <>{t.peakLabel} <b>{t.dayNames[peakDayIdx]}</b> · {fmtTokens(peakDay)} {t.tokensSuffix}</> : t.noData}
-        </div>
-      </div>
-
-      <div>
-        <Kicker style={{ marginBottom: 6 }}>{t.kickerHourly}</Kicker>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 60 }} aria-label={t.ariaHourlyTokens}>
-          {hourly.map((v, i) => {
-            const pctVal = peakHour ? (v / peakHour) * 100 : 0;
-            const isPeak = v === peakHour && v > 0;
-            return (
-              <div
-                key={i}
-                title={`${i.toString().padStart(2, '0')}:00 · ${fmtTokens(v)}`}
-                style={{
-                  flex: 1,
-                  height: `${v > 0 ? Math.max(pctVal, 12) : 3}%`,
-                  background: isPeak ? 'var(--accent)' : v > 0 ? 'var(--accent-strong)' : 'var(--surface-bg)',
-                  borderRadius: 2,
-                }}
-              />
-            );
-          })}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--muted-2)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
-          <span>00</span><span>06</span><span>12</span><span>18</span><span>23</span>
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-          {loading ? t.loadingValue : peakHour > 0 ? <>{t.peakLabel} <b>{peakHourIdx.toString().padStart(2, '0')}:00</b> · {fmtTokens(peakHour)} {t.tokensSuffix}</> : t.noData}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-// ───────────────────────── Top models / sources by tokens ─────────────────────────
-
-function TopModelsByTokens({ tokens, loading }: { tokens: TokenStats | null; loading: boolean }) {
-  const t = useT({
-    zh: {
-      kickerByModel: '按模型',
-      titleTopModels: '热门模型 · 14 天',
-      viewAll: '查看全部',
-      noTokenUsage: '窗口期内无令牌用量。',
-    },
-    en: {
-      kickerByModel: 'BY MODEL',
-      titleTopModels: 'Top models · 14d',
-      viewAll: 'View all',
-      noTokenUsage: 'No token usage in window.',
-    },
-  });
-
-  const models = tokens?.topModels || [];
-  const peak = models.reduce((m, x) => Math.max(m, x.tokens), 0);
-
-  return (
-    <Card>
-      <SectionHead
-        kicker={t.kickerByModel}
-        title={t.titleTopModels}
-        right={
-          <Link href="/profiles" style={{ fontSize: 11.5, color: 'var(--accent)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            {t.viewAll} <ChevronRight size={12} />
-          </Link>
-        }
-      />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {loading && Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 80px', gap: 12, alignItems: 'center' }}>
-            <div className="skel" style={{ width: 80, height: 12 }} />
-            <div className="skel" style={{ width: '100%', height: 6 }} />
-            <div className="skel" style={{ width: 36, height: 12 }} />
-          </div>
-        ))}
-        {!loading && models.length === 0 && (
-          <div style={{ padding: '12px 0', color: 'var(--muted-2)', fontSize: 12 }}>{t.noTokenUsage}</div>
-        )}
-        {!loading && models.map((m) => (
-          <BarRow
-            key={m.model}
-            label={
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }} title={m.model}>
-                <Cpu size={11} style={{ color: 'var(--accent)' }} />
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {m.model}
-                </span>
-              </span>
-            }
-            value={m.tokens}
-            max={peak || 1}
-            raw={
-              <span>
-                {fmtTokens(m.tokens)}
-                <span style={{ display: 'block', fontSize: 10, color: 'var(--muted-2)' }}>{fmtCost(m.cost)}</span>
-              </span>
-            }
-          />
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function TopSourcesByTokens({ tokens, loading }: { tokens: TokenStats | null; loading: boolean }) {
-  const t = useT({
-    zh: {
-      kickerBySource: '按来源',
-      titleTopSources: '热门来源 · 14 天',
-      tokenView: '令牌视图',
-      noSourceRecords: '窗口期内无来源记录。',
-      sessionsPlain: (n: number) => `${n} 个会话`,
-    },
-    en: {
-      kickerBySource: 'BY SOURCE',
-      titleTopSources: 'Top sources · 14d',
-      tokenView: 'token view',
-      noSourceRecords: 'No source records in window.',
-      sessionsPlain: (n: number) => `${n} sessions`,
-    },
-  });
-
-  const sources = tokens?.topSources || [];
-  const peak = sources.reduce((m, x) => Math.max(m, x.tokens), 0);
-
-  return (
-    <Card>
-      <SectionHead
-        kicker={t.kickerBySource}
-        title={t.titleTopSources}
-        right={<Tag icon={<Flame size={11} />}>{t.tokenView}</Tag>}
-      />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {loading && Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 80px', gap: 12, alignItems: 'center' }}>
-            <div className="skel" style={{ width: 80, height: 12 }} />
-            <div className="skel" style={{ width: '100%', height: 6 }} />
-            <div className="skel" style={{ width: 36, height: 12 }} />
-          </div>
-        ))}
-        {!loading && sources.length === 0 && (
-          <div style={{ padding: '12px 0', color: 'var(--muted-2)', fontSize: 12 }}>{t.noSourceRecords}</div>
-        )}
-        {!loading && sources.map((s) => {
-          const meta = sourceMeta(s.source);
-          return (
-            <BarRow
-              key={s.source}
-              label={
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} title={meta.label}>
-                  <Tag variant={sourceTone(meta.tone)}>{meta.short}</Tag>
-                </span>
-              }
-              value={s.tokens}
-              max={peak || 1}
-              raw={
-                <span>
-                  {fmtTokens(s.tokens)}
-                  <span style={{ display: 'block', fontSize: 10, color: 'var(--muted-2)' }}>{t.sessionsPlain(s.sessions)}</span>
-                </span>
-              }
-            />
-          );
-        })}
-      </div>
-    </Card>
   );
 }

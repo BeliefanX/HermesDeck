@@ -1,4 +1,4 @@
-import type { DeckAuthSession, DeckHealth, DeckProfile, DeckSession, DeckMessage, ToolSummary, TerminalAction, TerminalRunRequest, TerminalRunResult, DeckModelsResponse, DeckModelPreferenceResponse, DeckNotificationConfigResponse, DeckNotificationPreferences, TokenStats, DeckStats, DeckCronJob, LiveTerminalSession, LiveTerminalListResponse, LiveTerminalWindow, LiveTerminalCreateRequest, LiveTerminalTmuxRequest, SkillContent, LcmDashboard } from './types';
+import type { DeckAuthSession, DeckHealth, DeckProfile, DeckSession, DeckMessage, ToolSummary, TerminalAction, TerminalRunRequest, TerminalRunResult, DeckModelsResponse, DeckModelPreferenceResponse, DeckNotificationConfigResponse, DeckNotificationPreferences, TokenStats, DeckStats, DeckCronJob, DeckCapabilities, DeckGatewayStatus, DeckToolset, DeckSkillCatalogItem, LiveTerminalSession, LiveTerminalListResponse, LiveTerminalWindow, LiveTerminalCreateRequest, LiveTerminalTmuxRequest, SkillContent, LcmDashboard } from './types';
 import type { MetaStore } from './session-meta';
 import type { ConfigFileKey, DeckConfigBundle, SaveConfigResult } from './config-files';
 
@@ -128,6 +128,10 @@ async function request<T>(path: string, init?: RequestInit & { timeoutMs?: numbe
 export const deckApi = {
   session: (signal?: AbortSignal) => request<DeckAuthSession>('/api/deck/auth/session', { signal }),
   health: (signal?: AbortSignal) => request<DeckHealth>('/api/deck/health', { signal }),
+  capabilities: (profileId = 'default', signal?: AbortSignal) =>
+    request<DeckCapabilities>(`/api/deck/capabilities?profile=${encodeURIComponent(profileId)}`, { signal }),
+  gatewayStatus: (profileId = 'default', signal?: AbortSignal) =>
+    request<DeckGatewayStatus>(`/api/deck/gateway/status?profile=${encodeURIComponent(profileId)}`, { signal }),
   stats: (profileId?: string, signal?: AbortSignal) => {
     const qs = profileId ? `?profile=${encodeURIComponent(profileId)}` : '';
     return request<DeckStats>(`/api/deck/stats${qs}`, { signal });
@@ -147,10 +151,22 @@ export const deckApi = {
     request<{ messages: DeckMessage[] }>(`/api/deck/sessions/${encodeURIComponent(sessionId)}/messages?profile=${encodeURIComponent(profileId)}`, { signal }),
   chatApproval: (body: { profileId: string; sessionId: string; runId: string; choice: 'once' | 'session' | 'always' | 'deny' }) =>
     request<{ ok: true }>('/api/deck/chat/approval', { method: 'POST', body: JSON.stringify(body), timeoutMs: 30_000 }),
+  chatRunStatus: (body: { profileId: string; sessionId: string; runId: string }, signal?: AbortSignal) =>
+    request<{ ok: true; run: unknown }>(`/api/deck/chat/runs/${encodeURIComponent(body.runId)}?profile=${encodeURIComponent(body.profileId)}&sessionId=${encodeURIComponent(body.sessionId)}`, { signal, timeoutMs: 10_000 }),
+  chatRunStop: (body: { profileId: string; sessionId: string; runId: string }) =>
+    request<{ ok: true; runId: string; status?: string }>(`/api/deck/chat/runs/${encodeURIComponent(body.runId)}/stop`, { method: 'POST', body: JSON.stringify(body), timeoutMs: 15_000 }),
+  forkSession: (sessionId: string, profileId = 'default', body: Record<string, unknown> = {}) =>
+    request<{ ok: true; result: unknown }>(`/api/deck/sessions/${encodeURIComponent(sessionId)}/fork?profile=${encodeURIComponent(profileId)}`, { method: 'POST', body: JSON.stringify(body), timeoutMs: 15_000 }),
+  updateSession: (sessionId: string, profileId = 'default', body: { title?: string | null; end_reason?: string }) =>
+    request<{ ok: true; result: unknown }>(`/api/deck/sessions/${encodeURIComponent(sessionId)}?profile=${encodeURIComponent(profileId)}`, { method: 'PATCH', body: JSON.stringify(body), timeoutMs: 15_000 }),
   deleteSession: (sessionId: string, profileId = 'default') =>
     request<{ ok: boolean; removed: number }>(`/api/deck/sessions/${encodeURIComponent(sessionId)}?profile=${encodeURIComponent(profileId)}`, { method: 'DELETE' }),
   tools: (profileId = 'default', signal?: AbortSignal) =>
     request<{ tools: ToolSummary[] }>(`/api/deck/tools?profile=${encodeURIComponent(profileId)}`, { signal }),
+  toolsets: (profileId = 'default', signal?: AbortSignal) =>
+    request<{ profileId: string; toolsets: DeckToolset[] }>(`/api/deck/toolsets?profile=${encodeURIComponent(profileId)}`, { signal }),
+  skillCatalog: (profileId = 'default', signal?: AbortSignal) =>
+    request<{ profileId: string; skills: DeckSkillCatalogItem[] }>(`/api/deck/skill-catalog?profile=${encodeURIComponent(profileId)}`, { signal }),
   lcm: (signal?: AbortSignal) => request<LcmDashboard>('/api/deck/lcm', { signal, timeoutMs: 30_000 }),
   skillRead: (relPath: string, signal?: AbortSignal) =>
     request<SkillContent>(`/api/deck/skills?path=${encodeURIComponent(relPath)}`, { signal }),
@@ -210,6 +226,16 @@ export const deckApi = {
     const qs = profileId ? `?profile=${encodeURIComponent(profileId)}` : '';
     return request<{ jobs: DeckCronJob[] }>(`/api/deck/cron${qs}`, { signal, timeoutMs: 30_000 });
   },
+  cronJob: (jobId: string, profileId = 'default', signal?: AbortSignal) =>
+    request<{ job: unknown }>(`/api/deck/cron/${encodeURIComponent(jobId)}?profile=${encodeURIComponent(profileId)}`, { signal, timeoutMs: 15_000 }),
+  cronCreate: (profileId: string, body: Record<string, unknown>) =>
+    request<unknown>(`/api/deck/cron?profile=${encodeURIComponent(profileId)}`, { method: 'POST', body: JSON.stringify(body), timeoutMs: 15_000 }),
+  cronUpdate: (jobId: string, profileId: string, body: Record<string, unknown>) =>
+    request<unknown>(`/api/deck/cron/${encodeURIComponent(jobId)}?profile=${encodeURIComponent(profileId)}`, { method: 'PATCH', body: JSON.stringify(body), timeoutMs: 15_000 }),
+  cronDelete: (jobId: string, profileId: string) =>
+    request<unknown>(`/api/deck/cron/${encodeURIComponent(jobId)}?profile=${encodeURIComponent(profileId)}`, { method: 'DELETE', timeoutMs: 15_000 }),
+  cronAction: (jobId: string, profileId: string, action: 'pause' | 'resume' | 'run') =>
+    request<unknown>(`/api/deck/cron/${encodeURIComponent(jobId)}/${action}?profile=${encodeURIComponent(profileId)}`, { method: 'POST', body: JSON.stringify({}), timeoutMs: 15_000 }),
   terminalActions: (signal?: AbortSignal) => request<{ actions: TerminalAction[] }>('/api/deck/terminal/actions', { signal }),
   terminalRun: (body: TerminalRunRequest) => request<TerminalRunResult>('/api/deck/terminal/run', { method: 'POST', body: JSON.stringify(body), timeoutMs: 60_000 }),
 

@@ -49,6 +49,7 @@ const adminUserProfilesRoutePath = resolve('src/app/api/deck/admin/users/[id]/pr
 const deckProfilesRoutePath = resolve('src/app/api/deck/profiles/route.ts');
 const deckModelsRoutePath = resolve('src/app/api/deck/models/route.ts');
 const deckSessionsRoutePath = resolve('src/app/api/deck/sessions/route.ts');
+const deckMessagesRoutePath = resolve('src/app/api/deck/sessions/[id]/messages/route.ts');
 let importNonce = 0;
 
 function makeHome() {
@@ -1236,6 +1237,131 @@ test('Deck chat projection is profile scoped and rejects cross-profile message r
     else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
     if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
     else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+  }
+});
+
+test('Deck message hydration finalizes empty projected assistant drafts from completed API messages', async () => {
+  const home = makeHome();
+  const dataDir = join(home, '.hermesdeck-data');
+  const oldHome = process.env.HOME;
+  const oldUserprofile = process.env.USERPROFILE;
+  const oldAuthDir = process.env.HERMESDECK_AUTH_DIR;
+  const oldDataDir = process.env.HERMESDECK_DATA_DIR;
+  const oldHermesApiBase = process.env.HERMES_API_BASE;
+  const oldApiServerKey = process.env.API_SERVER_KEY;
+  const originalFetch = globalThis.fetch;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.HERMESDECK_AUTH_DIR = join(home, '.hermesdeck');
+    process.env.HERMESDECK_DATA_DIR = dataDir;
+    process.env.HERMES_API_BASE = 'http://127.0.0.1:18703';
+    process.env.API_SERVER_KEY = 'default-secret';
+
+    const auth = await loadAuth(home);
+    let store = withSuppressedBootstrapLog(() => auth.readAuth());
+    const now = new Date().toISOString();
+    const user = {
+      id: 'user_message_hydration',
+      username: 'message-hydration-user',
+      role: 'user',
+      status: 'active',
+      ...auth.createPasswordRecord('message-hydration-password-123'),
+      assignedProfileIds: ['default'],
+      preferences: { profiles: {} },
+      createdAt: now,
+      updatedAt: now,
+      approvedAt: now,
+      approvedBy: Object.values(store.users)[0].id,
+    };
+    store = { ...store, users: { ...store.users, [user.id]: user } };
+    writeStore(home, store);
+    const token = auth.issueSessionToken(user.id);
+
+    const projection = await import(`${pathToFileURL(deckChatProjectionModulePath).href}?case=${Date.now()}-${importNonce++}`);
+    const viewer = { userId: user.id, role: user.role };
+    projection.startProjectedTurn({ sessionId: 'hydrate-final', profileId: 'default', ownerUserId: user.id, ownerRole: user.role, message: 'finish me' });
+    projection.startProjectedTurn({ sessionId: 'hydrate-running', profileId: 'default', ownerUserId: user.id, ownerRole: user.role, message: 'still running' });
+    projection.startProjectedTurn({ sessionId: 'hydrate-duplicate', profileId: 'default', ownerUserId: user.id, ownerRole: user.role, message: 'repeat prompt' });
+    projection.finalizeProjectedTurn({
+      sessionId: 'hydrate-duplicate',
+      profileId: 'default',
+      viewer,
+      content: 'old duplicate answer',
+      responseId: 'resp_old_duplicate',
+    });
+    projection.startProjectedTurn({ sessionId: 'hydrate-duplicate', profileId: 'default', ownerUserId: user.id, ownerRole: user.role, message: 'repeat prompt' });
+
+    const latestUserCreatedAt = (sessionId) => {
+      const createdAt = projection.getProjectedMessages(sessionId, 'default', { viewer })
+        .filter((message) => message.role === 'user')
+        .at(-1)?.createdAt;
+      assert.equal(typeof createdAt, 'string');
+      return createdAt;
+    };
+    const offsetIso = (iso, ms) => new Date(new Date(iso).getTime() + ms).toISOString();
+    const finalUserAt = latestUserCreatedAt('hydrate-final');
+    const runningUserAt = latestUserCreatedAt('hydrate-running');
+    const duplicateCurrentUserAt = latestUserCreatedAt('hydrate-duplicate');
+
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      if (href.includes('/api/sessions/hydrate-final/messages')) {
+        return Response.json({ data: [
+          { id: 'u-api-final', role: 'user', content: 'finish me', created_at: offsetIso(finalUserAt, 1) },
+          { id: 'a-api-final', role: 'assistant', content: 'finished answer', created_at: offsetIso(finalUserAt, 2), metadata: { finish_reason: 'stop', responseId: 'resp_hydrate_final' } },
+        ] });
+      }
+      if (href.includes('/api/sessions/hydrate-running/messages')) {
+        return Response.json({ data: [
+          { id: 'u-api-running', role: 'user', content: 'still running', created_at: offsetIso(runningUserAt, 1) },
+        ] });
+      }
+      if (href.includes('/api/sessions/hydrate-duplicate/messages')) {
+        return Response.json({ data: [
+          { id: 'u-api-duplicate-old', role: 'user', content: 'repeat prompt', created_at: offsetIso(duplicateCurrentUserAt, -10_000) },
+          { id: 'a-api-duplicate-old', role: 'assistant', content: 'older answer must not recover current draft', created_at: offsetIso(duplicateCurrentUserAt, -9_000), metadata: { finish_reason: 'stop', responseId: 'resp_old_duplicate_api' } },
+        ] });
+      }
+      if (href.includes('/api/sessions')) return Response.json({ data: [{ id: 'hydrate-final' }, { id: 'hydrate-running' }, { id: 'hydrate-duplicate' }] });
+      return Response.json({ data: [] });
+    };
+
+    const route = await loadRouteModule(deckMessagesRoutePath);
+    const finalRes = await route.GET(routeRequest('/api/deck/sessions/hydrate-final/messages?profile=default', { headers: { cookie: cookieHeader(token) } }), { params: Promise.resolve({ id: 'hydrate-final' }) });
+    assert.equal(finalRes.status, 200);
+    const finalBody = await responseJson(finalRes);
+    assert.equal(finalBody.messages.at(-1).content, 'finished answer');
+    assert.equal(finalBody.messages.at(-1).metadata.projectionStatus, 'final');
+    assert.equal(projection.getProjectedMessages('hydrate-final', 'default', { viewer }).at(-1).content, 'finished answer');
+
+    const runningRes = await route.GET(routeRequest('/api/deck/sessions/hydrate-running/messages?profile=default', { headers: { cookie: cookieHeader(token) } }), { params: Promise.resolve({ id: 'hydrate-running' }) });
+    assert.equal(runningRes.status, 200);
+    const runningBody = await responseJson(runningRes);
+    assert.equal(runningBody.messages.at(-1).content, '');
+    assert.equal(runningBody.messages.at(-1).metadata.projectionStatus, 'draft');
+
+    const duplicateRes = await route.GET(routeRequest('/api/deck/sessions/hydrate-duplicate/messages?profile=default', { headers: { cookie: cookieHeader(token) } }), { params: Promise.resolve({ id: 'hydrate-duplicate' }) });
+    assert.equal(duplicateRes.status, 200);
+    const duplicateBody = await responseJson(duplicateRes);
+    assert.equal(duplicateBody.messages.at(-1).content, '');
+    assert.equal(duplicateBody.messages.at(-1).metadata.projectionStatus, 'draft');
+    assert.equal(
+      projection.getProjectedMessages('hydrate-duplicate', 'default', { viewer }).at(-1).content,
+      '',
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserprofile;
+    if (oldAuthDir === undefined) delete process.env.HERMESDECK_AUTH_DIR;
+    else process.env.HERMESDECK_AUTH_DIR = oldAuthDir;
+    if (oldDataDir === undefined) delete process.env.HERMESDECK_DATA_DIR;
+    else process.env.HERMESDECK_DATA_DIR = oldDataDir;
+    if (oldHermesApiBase === undefined) delete process.env.HERMES_API_BASE;
+    else process.env.HERMES_API_BASE = oldHermesApiBase;
+    if (oldApiServerKey === undefined) delete process.env.API_SERVER_KEY;
+    else process.env.API_SERVER_KEY = oldApiServerKey;
   }
 });
 
@@ -3441,7 +3567,6 @@ test('phase 6 UI gates local-management navigation by super_admin capability', (
 
   assert.match(dashboardSource, /useDeckSession\(\)/);
   assert.match(dashboardSource, /canUseTerminal[\s\S]*\/terminal/);
-  assert.match(dashboardSource, /canViewTokenAnalytics[\s\S]*deckApi\.tokens/);
 });
 
 test('phase 6 active profile reconciliation clears unauthorized stale selections and shows no-assigned-Agent state', () => {

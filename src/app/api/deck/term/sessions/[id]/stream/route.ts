@@ -15,16 +15,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   let keepalive: ReturnType<typeof setInterval> | null = null;
 
   const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
+    async start(controller) {
       const send = (event: string, data: unknown) => {
         try {
           controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
         } catch { /* controller closed */ }
       };
 
-      let sub: ReturnType<typeof subscribe>;
+      let sub: Awaited<ReturnType<typeof subscribe>>;
       try {
-        sub = subscribe(id, {
+        sub = await subscribe(id, {
           send,
           close: () => { try { controller.close(); } catch {} },
         });

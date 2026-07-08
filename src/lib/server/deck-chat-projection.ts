@@ -47,6 +47,7 @@ type ProjectedSession = DeckSession & {
   ownerUserId?: string;
   ownerRole?: string;
   status?: ProjectedSessionStatus;
+  runIds?: string[];
   responseId?: string;
   previousResponseId?: string;
   aliases?: string[];
@@ -533,6 +534,15 @@ function resolveApprovalMessage(session: ProjectedSession, input: { runId: strin
   return true;
 }
 
+function noteRunId(session: ProjectedSession, runId?: string): boolean {
+  if (!isRunId(runId)) return false;
+  const ids = new Set(session.runIds || []);
+  const before = ids.size;
+  ids.add(runId.trim());
+  session.runIds = [...ids].slice(-20);
+  return ids.size !== before;
+}
+
 type ProjectedToolSlot = {
   message: ProjectedMessage;
   name: string;
@@ -720,6 +730,7 @@ function insertToolResultMessage(session: ProjectedSession, input: {
 }
 
 function isProjectableRunEvent(type: string, payload: Record<string, unknown>, item: Record<string, unknown>): boolean {
+  if (isRunId(payload.run_id)) return true;
   if (type === 'approval.request' || type === 'approval.responded') return Boolean(stringValue(payload.run_id));
   if (type === 'response.output_item.added') return isFunctionCallItemType(item.type);
   if (isToolArgsDelta(type)) return false;
@@ -896,7 +907,7 @@ export function recordProjectedRunEvent(input: RecordProjectedRunEventInput): vo
     }
     assertCanWriteProjectedSession(session, input.viewer);
     const now = nowIso();
-    let changed = false;
+    let changed = noteRunId(session, stringValue(payload.run_id));
 
     if (innerType === 'approval.request') {
       const runId = stringValue(payload.run_id);
@@ -1219,6 +1230,17 @@ export function hasProjectedSession(sessionId: string, profileId: string, viewer
   const canonicalId = resolveAlias(store, sessionId.trim());
   const session = store.sessions[canonicalId];
   return !!session && session.profileId === normalizeProfile(profileId) && canWriteProjectedSession(session, viewer);
+}
+
+export function hasProjectedRun(input: ProjectedApprovalInput): boolean {
+  const store = readStore();
+  const canonicalId = resolveAlias(store, input.sessionId.trim());
+  const session = store.sessions[canonicalId];
+  const runId = input.runId.trim();
+  return !!session
+    && session.profileId === normalizeProfile(input.profileId)
+    && canWriteProjectedSession(session, input.viewer)
+    && ((session.runIds || []).includes(runId) || !!findApprovalMessage(session, runId));
 }
 
 export function hasPendingProjectedApproval(input: ProjectedApprovalInput): boolean {

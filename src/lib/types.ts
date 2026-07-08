@@ -80,6 +80,47 @@ export interface DeckCronJob {
   createdAt?: string;
 }
 
+export interface DeckCapabilities {
+  ok: boolean;
+  profileId: string;
+  features: Record<string, unknown>;
+  endpoints: Record<string, unknown>;
+  summary: Record<string, unknown>;
+}
+
+export interface DeckGatewayStatus {
+  ok: boolean;
+  profileId: string;
+  status: string;
+  platform?: unknown;
+  version?: unknown;
+  gatewayState?: unknown;
+  activeAgents?: unknown;
+  gatewayBusy?: unknown;
+  gatewayDrainable?: unknown;
+  updatedAt?: unknown;
+  platforms?: unknown;
+  pid?: unknown;
+  exitReason?: unknown;
+}
+
+export interface DeckToolset {
+  name: string;
+  label?: string;
+  description?: string;
+  enabled: boolean;
+  configured: boolean;
+  tools: string[];
+}
+
+export interface DeckSkillCatalogItem {
+  name: string;
+  description?: string;
+  category?: string;
+  source?: string;
+  trust?: string;
+}
+
 export interface DeckSession {
   id: string;
   profileId: string;

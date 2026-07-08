@@ -360,64 +360,67 @@ export function LiveTerminal() {
         </Btn>
       </div>
 
-      {/* Window strip + tmux helpers */}
-      {activeId && (
-        <div style={windowStripStyle}>
-          <span style={{ fontSize: 10, color: 'var(--muted-2)', textTransform: 'uppercase', letterSpacing: '.1em' }}>windows</span>
-          {windows.length === 0 ? (
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>—</span>
-          ) : (
-            windows.map((w) => (
-              <button
-                key={w.index}
-                onClick={() => tmux({ action: 'select-window', windowIndex: w.index })}
-                style={windowTabStyle(w.active)}
-                title={`window ${w.index}: ${w.name}`}
-              >
-                <span style={{ fontSize: 10, color: 'var(--muted-2)' }}>{w.index}</span>
-                <span style={{ fontSize: 11.5 }}>{w.name}</span>
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => { e.stopPropagation(); void tmux({ action: 'kill-window', windowIndex: w.index }); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); void tmux({ action: 'kill-window', windowIndex: w.index }); } }}
-                  style={tabCloseStyle}
-                  aria-label={`Kill window ${w.name}`}
-                >
-                  <X size={10} />
-                </span>
-              </button>
-            ))
-          )}
-          <Btn size="sm" variant="ghost" icon={<Plus size={11} />} onClick={() => tmux({ action: 'new-window' })}>
-            window
-          </Btn>
-          <span style={{ width: 1, height: 16, background: 'var(--hairline)', margin: '0 4px' }} />
-          <Btn size="sm" variant="ghost" icon={<SplitSquareHorizontal size={11} />} onClick={() => tmux({ action: 'split-pane', direction: 'h' })}>
-            split →
-          </Btn>
-          <Btn size="sm" variant="ghost" icon={<SplitSquareVertical size={11} />} onClick={() => tmux({ action: 'split-pane', direction: 'v' })}>
-            split ↓
-          </Btn>
-          <Tag variant="default" icon={<Square size={9} />}>{cols(activeId, sessions)}×{rows(activeId, sessions)}</Tag>
-        </div>
-      )}
-
-      {/* Terminal canvas */}
-      <div style={{ position: 'relative', flex: 1, minHeight: 320, background: 'var(--terminal-bg)' }}>
-        {!activeId && (
-          <div style={emptyOverlay}>
-            <TermIcon size={22} style={{ color: 'var(--muted)' }} />
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--strong-text)' }}>No live session</div>
-            <div style={{ fontSize: 11.5, color: 'var(--muted-2)', maxWidth: 360, textAlign: 'center' }}>
-              Start a tmux-backed shell — windows persist across reconnects so you can detach and come back.
+      <div className="hermes-live-terminal-frame" style={terminalFrameStyle}>
+        <style>{terminalFrameCss}</style>
+        {/* Terminal canvas */}
+        <div style={terminalCanvasStyle}>
+          {!activeId && (
+            <div style={emptyOverlay}>
+              <TermIcon size={22} style={{ color: 'var(--muted)' }} />
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--strong-text)' }}>No live session</div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted-2)', maxWidth: 360, textAlign: 'center' }}>
+                Start a tmux-backed shell — windows persist across reconnects so you can detach and come back.
+              </div>
+              <Btn size="sm" variant="primary" icon={<Plus size={12} />} onClick={createSession} disabled={creating}>
+                {creating ? 'Creating…' : 'New session'}
+              </Btn>
             </div>
-            <Btn size="sm" variant="primary" icon={<Plus size={12} />} onClick={createSession} disabled={creating}>
-              {creating ? 'Creating…' : 'New session'}
+          )}
+          <div ref={setTermHost} style={terminalHostStyle} />
+        </div>
+
+        {/* Window strip + tmux helpers */}
+        {activeId && (
+          <div style={windowStripStyle}>
+            <span style={{ fontSize: 10, color: 'var(--muted-2)', textTransform: 'uppercase', letterSpacing: '.1em' }}>windows</span>
+            {windows.length === 0 ? (
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>—</span>
+            ) : (
+              windows.map((w) => (
+                <button
+                  key={w.index}
+                  onClick={() => tmux({ action: 'select-window', windowIndex: w.index })}
+                  style={windowTabStyle(w.active)}
+                  title={`window ${w.index}: ${w.name}`}
+                >
+                  <span style={{ fontSize: 10, color: 'var(--muted-2)' }}>{w.index}</span>
+                  <span style={{ fontSize: 11.5 }}>{w.name}</span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); void tmux({ action: 'kill-window', windowIndex: w.index }); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); void tmux({ action: 'kill-window', windowIndex: w.index }); } }}
+                    style={tabCloseStyle}
+                    aria-label={`Kill window ${w.name}`}
+                  >
+                    <X size={10} />
+                  </span>
+                </button>
+              ))
+            )}
+            <Btn size="sm" variant="ghost" icon={<Plus size={11} />} onClick={() => tmux({ action: 'new-window' })}>
+              window
             </Btn>
+            <span style={{ width: 1, height: 16, background: 'var(--hairline)', margin: '0 4px' }} />
+            <Btn size="sm" variant="ghost" icon={<SplitSquareHorizontal size={11} />} onClick={() => tmux({ action: 'split-pane', direction: 'h' })}>
+              split →
+            </Btn>
+            <Btn size="sm" variant="ghost" icon={<SplitSquareVertical size={11} />} onClick={() => tmux({ action: 'split-pane', direction: 'v' })}>
+              split ↓
+            </Btn>
+            <Tag variant="default" icon={<Square size={9} />}>{cols(activeId, sessions)}×{rows(activeId, sessions)}</Tag>
           </div>
         )}
-        <div ref={setTermHost} style={{ position: 'absolute', inset: 0, padding: 8 }} />
       </div>
 
     </div>
@@ -495,10 +498,44 @@ const stripStyle: React.CSSProperties = {
   flexWrap: 'wrap',
 };
 
+const terminalFrameStyle: React.CSSProperties = {
+  display: 'flex',
+  flex: 1,
+  flexDirection: 'column',
+  minHeight: 0,
+  background: 'var(--terminal-bg)',
+};
+
+const terminalFrameCss = `
+  .hermes-live-terminal-frame .xterm-screen,
+  .hermes-live-terminal-frame .xterm-rows,
+  .hermes-live-terminal-frame .xterm-rows > div {
+    width: 100% !important;
+  }
+
+  .hermes-live-terminal-frame .xterm-rows > div:last-child:has(> .xterm-bg-2) {
+    background: var(--terminal-green) !important;
+  }
+`;
+
+const terminalCanvasStyle: React.CSSProperties = {
+  position: 'relative',
+  flex: 1,
+  minHeight: 320,
+  background: 'var(--terminal-bg)',
+};
+
+const terminalHostStyle: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  overflow: 'hidden',
+};
+
 const windowStripStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6,
-  padding: '6px 12px',
-  borderBottom: '1px solid var(--hairline)',
+  flexShrink: 0,
+  padding: '6px 8px',
+  borderTop: '1px solid var(--hairline)',
   background: 'var(--surface-bg)',
   flexWrap: 'wrap',
 };

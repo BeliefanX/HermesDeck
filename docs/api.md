@@ -40,6 +40,8 @@ RBAC：`super_admin` 可访问全部 API-backed Agents，并拥有 `super_admin/
 ## Health and Agent catalog
 
 - `GET /api/deck/health`：Deck 与 Hermes API Server 健康状态、版本/uptime 等。
+- `GET /api/deck/gateway/status?profile=<id>`、`GET /api/deck/health/detailed?profile=<id>`：转发 Agent `/health/detailed`，普通用户只看低敏状态，admin/super_admin 额外看到 platforms/pid/exitReason。
+- `GET /api/deck/capabilities?profile=<id>`：转发 Agent `/v1/capabilities`，返回归一化 `features/endpoints/summary`；需要 Agent access。
 - `GET /api/deck/profiles`：从 Hermes API Server profile endpoints 获取 API-backed Agent catalog，并按当前用户过滤；admin/super_admin 仅在 strict catalog 双 404 时使用 bounded `/health`-proven local catalog fallback。普通用户不扫描本地 profiles 目录。
 - `GET /api/deck/models?profile=<id>`：按 Agent runtime id 调 Hermes API Server `/v1/models`。无 selectable model 或 API 不可达时返回错误/空 UI 状态；不从本地文件合成模型清单。
 - `GET /api/deck/model-preferences?profileId=<id>`、`PUT /api/deck/model-preferences`：Deck 用户级 Agent 模型偏好；只影响 Deck 下次发起的 chat request override。
@@ -84,6 +86,8 @@ type ChatStreamRequest = {
 - `GET /api/deck/sessions?profile=<id>`：先成功取得 Agent-scoped API sessions，再融合 Deck projection 中的 in-flight/proof 状态。普通用户只能看到 owner 为自己 Deck user id 的 projected rows；admin/super_admin 可跨 owner 查看，但仍受 Agent auth/catalog 约束。API response metadata、explicit identity、distinct API base 或 distinct API key 可证明 scope；shared/default base+key 且 `/health` 无 identity 或 explicit mismatch fail closed as `profile_routing_unavailable`/502 or `session_profile_mismatch`/403。
 - `GET /api/deck/sessions/[id]/messages?profile=<id>`：返回 session messages；projection 可返回刷新后仍存在的 draft assistant、tool-call、tool-result rows。普通用户读取他人 projection 会 403。
 - `DELETE /api/deck/sessions/[id]?profile=<id>`：通过 Hermes Agent `DELETE /api/sessions/{id}` 删除 upstream session；执行前必须通过 RBAC 与 profile/routing proof，不直接改本地 Hermes DB。
+- `PATCH /api/deck/sessions/[id]?profile=<id>`：只允许 `title`、`end_reason`，CSRF + session/profile proof 后转发 Agent `PATCH /api/sessions/{id}`；不处理 Deck pin/tags/folder。
+- `POST /api/deck/sessions/[id]/fork?profile=<id>`：CSRF + session/profile proof 后转发 Agent `POST /api/sessions/{id}/fork`。
 - `GET /api/deck/stats?profile=<id>`：dashboard stats；成功取得 API sessions 后合并 viewer-scoped projection；sessions 的 dedicated-base/profile-metadata proof 规则相同，routing errors fail closed。
 - `GET /api/deck/tokens?days=<n>&profile=<id>`：token/cost 聚合，timeout 较长。
 
@@ -108,6 +112,8 @@ Delivery semantics:
 ## Cron proof
 
 - `GET /api/deck/cron?profile=<id>`：按一个或多个用户可访问 Agents 调 Hermes API Server `/api/jobs?include_disabled=true&profile=<id>`。
+- `GET /api/deck/cron/[jobId]?profile=<id>`：先用 profile-scoped job list 证明 job 属于该 Agent，再读取 Agent `/api/jobs/{job_id}`。
+- `POST /api/deck/cron`、`PATCH/DELETE /api/deck/cron/[jobId]`、`POST /api/deck/cron/[jobId]/pause|resume|run`：admin/super_admin only，CSRF，先做 Agent access/job proof，再转发 Agent jobs API；不读取本地 cron 文件。
 - routing proof 接受：响应顶层 `profile_id/profileId/routed_profile_id/profile/routing.*` 等 legacy/compat 字段确认，或所有 job row 自带相同 Agent runtime id。
 - 未确认时返回 `profile_routing_unavailable`（502），不展示可能混 Agent 的 cron jobs；这类敏感 profile-scoped upstream data 无 proof 仍 fail closed。
 - job shape 归一化为 `id/name/status/state/enabled/schedule/nextRunAt/lastRunAt/lastStatus/promptPreview/deliver/skills/toolsets/model/provider/workdir/profile/script/noAgent/repeat/lastError/lastDeliveryError/createdAt`。
@@ -115,6 +121,8 @@ Delivery semantics:
 ## Tools, config, terminal and assets
 
 - `GET /api/deck/tools`：API-first discovery；BFF 优先读取 Agent `/v1/skills` + `/v1/toolsets` 并归一化给 Tools UI。
+- `GET /api/deck/toolsets?profile=<id>`：Agent `/v1/toolsets` 的只读归一化列表。
+- `GET /api/deck/skill-catalog?profile=<id>`：Agent `/v1/skills` 的 metadata-only catalog；不返回 skill 文件正文。
 - `GET /api/deck/skills`、`PUT /api/deck/skills`：`super_admin/local-owner` raw local skill 文件读写；保存使用 realpath containment、mtime optimistic lock、atomic write。
 - `GET/PUT /api/deck/config?profile=<id>`：`super_admin/local-owner` 读写 Agent 对应 Hermes Agent profile 的 `config.yaml`、`SOUL.md`、`memories/USER.md`、`memories/MEMORY.md`；不是 runtime 数据源。
 - `GET /api/deck/terminal/actions`、`POST /api/deck/terminal/run`：白名单 terminal actions。
