@@ -1,6 +1,7 @@
 'use client';
 import { useMemo } from 'react';
 import type { DeckMessage } from '@/lib/types';
+import { normalizeAsyncDelegationCompletionMessage } from '../../../lib/async-delegation.ts';
 
 export function isProjectedDraftMessage(m: DeckMessage): boolean {
   return m.role === 'assistant' && m.metadata?.projectionStatus === 'draft';
@@ -43,8 +44,9 @@ function latestTypingTargetIndex(activeMessages: DeckMessage[], busy: boolean): 
 }
 
 export function selectVisibleMessages(activeMessages: DeckMessage[], showToolDetails: boolean, busy: boolean): DeckMessage[] {
-  const typingTargetIdx = latestTypingTargetIndex(activeMessages, busy);
-  const visible = activeMessages.filter((m, idx) => {
+  const messages = activeMessages.map(normalizeAsyncDelegationCompletionMessage);
+  const typingTargetIdx = latestTypingTargetIndex(messages, busy);
+  const visible = messages.filter((m, idx) => {
     const emptyNonToolRow = !hasText(m) && !hasToolCalls(m) && !hasAttachments(m) && m.role !== 'tool';
 
     if (!showToolDetails && hiddenByToolDetails(m)) return false;
@@ -99,7 +101,7 @@ export function useVisibleMessages(activeMessages: DeckMessage[], showToolDetail
 
   const hiddenToolCount = useMemo(() => {
     if (showToolDetails) return 0;
-    return activeMessages.reduce((count, m) => count + (hiddenByToolDetails(m) ? 1 : 0), 0);
+    return activeMessages.map(normalizeAsyncDelegationCompletionMessage).reduce((count, m) => count + (hiddenByToolDetails(m) ? 1 : 0), 0);
   }, [activeMessages, showToolDetails]);
 
   return { toolNameByCallId, visibleMessages, hiddenToolCount };

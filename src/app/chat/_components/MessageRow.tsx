@@ -8,6 +8,7 @@ import { MessageActions } from '@/components/MessageActions';
 import { AttachmentChip } from '@/components/AttachmentChip';
 import { type AttachmentItem } from '@/lib/attachments';
 import { safeAttachmentImageUrl } from '@/lib/safe-links';
+import { ASYNC_DELEGATION_TOOL_NAME, isAsyncDelegationResultMessage } from '@/lib/async-delegation';
 import { isSubagentTool } from '../_lib/subagent';
 import { isProjectedDraftMessage } from '../_hooks/useVisibleMessages';
 
@@ -43,10 +44,12 @@ export const ChatMessageRow = memo(function ChatMessageRow({
   const showTyping = m.role === 'assistant' && !m.content && !m.toolCalls?.length && (busy || isProjectedDraftMessage(m));
   const isTool = m.role === 'tool';
   const isApproval = m.role === 'assistant' && m.metadata?.projectionKind === 'approval';
+  const isAsyncDelegation = isAsyncDelegationResultMessage(m);
   const isToolCall = m.role === 'assistant' && (m.toolCalls?.length || 0) > 0 && !m.content;
   const isSubagentRow =
     (isToolCall && (m.toolCalls || []).some((c) => isSubagentTool(c.name)))
-    || (isTool && isSubagentTool(resolvedToolName));
+    || (isTool && isSubagentTool(resolvedToolName))
+    || isAsyncDelegation;
   return (
     <div
       className={`msg-row ${m.role}${isLastAssistant && !busy && m.content ? ' show-actions' : ''}${isTool || isToolCall ? ' is-tool' : ''}${isSubagentRow ? ' is-subagent' : ''}`}
@@ -71,15 +74,15 @@ export const ChatMessageRow = memo(function ChatMessageRow({
           <ApprovalBlock message={m} profile={profile} sessionId={sessionId} />
         ) : isToolCall ? (
           <ToolCallSummary calls={m.toolCalls || []} />
-        ) : isTool ? (
-          <ToolResultSummary toolName={resolvedToolName} content={m.content} />
+        ) : isTool || isAsyncDelegation ? (
+          <ToolResultSummary toolName={isAsyncDelegation ? ASYNC_DELEGATION_TOOL_NAME : resolvedToolName} content={m.content} />
         ) : m.content ? (
           <MessageContent content={m.content} streaming={isLastAssistant && busy} />
         ) : showTyping ? (
           <span className="msg-typing"><span /><span /><span /></span>
         ) : null}
       </div>
-      {m.content && !showTyping && !isTool && !isToolCall && !isApproval && (
+      {m.content && !showTyping && !isTool && !isToolCall && !isApproval && !isAsyncDelegation && (
         <MessageActions
           content={m.content}
           canRegenerate={showRegenerate}
@@ -193,15 +196,30 @@ function extractSubagentPreview(value: unknown): string | null {
   return head.length > 160 ? head.slice(0, 160) + '…' : head;
 }
 
+function extractSubagentDispatchPreview(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const rec = value as Record<string, unknown>;
+  if (rec.status !== 'dispatched' && rec.mode !== 'background') return null;
+  const delegationId = typeof rec.delegation_id === 'string' ? rec.delegation_id : '';
+  const count = typeof rec.count === 'number' && Number.isFinite(rec.count) ? rec.count : undefined;
+  const unit = count && count > 1 ? `${count} subagents` : 'Background subagent';
+  return `${unit} dispatched${delegationId ? ` · ${delegationId}` : ''}`;
+}
+
 const ToolResultSummary = memo(function ToolResultSummary({ toolName, content }: { toolName?: string; content: string }) {
   const [open, setOpen] = useState(false);
   const subagent = isSubagentTool(toolName);
   const parsed = parseToolPayload(content);
   // Subagent results carry a human-readable summary buried in JSON — surface
-  // that instead of generic key:value preview.
+  // that instead of generic key:value preview. Background dispatch acks are not
+  // final results, so label them separately from async completion rows.
   let preview = '';
+  let title = subagent ? 'Subagent result' : 'Tool result';
   if (subagent) {
-    preview = extractSubagentPreview(parsed.value) ?? '';
+    const dispatchPreview = extractSubagentDispatchPreview(parsed.value);
+    if (dispatchPreview) title = 'Subagent dispatched';
+    preview = dispatchPreview ?? extractSubagentPreview(parsed.value) ?? '';
+    if (!preview && !parsed.isJson) preview = content.length > 140 ? content.slice(0, 140) + '…' : content;
   } else if (parsed.isJson && parsed.value && typeof parsed.value === 'object') {
     const entries = Object.entries(parsed.value as Record<string, unknown>).slice(0, 2);
     preview = entries.map(([k, v]) => {
@@ -212,7 +230,6 @@ const ToolResultSummary = memo(function ToolResultSummary({ toolName, content }:
     preview = content.length > 140 ? content.slice(0, 140) + '…' : content;
   }
   const Icon = subagent ? Bot : CheckCircle2;
-  const title = subagent ? 'Subagent result' : 'Tool result';
   return (
     <div className={`tool-block result${subagent ? ' subagent' : ''}`}>
       <div className="tool-block-head" onClick={() => setOpen((v) => !v)} role="button" aria-expanded={open}>

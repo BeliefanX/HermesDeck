@@ -1,4 +1,5 @@
 import type { DeckAttachment, DeckMessage } from '@/lib/types';
+import { normalizeAsyncDelegationCompletionMessage } from '@/lib/async-delegation';
 import { hermesApiGet, PROFILE_ID_RE } from './core.ts';
 import { assertSessionBelongsToProfile } from './sessions.ts';
 
@@ -128,7 +129,7 @@ function normalizeMetadata(row: HermesMessageRow): Record<string, unknown> | und
 }
 
 function normalizeMessage(row: HermesMessageRow, fallbackId: string): DeckMessage {
-  return {
+  return normalizeAsyncDelegationCompletionMessage({
     id: String(row.id ?? row.message_id ?? fallbackId),
     role: stringValue(row.role) || 'assistant',
     content: contentValue(row.content),
@@ -138,7 +139,7 @@ function normalizeMessage(row: HermesMessageRow, fallbackId: string): DeckMessag
     toolName: stringValue(row.tool_name),
     toolCallId: stringValue(row.tool_call_id),
     toolCalls: normalizeToolCalls(row.tool_calls),
-  };
+  });
 }
 
 function normalizeLimit(limit?: number): number | undefined {

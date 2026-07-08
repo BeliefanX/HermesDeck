@@ -31,6 +31,29 @@ test('visible message filtering keeps only the latest empty assistant typing tar
   assert.deepEqual(visible.map((m) => m.id), ['u1', 'tool-call', 'latest-empty']);
 });
 
+test('async delegation completion markers render as visible subagent results, not user rows', () => {
+  const rows = [
+    { id: 'u1', role: 'user', content: 'delegate this' },
+    { id: 'async-done', role: 'user', content: '[ASYNC DELEGATION BATCH COMPLETE — deleg_534ab3bc]\nsubagent result text' },
+  ];
+
+  const visible = selectVisibleMessages(rows, false, false);
+  assert.equal(visible.length, 2);
+  assert.equal(visible[1].role, 'assistant');
+  assert.equal(visible[1].toolName, 'delegate_task');
+  assert.equal(visible[1].metadata?.projectionKind, 'async-delegation-result');
+  assert.match(messageRow, /isAsyncDelegationResultMessage/);
+  assert.match(messageRow, /ASYNC_DELEGATION_TOOL_NAME/);
+  assert.match(messageRow, /!preview && !parsed\.isJson/);
+});
+
+test('delegate_task dispatch acknowledgements use a distinct card title', () => {
+  assert.match(messageRow, /function extractSubagentDispatchPreview/);
+  assert.match(messageRow, /status !== 'dispatched'/);
+  assert.match(messageRow, /title = 'Subagent dispatched'/);
+  assert.match(messageRow, /Background subagent/);
+});
+
 test('chat tool cards render concrete tool names before generic labels', () => {
   assert.match(messageRow, /const toolNames = calls\.map\(\(c\) => c\.name\)/);
   assert.match(messageRow, /<span className="tool-block-names">\{toolNames\}<\/span>\n\s+<span className="tool-block-title">/);

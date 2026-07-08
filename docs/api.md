@@ -79,7 +79,7 @@ type ChatStreamRequest = {
 - `timeoutMs` 可选；前端默认发送 `2100000`（35 分钟），服务端 clamp 到 `[1000, 2100000]`。这个上限等于 Hermes active subagent 30 分钟 timeout + 5 分钟收尾余量。
 - 响应为 SSE，包含 `hub`、`status`、`delta`、`run-event`、`attachment`、`done`、`error`。keep-alive 是 SSE comment，不触发 event listener。
 - Raw run-events 仍会转发给浏览器并显示在聊天右侧观测面板；`tool.started`/`tool.completed` 使用通用 `payload.tool` 名称渲染（例如 `lcm_grep`、`hindsight_recall`），不需要工具专用分支。同时 `onRunEvent` 会把 projectable tool/function call/result 语义边界物化进 Deck projection。tool/function `arguments.delta` 不逐条持久化；持久参数来自 `arguments.done`/done item。
-- 仅文本 delta 进入 assistant bubble；tool/function argument delta 不混入普通助手正文，projectable 工具调用显示为 `tool-call` 行，结果显示为 `tool-result`/`tool` 行。聊天窗口内的工具卡片优先显示具体工具名，再显示 `Tool call` / `Tool result` 等通用标签，便于一眼区分插件或工具来源。
+- 仅文本 delta 进入 assistant bubble；tool/function argument delta 不混入普通助手正文，projectable 工具调用显示为 `tool-call` 行，结果显示为 `tool-result`/`tool` 行。聊天窗口内的工具卡片优先显示具体工具名，再显示 `Tool call` / `Tool result` 等通用标签，便于一眼区分插件或工具来源。`delegate_task` 的 immediate tool output 若只是 `{status:'dispatched', mode:'background'}` 会标为 `Subagent dispatched`；后续 Hermes history 中的 `[ASYNC DELEGATION ... COMPLETE — deleg_<8hex>]` 完成消息会在消息 hydration/可见消息选择时归一化为 assistant-side `delegate_task` subagent result，不作为普通 user row 展示。
 
 ### `GET /api/deck/chat/resume?sessionId=<id>&since=<seq>`
 

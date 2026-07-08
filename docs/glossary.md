@@ -64,6 +64,10 @@ A projected assistant message representing a tool/function invocation. Deck link
 
 A projected tool message representing tool output. If upstream sends an array of content parts, Deck normalizes text parts into a single text payload before storing the row.
 
+## Async delegation result
+
+A Hermes async `delegate_task` completion marker in history: `[ASYNC DELEGATION COMPLETE — deleg_<8hex>]` or `[ASYNC DELEGATION BATCH COMPLETE — deleg_<8hex>]`. Deck normalizes it into an assistant-side `delegate_task` subagent result for display, while the immediate background dispatch acknowledgement remains a separate `Subagent dispatched` card.
+
 ## Cron proof
 
 Evidence in Hermes API Server cron response that requested Agent routing was honored: response-level `profile`/routing fields or every job row carrying the requested Agent runtime id. Without proof, Deck returns `profile_routing_unavailable`.

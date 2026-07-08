@@ -93,6 +93,7 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 - 新 named-Agent turn 如带未证明 session id，Deck 会改用 `deck_<uuid>` 并通过 `X-Hermes-Session-Id` 让 upstream/Deck projection 对齐。
 - 如果看到额外 `api` 话题，先查 projection proof、`X-Hermes-Session-Id` header 与 Agent API base。
 - 刷新后仍应从 projection 看到 draft assistant/tool-call/tool-result rows；普通用户只能读/证明/继续/写入自己的 owner-scoped projection，admin/super_admin 可跨 owner 但仍受 Agent auth 约束。不要逐条持久化 tool/function `arguments.delta`；只在 `arguments.done`/done item 等语义边界写 projection。
+- `delegate_task` 的 background dispatch ack 与 async completion 是两种卡片：ack 标为 `Subagent dispatched`；`[ASYNC DELEGATION ... COMPLETE — deleg_<8hex>]` history marker 在 server hydration 和 visible-message selector 中归一化为 assistant-side `delegate_task` subagent result。不要改成 `role='tool'`，否则默认隐藏 tool rows 时会丢失完成结果。
 
 ### Cron
 
