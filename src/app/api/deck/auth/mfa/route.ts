@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
 import { SESSION_COOKIE, SESSION_TTL_MS, cookieSecureFor, issueSessionToken, rateLimitCheck, rateLimitRecordFailure, rateLimitReset, setUserTotp, verifyPassword, verifySessionToken } from '@/lib/server/auth';
 import { guardRequestBody, isSameOrigin, readLimitedJson } from '@/lib/server/csrf';
-import { consumeMfaToken, generateTotpSecret, makeAuthenticationOptions, makeRegistrationOptions, otpauthUri, peekMfaToken, totpQrDataUrl, userMfaFactors, verifyAuthentication, verifyRegistration, verifyTotp } from '@/lib/server/mfa';
+import { consumeMfaToken, generateTotpSecret, isWebAuthnConfigurationError, makeAuthenticationOptions, makeRegistrationOptions, otpauthUri, peekMfaToken, totpQrDataUrl, userMfaFactors, verifyAuthentication, verifyRegistration, verifyTotp } from '@/lib/server/mfa';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,12 +61,20 @@ export async function POST(req: NextRequest) {
   }
   if (body.action === 'passkey-register-options') {
     if (!verifyPassword(body.currentPassword || '', session.user.id)) return NextResponse.json({ ok: false, error: 'Current password is incorrect.' }, { status: 401 });
-    const out = await makeRegistrationOptions(session.user, req, body.name);
-    return NextResponse.json({ ok: true, ...out });
+    try {
+      const out = await makeRegistrationOptions(session.user, req, body.name);
+      return NextResponse.json({ ok: true, ...out });
+    } catch (error) {
+      return webAuthnConfigError(error);
+    }
   }
   if (body.action === 'passkey-register-verify') {
-    const result = await verifyRegistration(session.user.id, body.challengeId || '', body.response as RegistrationResponseJSON, req, body.name);
-    return result.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ ok: false, error: result.error }, { status: 400 });
+    try {
+      const result = await verifyRegistration(session.user.id, body.challengeId || '', body.response as RegistrationResponseJSON, req, body.name);
+      return result.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ ok: false, error: result.error }, { status: 400 });
+    } catch (error) {
+      return webAuthnConfigError(error);
+    }
   }
 
   return NextResponse.json({ ok: false, error: 'Unknown MFA action.' }, { status: 400 });
@@ -107,16 +115,29 @@ function finishTotp(req: NextRequest, body: Body) {
 async function passkeyLoginOptions(req: NextRequest, body: Body) {
   const user = peekMfaToken(body.mfaToken || '');
   if (!user || !(user.mfa?.passkeys?.length)) return NextResponse.json({ ok: false, error: 'Invalid MFA challenge.' }, { status: 401 });
-  const out = await makeAuthenticationOptions(user, req);
-  return NextResponse.json({ ok: true, ...out });
+  try {
+    const out = await makeAuthenticationOptions(user, req);
+    return NextResponse.json({ ok: true, ...out });
+  } catch (error) {
+    return webAuthnConfigError(error);
+  }
 }
 
 async function finishPasskey(req: NextRequest, body: Body) {
   const token = body.mfaToken || '';
   const user = peekMfaToken(token);
   if (!user) return NextResponse.json({ ok: false, error: 'Invalid MFA challenge.' }, { status: 401 });
-  const result = await verifyAuthentication(user, body.challengeId || '', body.response as AuthenticationResponseJSON, req);
-  if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: 401 });
-  consumeMfaToken(token);
-  return issueLogin(req, user.id);
+  try {
+    const result = await verifyAuthentication(user, body.challengeId || '', body.response as AuthenticationResponseJSON, req);
+    if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: 401 });
+    consumeMfaToken(token);
+    return issueLogin(req, user.id);
+  } catch (error) {
+    return webAuthnConfigError(error);
+  }
+}
+
+function webAuthnConfigError(error: unknown): NextResponse {
+  if (!isWebAuthnConfigurationError(error)) throw error;
+  return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
 }

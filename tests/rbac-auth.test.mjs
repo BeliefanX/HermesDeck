@@ -3958,8 +3958,8 @@ async function loadRoute(routePath) {
 async function loadRouteCase(routePath, caseTag) {
   return import(`${pathToFileURL(routePath).href}?case=${caseTag}`);
 }
-function makeJsonRequest(url, body, cookie) {
-  const headers = { origin: 'https://deck.example.test', 'content-type': 'application/json' };
+function makeJsonRequest(url, body, cookie, origin = 'https://deck.example.test') {
+  const headers = { origin, 'content-type': 'application/json' };
   if (cookie) headers.cookie = cookie;
   return new NextRequest(url, { method: 'POST', headers, body: JSON.stringify(body) });
 }
@@ -4006,11 +4006,57 @@ test('passkey registration options do not require TOTP enrollment', async () => 
   const sessionCookie = `hermesdeck_session=${auth.issueSessionToken(user.id)}`;
   const mfaRoute = await loadRoute(mfaRoutePath);
 
+  delete process.env.HERMESDECK_WEBAUTHN_ORIGIN;
+  delete process.env.HERMESDECK_WEBAUTHN_RP_ID;
   const res = await mfaRoute.POST(makeJsonRequest('https://deck.example.test/api/deck/auth/mfa', { action: 'passkey-register-options', currentPassword: password, name: 'Passkey' }, sessionCookie));
   const body = await res.json();
   assert.equal(res.status, 200, body.error);
   assert.equal(typeof body.challengeId, 'string');
   assert.equal(typeof body.options?.challenge, 'string');
+  assert.equal(body.options?.rp?.id, 'deck.example.test');
+});
+
+test('passkey registration options reject IP origins and mismatched RP config before browser generation', async () => {
+  const home = makeHome();
+  const auth = await loadAuth(home);
+  const store = withSuppressedBootstrapLog(() => auth.readAuth());
+  const user = Object.values(store.users)[0];
+  const password = 'passkey-rp-password-123';
+  writeStore(home, { ...store, users: { ...store.users, [user.id]: { ...user, ...auth.createPasswordRecord(password, user.passwordVersion + 1), mfa: undefined, bootstrap: undefined } } });
+  const sessionCookie = `hermesdeck_session=${auth.issueSessionToken(user.id)}`;
+  const mfaRoute = await loadRoute(mfaRoutePath);
+  const requestOptions = (url, origin = new URL(url).origin) => mfaRoute.POST(makeJsonRequest(url, { action: 'passkey-register-options', currentPassword: password, name: 'Passkey' }, sessionCookie, origin));
+
+  delete process.env.HERMESDECK_WEBAUTHN_ORIGIN;
+  delete process.env.HERMESDECK_WEBAUTHN_RP_ID;
+  let res = await requestOptions('http://localhost:6117/api/deck/auth/mfa');
+  let body = await res.json();
+  assert.equal(res.status, 200, body.error);
+  assert.equal(body.options?.rp?.id, 'localhost');
+
+  res = await requestOptions('http://127.0.0.1:6117/api/deck/auth/mfa');
+  body = await res.json();
+  assert.equal(res.status, 400);
+  assert.match(body.error, /Passkeys cannot use IP-address origins/);
+
+  res = await requestOptions('http://10.10.10.253:6117/api/deck/auth/mfa');
+  body = await res.json();
+  assert.equal(res.status, 400);
+  assert.match(body.error, /Passkeys require http:\/\/localhost or an HTTPS domain|Passkeys cannot use IP-address origins/);
+
+  process.env.HERMESDECK_WEBAUTHN_ORIGIN = 'https://deck.example.test';
+  process.env.HERMESDECK_WEBAUTHN_RP_ID = 'deck.example.test';
+  res = await requestOptions('https://deck.example.test/api/deck/auth/mfa');
+  body = await res.json();
+  assert.equal(res.status, 200, body.error);
+  assert.equal(body.options?.rp?.id, 'deck.example.test');
+
+  res = await requestOptions('http://localhost:6117/api/deck/auth/mfa');
+  body = await res.json();
+  assert.equal(res.status, 400);
+  assert.match(body.error, /configured for https:\/\/deck\.example\.test/);
+  delete process.env.HERMESDECK_WEBAUTHN_ORIGIN;
+  delete process.env.HERMESDECK_WEBAUTHN_RP_ID;
 });
 
 test('TOTP MFA rate limit survives freshly minted pre-auth tokens', async () => {

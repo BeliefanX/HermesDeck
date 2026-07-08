@@ -37,7 +37,7 @@ npm start
 
 第一次启动如未发现 Deck auth store，会在终端打印一次性 `admin`/`super_admin` bootstrap 密码。登录后请在 Settings 中修改凭据并按需创建/审批用户。
 
-MFA 在 Settings 中启用：TOTP 可用任意 authenticator app 扫描 QR code，或手动录入 secret/`otpauth://` URI；passkey registration 只需要当前密码/受保护 session，不要求先启用 TOTP。Passkey 需要 HTTPS 或 `localhost`。公网/反代部署 passkey 时请固定 `HERMESDECK_WEBAUTHN_ORIGIN` 与 `HERMESDECK_WEBAUTHN_RP_ID`。
+MFA 在 Settings 中启用：TOTP 可用任意 authenticator app 扫描 QR code，或手动录入 secret/`otpauth://` URI；passkey registration 只需要当前密码/受保护 session，不要求先启用 TOTP。Passkey 需要 `http://localhost` 或 HTTPS 域名；不要用 `127.0.0.1` / LAN IP。公网/反代部署 passkey 时请固定单个 `HERMESDECK_WEBAUTHN_ORIGIN` 与匹配的 `HERMESDECK_WEBAUTHN_RP_ID`。
 
 ## 通知快速配置
 

@@ -20,8 +20,8 @@ HermesDeck 配置分三层：Deck 进程环境、Deck-owned auth/data store、He
 - `HERMESDECK_DATA_DIR`：Deck data/projection 目录；默认 `HERMESDECK_AUTH_DIR` 或 `~/.hermesdeck`。
 - `HERMESDECK_FORCE_SECURE_COOKIE=1`：强制 session cookie `Secure`，适合 TLS 反代后部署。
 - `HERMESDECK_TRUST_PROXY=1`：登录限速信任 proxy forwarded 地址；仅在可信反代后启用。
-- `HERMESDECK_WEBAUTHN_ORIGIN`：passkey/WebAuthn expected origin；生产 HTTPS 反代建议显式设置，例如 `https://deck.example.com`。
-- `HERMESDECK_WEBAUTHN_RP_ID`：passkey relying-party id；通常是上面 origin 的 hostname，例如 `deck.example.com`。省略时从请求 origin 推导，`127.0.0.1` 会映射为 `localhost`。
+- `HERMESDECK_WEBAUTHN_ORIGIN`：passkey/WebAuthn expected origin；必须是单个 browser-visible origin。生产 HTTPS 反代建议显式设置，例如 `https://deck.example.com`。
+- `HERMESDECK_WEBAUTHN_RP_ID`：passkey relying-party id；通常是上面 origin 的 hostname，例如 `deck.example.com`。省略时从请求 origin 推导。Passkey 不支持 `127.0.0.1` 或 LAN IP 作为 RP ID；本机测试请用 `http://localhost:6117`，手机/外网请用 HTTPS 域名。
 - `HERMESDECK_WEBAUTHN_RP_NAME`：passkey relying-party display name，默认 `HermesDeck`。
 - `HERMESDECK_LIVE_TERMINAL=1`：启用 Live Terminal。默认关闭。
 - `HERMESDECK_TMUX_BIN`：tmux 可执行文件路径，默认 `tmux`。

@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { isIP } from 'node:net';
 import QRCode from 'qrcode';
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from '@simplewebauthn/server';
 import type { AuthenticationResponseJSON, AuthenticatorTransportFuture, RegistrationResponseJSON } from '@simplewebauthn/server';
@@ -10,6 +11,18 @@ const TOTP_DIGITS = 6;
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const CHALLENGE_TTL_MS = 5 * 60_000;
 const MAX_CHALLENGES = 512;
+
+export class WebAuthnConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WebAuthnConfigurationError';
+  }
+}
+
+export function isWebAuthnConfigurationError(error: unknown): error is WebAuthnConfigurationError {
+  return error instanceof WebAuthnConfigurationError
+    || (error instanceof Error && error.name === 'WebAuthnConfigurationError');
+}
 
 type Pending = { userId: string; challenge: string; createdAt: number; kind: 'password_mfa' | 'webauthn_login_challenge' | 'webauthn_register_challenge'; name?: string };
 const pending = new Map<string, Pending>(); // ponytail: in-memory challenge TTL; use durable store if multi-process Deck matters.
@@ -155,13 +168,56 @@ function prunePending() {
 }
 
 function rpInfo(req: Request) {
-  const origin = process.env.HERMESDECK_WEBAUTHN_ORIGIN || new URL(req.url).origin;
-  const host = new URL(origin).hostname;
+  const browserOrigin = req.headers.get('origin')?.trim() || new URL(req.url).origin;
+  const configuredOrigin = process.env.HERMESDECK_WEBAUTHN_ORIGIN?.trim();
+  const originUrl = parseWebAuthnOrigin(configuredOrigin || browserOrigin, 'HERMESDECK_WEBAUTHN_ORIGIN');
+  const browserOriginUrl = parseWebAuthnOrigin(browserOrigin, 'request origin');
+  if (configuredOrigin && originUrl.origin !== browserOriginUrl.origin) {
+    throw new WebAuthnConfigurationError(`Passkeys are configured for ${originUrl.origin}. Open HermesDeck at ${originUrl.origin} before adding or using passkeys.`);
+  }
+  assertUsableWebAuthnOrigin(originUrl);
+  const host = originUrl.hostname.toLowerCase();
+  const rpId = (process.env.HERMESDECK_WEBAUTHN_RP_ID?.trim() || host).toLowerCase();
+  assertValidRpId(rpId, host);
   return {
-    origin,
-    id: process.env.HERMESDECK_WEBAUTHN_RP_ID || (host === '127.0.0.1' ? 'localhost' : host),
+    origin: originUrl.origin,
+    id: rpId,
     name: process.env.HERMESDECK_WEBAUTHN_RP_NAME || 'HermesDeck',
   };
+}
+
+function parseWebAuthnOrigin(value: string, label: string): URL {
+  if (value.includes(',')) {
+    throw new WebAuthnConfigurationError(`${label} must be a single origin for passkeys, not a comma-separated list.`);
+  }
+  try {
+    return new URL(value);
+  } catch {
+    throw new WebAuthnConfigurationError(`${label} is not a valid WebAuthn origin.`);
+  }
+}
+
+function assertUsableWebAuthnOrigin(originUrl: URL) {
+  const host = originUrl.hostname.toLowerCase();
+  if (isIpLiteral(host)) {
+    throw new WebAuthnConfigurationError('Passkeys cannot use IP-address origins such as 127.0.0.1 or LAN IPs. Use http://localhost on this Mac, or a configured HTTPS hostname.');
+  }
+  if (host !== 'localhost' && originUrl.protocol !== 'https:') {
+    throw new WebAuthnConfigurationError('Passkeys require http://localhost or an HTTPS domain. Open HermesDeck through localhost or a configured HTTPS hostname before adding passkeys.');
+  }
+}
+
+function assertValidRpId(rpId: string, host: string) {
+  if (!rpId || rpId.includes(':') || isIpLiteral(rpId)) {
+    throw new WebAuthnConfigurationError('HERMESDECK_WEBAUTHN_RP_ID must be a domain name such as localhost or deck.example.com, not an IP address or host:port.');
+  }
+  if (rpId !== host && !host.endsWith(`.${rpId}`)) {
+    throw new WebAuthnConfigurationError(`HERMESDECK_WEBAUTHN_RP_ID (${rpId}) must match the browser hostname (${host}) or one of its parent domains.`);
+  }
+}
+
+function isIpLiteral(host: string): boolean {
+  return isIP(host.replace(/^\[|\]$/g, '')) !== 0;
 }
 
 function base32Encode(buf: Buffer): string {
