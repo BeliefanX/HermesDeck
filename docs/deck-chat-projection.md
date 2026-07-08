@@ -71,5 +71,6 @@ Projection 带 `ownerUserId/ownerRole`。Stream Hub 和 routes 仍以 Deck sessi
 ## Operational notes
 
 - 删除 projection 文件只会丢失 Deck UX/proof 状态；不会删除 Hermes runtime history，也会丢失刷新后可见的 in-flight draft/tool rows。
-- 如果 named-Agent continuation 开始 403，先确认 projection 是否存在对应 session/response proof，再确认 API Server 是否返回 canonical session id。
+- 如果 named-Agent continuation 开始 403，先确认 projection 是否存在对应 session/response proof，再确认 API Server 是否返回 canonical session id。前端不应在新建/发送中的 optimistic session 上立即回拉 messages；若本地/PWA active id 不在当前 profile 的 server/projection session list，应清掉 stale active/cache，而不是放宽 `session_profile_mismatch`。
+- Projected draft hydrate 是 best-effort：若 upstream message hydrate 因 alias 尚未能通过 Hermes session/profile proof，`GET /api/deck/sessions/[id]/messages` 返回当前 viewer-scoped projection，真实无 projection 的 session 仍保持 403 fail-closed。
 - 不要用 projection 内容向用户承诺 Hermes Agent 已持久化某条消息；最终 runtime 状态仍以 Hermes API Server 为准。

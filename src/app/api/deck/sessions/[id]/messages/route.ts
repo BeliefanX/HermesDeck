@@ -77,7 +77,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       try {
         apiMessages = await getMessages(decodedId, profile, { limit, before: beforeRaw });
       } catch (err) {
-        if (err instanceof SessionProfileRoutingError) throw err;
+        if (err instanceof SessionProfileRoutingError) return NextResponse.json({ messages: projected });
         return NextResponse.json({ messages: projected });
       }
       const completed = findCompletedApiAssistant(projected, apiMessages);

@@ -101,7 +101,7 @@ Phase 1/2 当前实现：
 
 ## PWA cache
 
-当前 `public/sw.js`：`CACHE_VERSION='hermesdeck-pwa-v54'`。
+当前 `public/sw.js`：`CACHE_VERSION='hermesdeck-pwa-v58'`。
 
 - shell cache：只包含 `/offline`、manifest 和 icons。
 - runtime cache：只缓存同源 static `style/script/image/font`，LRU 上限 40。

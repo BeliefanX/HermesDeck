@@ -10,6 +10,7 @@ const projection = readFileSync(new URL('../src/lib/server/deck-chat-projection.
 const deckSessionList = readFileSync(new URL('../src/lib/server/deck-session-list.ts', import.meta.url), 'utf8');
 const sessionsRoute = readFileSync(new URL('../src/app/api/deck/sessions/route.ts', import.meta.url), 'utf8');
 const messagesRoute = readFileSync(new URL('../src/app/api/deck/sessions/[id]/messages/route.ts', import.meta.url), 'utf8');
+const api = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8');
 
 test('server-projected draft assistant rows survive refresh as visible typing placeholders', () => {
   assert.match(visibleMessages, /export function isProjectedDraftMessage/);
@@ -62,6 +63,9 @@ test('chat tool cards render concrete tool names before generic labels', () => {
 
 test('active projected drafts are hydrated from the server and polled to final content', () => {
   assert.match(chatPage, /deckApi\.messages\(active, profile\)/);
+  assert.match(chatPage, /if \(busy && cached\?\.length\) \{/);
+  assert.match(chatPage, /clearStaleActiveSession\(active\)/);
+  assert.match(chatPage, /isSessionProfileMismatch\(err\)/);
   assert.match(chatPage, /projectionStatus === 'draft'/);
   assert.match(chatPage, /setInterval\(poll, 3000\)/);
 });
@@ -71,6 +75,13 @@ test('active server projection is fetched even over cached local placeholders', 
   assert.match(chatPage, /setMessages\(\(m\) => \{/);
   assert.match(chatPage, /messagesEqual\(m\[active\], r\.messages\)/);
   assert.match(chatPage, /return \{ \.\.\.m, \[active\]: r\.messages \};/);
+  assert.match(messagesRoute, /if \(err instanceof SessionProfileRoutingError\) return NextResponse\.json\(\{ messages: projected \}\);/);
+});
+
+test('API error detail formatting does not append duplicate detail strings', () => {
+  assert.match(api, /export function apiErrorDetail/);
+  assert.match(api, /!err\.message\.includes\(detail\)/);
+  assert.doesNotMatch(chatPage, /function apiErrorDetail/);
 });
 
 test('projection polling is bounded by active draft state and avoids whole-message dependency churn', () => {

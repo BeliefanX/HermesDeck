@@ -1,7 +1,7 @@
 'use client';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { deckApi, ApiError } from '@/lib/api';
+import { deckApi, ApiError, apiErrorDetail } from '@/lib/api';
 import type { DeckMessage, ToolSummary } from '@/lib/types';
 import { useActiveProfile } from '@/lib/profile-context';
 import type { TimelineItem } from '@/lib/timeline';
@@ -26,15 +26,10 @@ import { useSlashCommand } from './_hooks/useSlashCommand';
 import { useVisibleMessages } from './_hooks/useVisibleMessages';
 import { NoAssignedAgentsState } from '@/components/NoAssignedAgentsState';
 
-function apiErrorDetail(err: unknown): string {
-  if (err instanceof ApiError) {
-    const body = err.body;
-    const detail = body && typeof body === 'object' && 'detail' in body && typeof (body as { detail?: unknown }).detail === 'string'
-      ? `: ${(body as { detail: string }).detail}`
-      : '';
-    return `${err.status} ${err.message}${detail}`;
-  }
-  return err instanceof Error ? err.message : String(err);
+function isSessionProfileMismatch(err: unknown): boolean {
+  if (!(err instanceof ApiError) || err.status !== 403) return false;
+  const body = err.body;
+  return !!body && typeof body === 'object' && (body as { error?: unknown }).error === 'session_profile_mismatch';
 }
 
 function messagesEqual(a: DeckMessage[] | undefined, b: DeckMessage[] | undefined): boolean {
@@ -76,14 +71,34 @@ function ChatPageInner() {
   const [active, setActive] = useState<string>('');
   const [messages, setMessages] = useState<Record<string, DeckMessage[]>>({});
   const messagesBySessionRef = useRef(messages);
+  const activeRef = useRef(active);
+  const serverSessionIdsRef = useRef<Set<string> | null>(null);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [responseIds, setResponseIds] = useState<Record<string, string>>({});
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(busy);
   const [hydrated, setHydrated] = useState(false);
   const [error, setError] = useState<string>('');
   const [showSessions, setShowSessions] = useState(true);
   const [showTimeline, setShowTimeline] = useState(true);
+
+  useEffect(() => { activeRef.current = active; }, [active]);
+  useEffect(() => { busyRef.current = busy; }, [busy]);
+
+  const clearStaleActiveSession = useCallback((sessionId: string) => {
+    setSessions((list) => list.filter((s) => s.id !== sessionId));
+    setMessages((cur) => {
+      const { [sessionId]: _removed, ...rest } = cur;
+      return rest;
+    });
+    setResponseIds((cur) => {
+      const { [sessionId]: _removed, ...rest } = cur;
+      return rest;
+    });
+    setActive((cur) => (cur === sessionId ? '' : cur));
+    setMessagesLoading(false);
+  }, []);
 
   // Per-turn overrides surfaced in the composer. Both are forwarded to the
   // Hermes /v1/runs endpoint via the chat-stream BFF.
@@ -179,10 +194,17 @@ function ChatPageInner() {
   useEffect(() => {
     if (!hydrated || !profile) return;
     let alive = true;
+    serverSessionIdsRef.current = null;
     setSessionsLoading(true);
     deckApi.sessions(profile)
       .then((r) => {
         if (!alive) return;
+        const remoteIds = new Set(r.sessions.map((s) => s.id));
+        serverSessionIdsRef.current = remoteIds;
+        const currentActive = activeRef.current;
+        if (currentActive && !remoteIds.has(currentActive) && !busyRef.current) {
+          clearStaleActiveSession(currentActive);
+        }
         setSessions((prev) => mergeSessions(prev, r.sessions, profile));
         const serverMeta = r.metaStore;
         if (serverMeta) {
@@ -227,7 +249,7 @@ function ChatPageInner() {
         if (alive) setSessionsLoading(false);
       });
     return () => { alive = false; };
-  }, [profile, hydrated, setMetaStoreRaw]);
+  }, [profile, hydrated, setMetaStoreRaw, clearStaleActiveSession]);
 
   const activeMessages = messages[active] || [];
   const hasActiveServerDraft = activeMessages.some((m) => (
@@ -243,6 +265,10 @@ function ChatPageInner() {
     if (!hydrated || !profile || !active) return;
     let alive = true;
     const cached = messagesBySessionRef.current[active];
+    if (busy && cached?.length) {
+      setMessagesLoading(false);
+      return;
+    }
     setMessagesLoading(!cached?.length);
     deckApi.messages(active, profile)
       .then((r) => {
@@ -253,13 +279,18 @@ function ChatPageInner() {
         });
       })
       .catch((err) => {
-        if (alive) setError(`Messages failed to load: ${apiErrorDetail(err)}`);
+        if (!alive) return;
+        if (isSessionProfileMismatch(err) && serverSessionIdsRef.current && !serverSessionIdsRef.current.has(active)) {
+          clearStaleActiveSession(active);
+          return;
+        }
+        setError(`Messages failed to load: ${apiErrorDetail(err)}`);
       })
       .finally(() => {
         if (alive) setMessagesLoading(false);
       });
     return () => { alive = false; };
-  }, [active, hydrated, profile, setMessages]);
+  }, [active, busy, clearStaleActiveSession, hydrated, profile, setMessages]);
 
   useEffect(() => {
     if (!hydrated || !profile || !active || busy) return;

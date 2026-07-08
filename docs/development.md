@@ -102,7 +102,7 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 ### PWA
 
 - dev 模式 `PWARegister` 会 unregister SW；如果曾访问 production，手动在 DevTools Application 面板清理旧 SW/cache。
-- 生产 SW 版本以 `public/sw.js` 的 `CACHE_VERSION` 为准，当前为 `hermesdeck-pwa-v54`。
+- 生产 SW 版本以 `public/sw.js` 的 `CACHE_VERSION` 为准，当前为 `hermesdeck-pwa-v58`。
 - 验证：`npm run verify:pwa`。
 
 ### Notifications

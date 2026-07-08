@@ -94,7 +94,7 @@ VAPID config comes from environment only: `HERMESDECK_VAPID_PUBLIC_KEY`, `HERMES
 
 ## PWA/cache strategy
 
-`public/sw.js` 是 cache version 的来源；当前为 `hermesdeck-pwa-v54`：
+`public/sw.js` 是 cache version 的来源；当前为 `hermesdeck-pwa-v58`：
 
 - shell cache 只预缓存 `/offline`、manifest、icons。
 - `/api/*` 网络直通；只有网络异常时合成 `{ ok:false, offline:true, error:'offline' }` 的 503。

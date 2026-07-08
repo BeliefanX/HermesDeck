@@ -27,6 +27,18 @@ export class ApiError extends Error {
   }
 }
 
+export function apiErrorDetail(err: unknown): string {
+  if (err instanceof ApiError) {
+    const body = err.body;
+    const detail = body && typeof body === 'object' && 'detail' in body && typeof (body as { detail?: unknown }).detail === 'string'
+      ? (body as { detail: string }).detail.trim()
+      : '';
+    const suffix = detail && !err.message.includes(detail) ? `: ${detail}` : '';
+    return `${err.status} ${err.message}${suffix}`;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
 const DEFAULT_TIMEOUT_MS = 20_000;
 
 function isHtmlResponse(contentType: string | null, text: string): boolean {

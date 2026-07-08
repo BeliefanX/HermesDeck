@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'hermesdeck-pwa-v57';
+const CACHE_VERSION = 'hermesdeck-pwa-v58';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 

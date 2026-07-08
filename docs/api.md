@@ -88,7 +88,7 @@ type ChatStreamRequest = {
 ## Sessions, messages, stats
 
 - `GET /api/deck/sessions?profile=<id>`：先成功取得 Agent-scoped API sessions，再融合 Deck projection 中的 in-flight/proof 状态。普通用户只能看到 owner 为自己 Deck user id 的 projected rows；admin/super_admin 可跨 owner 查看，但仍受 Agent auth/catalog 约束。API response metadata、explicit identity、distinct API base 或 distinct API key 可证明 scope；shared/default base+key 且 `/health` 无 identity 或 explicit mismatch fail closed as `profile_routing_unavailable`/502 or `session_profile_mismatch`/403。
-- `GET /api/deck/sessions/[id]/messages?profile=<id>`：返回 session messages；projection 可返回刷新后仍存在的 draft assistant、tool-call、tool-result rows。普通用户读取他人 projection 会 403。
+- `GET /api/deck/sessions/[id]/messages?profile=<id>`：返回 session messages；projection 可返回刷新后仍存在的 draft assistant、tool-call、tool-result rows。若 projected draft 的 upstream hydrate 因 alias / canonical session proof 暂不可证而返回 `session_profile_mismatch`，BFF 保留 viewer-scoped projection 响应，不把 live/in-flight thread 打成 403；无 projection 或读取他人 projection 仍 fail closed。
 - `DELETE /api/deck/sessions/[id]?profile=<id>`：通过 Hermes Agent `DELETE /api/sessions/{id}` 删除 upstream session；执行前必须通过 RBAC 与 profile/routing proof，不直接改本地 Hermes DB。
 - `PATCH /api/deck/sessions/[id]?profile=<id>`：只允许 `title`、`end_reason`，CSRF + session/profile proof 后转发 Agent `PATCH /api/sessions/{id}`；不处理 Deck pin/tags/folder。
 - `POST /api/deck/sessions/[id]/fork?profile=<id>`：CSRF + session/profile proof 后转发 Agent `POST /api/sessions/{id}/fork`。

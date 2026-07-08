@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { deckApi, ApiError } from '@/lib/api';
+import { deckApi, apiErrorDetail } from '@/lib/api';
 import type { DeckHealth, DeckSession, DeckStats, ToolSummary } from '@/lib/types';
 import { sourceMeta, sourceTone, shortTitle, relTime } from '@/lib/format';
 import {
@@ -24,17 +24,6 @@ import {
   formatUptime,
   pct,
 } from './_lib/dashboard';
-
-function apiErrorDetail(err: unknown): string {
-  if (err instanceof ApiError) {
-    const body = err.body;
-    const detail = body && typeof body === 'object' && 'detail' in body && typeof (body as { detail?: unknown }).detail === 'string'
-      ? `: ${(body as { detail: string }).detail}`
-      : '';
-    return `${err.status} ${err.message}${detail}`;
-  }
-  return err instanceof Error ? err.message : String(err);
-}
 
 export default function HomePage() {
   const t = useT({

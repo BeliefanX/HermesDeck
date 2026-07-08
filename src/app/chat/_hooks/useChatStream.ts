@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef } from 'react';
-import { deckApi, ApiError } from '@/lib/api';
+import { deckApi, apiErrorDetail } from '@/lib/api';
 import { resumeChatStreamClient, streamChat, type StreamCallbacks } from '@/lib/client-sse';
 import { CHAT_STREAM_DEFAULT_TIMEOUT_MS } from '@/lib/chat-timeouts';
 import {
@@ -19,17 +19,6 @@ import type { DeckAttachment, DeckMessage } from '@/lib/types';
 import type { ChatT } from '../_lib/i18n';
 import { type LocalSession, genSessionId } from '../_lib/storage';
 import { extractUsage, type TurnUsage } from '../_lib/context-window';
-
-function apiErrorDetail(err: unknown): string {
-  if (err instanceof ApiError) {
-    const body = err.body;
-    const detail = body && typeof body === 'object' && 'detail' in body && typeof (body as { detail?: unknown }).detail === 'string'
-      ? `: ${(body as { detail: string }).detail}`
-      : '';
-    return `${err.status} ${err.message}${detail}`;
-  }
-  return err instanceof Error ? err.message : String(err);
-}
 
 interface UseChatStreamParams {
   // Core state
