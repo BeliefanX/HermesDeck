@@ -118,6 +118,15 @@ test('active server projection is fetched even over cached local placeholders', 
   assert.match(messagesRoute, /if \(err instanceof SessionProfileRoutingError\) return NextResponse\.json\(\{ messages: projected \}\);/);
 });
 
+test('Deck-origin projected sessions overlay canonical Agent tool history when available', () => {
+  assert.match(messagesRoute, /function mergeCanonicalMessages\(apiMessages: DeckMessage\[\], projected: DeckMessage\[\], limit\?: number\): DeckMessage\[\]/);
+  assert.match(messagesRoute, /hasCanonicalToolDetails\(apiMessages\)/);
+  assert.match(messagesRoute, /mergeCanonicalMessages\(apiMessages, projected, limit\)/);
+  assert.match(messagesRoute, /mergeCanonicalMessages\(apiMessages, refreshed, limit\)/);
+  assert.match(messagesRoute, /kind === 'run-event' \|\| kind === 'approval'/);
+  assert.doesNotMatch(messagesRoute, /if \(!isRecoverableDraft\(projected\)\) return NextResponse\.json\(\{ messages: projected \}\);/);
+});
+
 test('API error detail formatting does not append duplicate detail strings', () => {
   assert.match(api, /export function apiErrorDetail/);
   assert.match(api, /!err\.message\.includes\(detail\)/);
@@ -143,7 +152,7 @@ test('Deck chat projection reads are profile-scoped for shared assigned agents',
   assert.doesNotMatch(projection, /return !session\.ownerUserId \|\| session\.ownerUserId === viewer\.userId/);
   assert.match(deckSessionList, /listProjectedSessions\(profile, viewer\)/);
   assert.match(sessionsRoute, /listDeckSessionsForProfile\(profile, \{ userId: auth\.user\.id, role: auth\.user\.role \}\)/);
-  assert.match(messagesRoute, /viewer: \{ userId: auth\.user\.id, role: auth\.user\.role \}/);
+  assert.match(messagesRoute, /const viewer = \{ userId: auth\.user\.id, role: auth\.user\.role \}/);
 });
 
 test('Deck stats projection reads are owner scoped for authenticated viewers', () => {
@@ -194,4 +203,17 @@ test('server projection preserves function-call aliases and normalizes tool outp
   assert.match(projection, /function normalizeToolOutput\(output: unknown\): string/);
   assert.match(projection, /return typeof rec\.text === 'string' \? rec\.text : '';/);
   assert.match(projection, /const content = normalizeToolOutput\(output\)/);
+});
+
+test('completed projected sessions hydrate canonical Agent tool rows when available', () => {
+  assert.match(messagesRoute, /function hasCanonicalToolDetails\(messages: DeckMessage\[\]\): boolean/);
+  assert.match(messagesRoute, /message\.role === 'tool' \|\| \(message\.toolCalls\?\.length \|\| 0\) > 0/);
+  assert.match(messagesRoute, /function mergeCanonicalMessages\(apiMessages: DeckMessage\[\], projected: DeckMessage\[\], limit\?: number\): DeckMessage\[\]/);
+  assert.match(messagesRoute, /const overlays = projected\.filter\(\(message\) => isProjectedOverlay\(message\) && !ids\.has\(message\.id\)\)/);
+  assert.match(messagesRoute, /return kind === 'run-event' \|\| kind === 'approval'/);
+  assert.match(messagesRoute, /const canonicalHasToolDetails = hasCanonicalToolDetails\(apiMessages\)/);
+  assert.match(messagesRoute, /mergeCanonicalMessages\(apiMessages, projected, limit\)/);
+  assert.match(messagesRoute, /mergeCanonicalMessages\(apiMessages, refreshed, limit\)/);
+  assert.doesNotMatch(messagesRoute, /if \(!isRecoverableDraft\(projected\)\) return NextResponse\.json\(\{ messages: projected \}\);/);
+  assert.match(messagesRoute, /if \(candidateUserIndexes\.length !== 1\) return null/);
 });

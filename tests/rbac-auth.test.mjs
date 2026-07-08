@@ -1284,6 +1284,21 @@ test('Deck message hydration finalizes empty projected assistant drafts from com
     projection.startProjectedTurn({ sessionId: 'hydrate-final', profileId: 'default', ownerUserId: user.id, ownerRole: user.role, message: 'finish me' });
     projection.startProjectedTurn({ sessionId: 'hydrate-running', profileId: 'default', ownerUserId: user.id, ownerRole: user.role, message: 'still running' });
     projection.startProjectedTurn({ sessionId: 'hydrate-duplicate', profileId: 'default', ownerUserId: user.id, ownerRole: user.role, message: 'repeat prompt' });
+    projection.startProjectedTurn({ sessionId: 'hydrate-tool-history', profileId: 'default', ownerUserId: user.id, ownerRole: user.role, message: 'use a tool' });
+    projection.recordProjectedRunEvent({
+      sessionId: 'hydrate-tool-history',
+      profileId: 'default',
+      viewer,
+      type: 'run.status',
+      payload: { type: 'run.status', run_id: 'run_tool_history', status: 'completed' },
+    });
+    projection.finalizeProjectedTurn({
+      sessionId: 'hydrate-tool-history',
+      profileId: 'default',
+      viewer,
+      content: 'projected final without canonical tool rows',
+      responseId: 'resp_projected_tool_history',
+    });
     projection.finalizeProjectedTurn({
       sessionId: 'hydrate-duplicate',
       profileId: 'default',
@@ -1318,13 +1333,34 @@ test('Deck message hydration finalizes empty projected assistant drafts from com
           { id: 'u-api-running', role: 'user', content: 'still running', created_at: offsetIso(runningUserAt, 1) },
         ] });
       }
+      if (href.includes('/api/sessions/hydrate-tool-history/messages')) {
+        return Response.json({ data: [
+          { id: 'u-api-tool-history', role: 'user', content: 'use a tool', created_at: offsetIso(finalUserAt, 1) },
+          {
+            id: 'a-api-tool-call',
+            role: 'assistant',
+            content: '',
+            created_at: offsetIso(finalUserAt, 2),
+            tool_calls: [{ id: 'call_search', name: 'web_search', arguments: '{"query":"docs"}' }],
+          },
+          {
+            id: 't-api-tool-result',
+            role: 'tool',
+            content: '{"results":["canonical"]}',
+            created_at: offsetIso(finalUserAt, 3),
+            tool_call_id: 'call_search',
+            tool_name: 'web_search',
+          },
+          { id: 'a-api-tool-final', role: 'assistant', content: 'canonical final with tool rows', created_at: offsetIso(finalUserAt, 4), metadata: { finish_reason: 'stop', responseId: 'resp_canonical_tool_history' } },
+        ] });
+      }
       if (href.includes('/api/sessions/hydrate-duplicate/messages')) {
         return Response.json({ data: [
           { id: 'u-api-duplicate-old', role: 'user', content: 'repeat prompt', created_at: offsetIso(duplicateCurrentUserAt, -10_000) },
           { id: 'a-api-duplicate-old', role: 'assistant', content: 'older answer must not recover current draft', created_at: offsetIso(duplicateCurrentUserAt, -9_000), metadata: { finish_reason: 'stop', responseId: 'resp_old_duplicate_api' } },
         ] });
       }
-      if (href.includes('/api/sessions')) return Response.json({ data: [{ id: 'hydrate-final' }, { id: 'hydrate-running' }, { id: 'hydrate-duplicate' }] });
+      if (href.includes('/api/sessions')) return Response.json({ data: [{ id: 'hydrate-final' }, { id: 'hydrate-running' }, { id: 'hydrate-duplicate' }, { id: 'hydrate-tool-history' }] });
       return Response.json({ data: [] });
     };
 
@@ -1341,6 +1377,19 @@ test('Deck message hydration finalizes empty projected assistant drafts from com
     const runningBody = await responseJson(runningRes);
     assert.equal(runningBody.messages.at(-1).content, '');
     assert.equal(runningBody.messages.at(-1).metadata.projectionStatus, 'draft');
+
+    const toolHistoryRes = await route.GET(routeRequest('/api/deck/sessions/hydrate-tool-history/messages?profile=default', { headers: { cookie: cookieHeader(token) } }), { params: Promise.resolve({ id: 'hydrate-tool-history' }) });
+    assert.equal(toolHistoryRes.status, 200);
+    const toolHistoryBody = await responseJson(toolHistoryRes);
+    assert.deepEqual(
+      toolHistoryBody.messages.slice(0, 4).map((message) => message.id),
+      ['u-api-tool-history', 'a-api-tool-call', 't-api-tool-result', 'a-api-tool-final'],
+    );
+    assert.equal(toolHistoryBody.messages.length, 5);
+    assert.equal(toolHistoryBody.messages.find((message) => message.id === 'a-api-tool-call').toolCalls[0].name, 'web_search');
+    assert.equal(toolHistoryBody.messages.find((message) => message.id === 't-api-tool-result').toolName, 'web_search');
+    assert.equal(toolHistoryBody.messages.at(-2).content, 'canonical final with tool rows');
+    assert.equal(toolHistoryBody.messages.at(-1).metadata.projectionKind, 'run-event');
 
     const duplicateRes = await route.GET(routeRequest('/api/deck/sessions/hydrate-duplicate/messages?profile=default', { headers: { cookie: cookieHeader(token) } }), { params: Promise.resolve({ id: 'hydrate-duplicate' }) });
     assert.equal(duplicateRes.status, 200);

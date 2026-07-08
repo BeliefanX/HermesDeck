@@ -53,6 +53,23 @@ function findCompletedApiAssistant(projected: DeckMessage[], apiMessages: DeckMe
   )) || null;
 }
 
+function isProjectedOverlay(message: DeckMessage): boolean {
+  const kind = message.metadata?.projectionKind;
+  return kind === 'run-event' || kind === 'approval';
+}
+
+function hasCanonicalToolDetails(messages: DeckMessage[]): boolean {
+  return messages.some((message) => message.role === 'tool' || (message.toolCalls?.length || 0) > 0);
+}
+
+function mergeCanonicalMessages(apiMessages: DeckMessage[], projected: DeckMessage[], limit?: number): DeckMessage[] {
+  const ids = new Set(apiMessages.map((message) => message.id));
+  const overlays = projected.filter((message) => isProjectedOverlay(message) && !ids.has(message.id));
+  const merged = [...apiMessages, ...overlays]
+    .sort((a, b) => (timestampMs(a.createdAt) ?? 0) - (timestampMs(b.createdAt) ?? 0));
+  return Number.isFinite(limit) && limit && limit > 0 ? merged.slice(-Math.trunc(limit)) : merged;
+}
+
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = requireActiveUser(req);
   if (!auth.ok) return auth.response;
@@ -66,13 +83,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const limit = limitRaw ? Number(limitRaw) : undefined;
   try {
     const decodedId = decodeURIComponent(id);
+    const viewer = { userId: auth.user.id, role: auth.user.role };
     const projected = getProjectedMessages(decodedId, profile, {
       limit,
       before: beforeRaw,
-      viewer: { userId: auth.user.id, role: auth.user.role },
+      viewer,
     });
     if (projected) {
-      if (!isRecoverableDraft(projected)) return NextResponse.json({ messages: projected });
       let apiMessages: DeckMessage[];
       try {
         apiMessages = await getMessages(decodedId, profile, { limit, before: beforeRaw });
@@ -81,22 +98,27 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         return NextResponse.json({ messages: projected });
       }
       const completed = findCompletedApiAssistant(projected, apiMessages);
+      const canonicalHasToolDetails = hasCanonicalToolDetails(apiMessages);
+      if (!isRecoverableDraft(projected)) {
+        return NextResponse.json({
+          messages: canonicalHasToolDetails ? mergeCanonicalMessages(apiMessages, projected, limit) : projected,
+        });
+      }
       if (!completed) return NextResponse.json({ messages: projected });
       finalizeProjectedTurn({
         sessionId: decodedId,
         profileId: profile,
-        viewer: { userId: auth.user.id, role: auth.user.role },
+        viewer,
         content: completed.content,
         attachments: completed.attachments,
         responseId: typeof completed.metadata?.responseId === 'string' ? completed.metadata.responseId : undefined,
       });
-      return NextResponse.json({
-        messages: getProjectedMessages(decodedId, profile, {
-          limit,
-          before: beforeRaw,
-          viewer: { userId: auth.user.id, role: auth.user.role },
-        }) || apiMessages,
-      });
+      const refreshed = getProjectedMessages(decodedId, profile, {
+        limit,
+        before: beforeRaw,
+        viewer,
+      }) || projected;
+      return NextResponse.json({ messages: canonicalHasToolDetails ? mergeCanonicalMessages(apiMessages, refreshed, limit) : refreshed });
     }
     const messages = await getMessages(decodedId, profile, { limit, before: beforeRaw });
     return NextResponse.json({ messages });
