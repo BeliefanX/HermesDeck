@@ -29,6 +29,13 @@ async function loadCronWithDedicatedProof(value) {
 
 test('cron profileless jobs require dedicated named-profile routing proof', async () => {
   const mod = await loadCronWithDedicatedProof(false);
+  assert.equal(mod.assertProfileRoutingConfirmed({ jobs: [{ id: 'job_default' }] }, [{ id: 'job_default' }], 'default'), true);
+  assert.equal(mod.assertProfileRoutingConfirmed({ jobs: [] }, [], 'default'), true);
+  assert.throws(
+    () => mod.assertProfileRoutingConfirmed({ jobs: [{ id: 'job_other', profile_id: 'other' }] }, [{ id: 'job_other', profile_id: 'other' }], 'default'),
+    (err) => err?.code === 'cron_profile_mismatch' && err?.status === 403,
+  );
+
   assert.throws(
     () => mod.assertProfileRoutingConfirmed({ jobs: [{ id: 'job_1' }] }, [{ id: 'job_1' }], 'named'),
     (err) => err?.code === 'profile_routing_unavailable' && err?.status === 502,

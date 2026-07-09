@@ -121,6 +121,10 @@ export function assertProfileRoutingConfirmed(payload: HermesCronJobsResponse, r
   if (rowProfiles.some((profile) => profile !== requestedProfile)) throw new CronProfileRoutingError(requestedProfile, 'cron_profile_mismatch');
   const everyRowProvesProfile = rawJobs.length > 0 && rowProfiles.length === rawJobs.length;
   if (everyRowProvesProfile) return false;
+  // The default runtime is the canonical scheduler store. Older Hermes API
+  // builds return default jobs without per-row profile labels, so requiring a
+  // dedicated-profile proof here incorrectly hides the normal Cron page.
+  if (requestedProfile === 'default') return true;
   if (!hasDedicatedProfileRouting(requestedProfile)) {
     throw new CronProfileRoutingError(requestedProfile);
   }
