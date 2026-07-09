@@ -71,6 +71,7 @@ Production tokens are OKLCH-based and live in `src/app/globals.css`.
 - Empty states explain the current state and the next possible action without inventing data.
 - No gradient text, decorative orbs, fake device/browser frames, testimonials, benchmark claims, or decorative autoplay motion.
 - Chat scroll affordances belong in CSS-owned `.messages` behavior; avoid inline magic positioning.
+- Chat message rows are wide by design: current production CSS uses `min(88%, 960px)` on desktop, with mobile/PWA rows near full width and user rows capped at 90%/92% at the 880px/480px breakpoints.
 
 ---
 

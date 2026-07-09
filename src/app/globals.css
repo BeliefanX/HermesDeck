@@ -1108,7 +1108,7 @@ p{line-height:1.6}
 .empty-state .suggest{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:8px}
 
 .msg{
-  max-width:min(78%,860px);
+  max-width:min(88%,960px);
   border-radius:var(--r-3);
   padding:11px 14px;
   white-space:pre-wrap;line-height:1.6;font-size:14px;
@@ -1713,7 +1713,7 @@ p{line-height:1.6}
     scroll-behavior:auto;
   }
   .msg-row{max-width:96%}
-  .msg-row.user{max-width:84%}
+  .msg-row.user{max-width:90%}
   .msg{font-size:14.5px;border-radius:var(--r-3);padding:11px 14px;line-height:1.55}
   .composer{
     /* Keep mobile controls visually compact; expanded tap targets are added
@@ -1858,7 +1858,7 @@ p{line-height:1.6}
   .panel-header{padding:11px 12px}
   .messages{padding:12px calc(12px + var(--safe-right)) 12px calc(12px + var(--safe-left));gap:10px}
   .msg-row{max-width:99%}
-  .msg-row.user{max-width:90%}
+  .msg-row.user{max-width:92%}
   .msg{padding:10px 13px;font-size:14px}
   /* Same rule as the 880px breakpoint: do NOT add safe-bottom here, .page-chat
      already reserves that space. Adding it again leaves a 34px gap on phones. */
@@ -2163,7 +2163,7 @@ p{line-height:1.6}
 /* Per-message action toolbar (copy / regenerate). Sits below the bubble,
    aligned to its edge. Hidden by default on touch; we use opacity instead of
    display so layout doesn't shift when hovering. */
-.msg-row{display:flex;flex-direction:column;max-width:min(78%,860px);gap:4px}
+.msg-row{display:flex;flex-direction:column;max-width:min(88%,960px);gap:4px}
 .msg-row.user{align-self:flex-end;align-items:flex-end}
 .msg-row.assistant{align-self:flex-start;align-items:flex-start}
 .msg-row > .msg{max-width:100%;align-self:stretch}
@@ -2205,12 +2205,19 @@ p{line-height:1.6}
   .msg-row.assistant.show-actions .msg-actions{opacity:.9}
 }
 
-/* Mobile sizing tweaks for code/markdown blocks */
+/* Mobile sizing tweaks for message/markdown blocks */
 @media (max-width:880px){
+  .msg-row{max-width:96%}
+  .msg-row.user{max-width:90%}
   .msg .md{font-size:14.5px}
   .md-code pre{font-size:12px;padding:11px 12px}
   .md-code-bar{padding:4px 9px 4px 11px;min-height:28px}
   .md-mermaid{padding:10px}
+}
+
+@media (max-width:480px){
+  .msg-row{max-width:99%}
+  .msg-row.user{max-width:92%}
 }
 
 /* ─────────────────────────────────────────────

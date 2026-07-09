@@ -42,6 +42,7 @@ Prefer tokens over one-off values. Do not add raw colors to touched surfaces unl
 - Active states use a small marker or subtle paper tint, not saturated full-row fills.
 - Terminal output stays dark for readability even inside a light shell.
 - Chat scroll affordances are CSS-owned inside `.messages`, not inline magic positioning.
+- Chat message rows are intentionally wide for reading: desktop uses `min(88%, 960px)`; mobile/PWA keeps rows near full width while capping user rows at 90% below 880px and 92% below 480px.
 - Avoid horizontal overflow on mobile and installed PWA.
 
 ## PWA UI behavior
