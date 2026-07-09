@@ -4,7 +4,6 @@ const { useState } = React;
 const NAV = [
   { id: 'home',     icon: 'home',     label: 'Home',     kicker: 'COMMAND DECK' },
   { id: 'chat',     icon: 'message',  label: 'Chat',     kicker: 'CONVERSATIONS' },
-  { id: 'profiles', icon: 'bot',      label: 'Profiles', kicker: 'EXECUTION CONTEXTS' },
   { id: 'models',   icon: 'cpu',      label: 'Models',   kicker: 'MODEL CATALOG' },
 
   { id: 'tools',    icon: 'wrench',   label: 'Tools',    kicker: 'TOOLSETS · MCP' },

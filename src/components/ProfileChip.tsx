@@ -1,7 +1,6 @@
 'use client';
-import Link from 'next/link';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Check, ChevronDown, Settings2, X } from 'lucide-react';
+import { Bot, Check, ChevronDown, X } from 'lucide-react';
 import { useActiveProfile } from '@/lib/profile-context';
 import { deckApi } from '@/lib/api';
 import { useT } from '@/lib/i18n';
@@ -26,7 +25,6 @@ export function ProfileChip() {
       activeSuffix: ' · 当前',
       sessions: (n: number) => `${n} 个会话`,
       reasoning: (v: string) => `推理 ${v}`,
-      manage: '管理 Agents…',
       empty: '暂无可用 Agent；请联系管理员分配。',
       catalogUnavailable: 'Agent 目录暂不可用。管理员仍可继续使用当前 Agent；Agent 分配会保持关闭，直到目录恢复。',
       loading: '加载中…',
@@ -39,7 +37,6 @@ export function ProfileChip() {
       activeSuffix: ' · active',
       sessions: (n: number) => `${n} session${n === 1 ? '' : 's'}`,
       reasoning: (v: string) => `reasoning ${v}`,
-      manage: 'Manage Agents…',
       empty: 'No assigned Agents. Contact an admin to request access.',
       catalogUnavailable: 'Agent catalog unavailable. Admins can keep using the current Agent; Agent assignment stays disabled until the catalog recovers.',
       loading: 'Loading…',
@@ -152,7 +149,7 @@ export function ProfileChip() {
 type T = ReturnType<typeof useT<{
   label: string; switch: string; activeSuffix: string; sessions: (n: number) => string;
   reasoning: (v: string) => string;
-  manage: string; empty: string; catalogUnavailable: string; loading: string; sheetTitle: string; close: string;
+  empty: string; catalogUnavailable: string; loading: string; sheetTitle: string; close: string;
 }>>;
 
 function ProfilePopover({
@@ -245,7 +242,6 @@ function ProfilePopover({
         catalogError={catalogError}
         onSelect={onSelect}
         t={t}
-        onAfterNavigate={onClose}
       />
     </div>
   );
@@ -287,7 +283,6 @@ function ProfileSheet({
             catalogError={catalogError}
             onSelect={onSelect}
             t={t}
-            onAfterNavigate={onClose}
             mobile
           />
         </div>
@@ -297,7 +292,7 @@ function ProfileSheet({
 }
 
 function ProfileList({
-  profiles, activeProfile, loading, catalogError, onSelect, t, onAfterNavigate, mobile,
+  profiles, activeProfile, loading, catalogError, onSelect, t, mobile,
 }: {
   profiles: DeckProfile[];
   activeProfile: string;
@@ -305,7 +300,6 @@ function ProfileList({
   catalogError: string | null;
   onSelect: (id: string) => void;
   t: T;
-  onAfterNavigate: () => void;
   mobile?: boolean;
 }) {
   if (loading && profiles.length === 0) {
@@ -368,18 +362,6 @@ function ProfileList({
           </button>
         );
       })}
-      <div className="session-menu-sep" />
-      <Link
-        href="/profiles"
-        className="session-menu-item"
-        onClick={(e) => { e.stopPropagation(); onAfterNavigate(); }}
-        style={mobile
-          ? { minHeight: 44, padding: '10px 12px', textDecoration: 'none' }
-          : { textDecoration: 'none' }}
-      >
-        <span className="session-menu-icon"><Settings2 size={13} /></span>
-        <span>{t.manage}</span>
-      </Link>
     </>
   );
 }

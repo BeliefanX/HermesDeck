@@ -39,7 +39,6 @@ export function CommandPalette() {
       // page items
       pHome: '主页',           pHomeHint: '指挥台',
       pChat: '对话',           pChatHint: '新建会话',
-      pProfiles: 'Agents',       pProfilesHint: '模型、工具、认证',
       pConfig: 'Agent 配置',   pConfigHint: '配置文件 · SOUL · 记忆',
       pCron: '定时任务',       pCronHint: 'Scheduled Tasks',
       pTools: '工具',          pToolsHint: '能力注册表',
@@ -68,7 +67,6 @@ export function CommandPalette() {
       resultMany: 'results',
       pHome: 'Home',           pHomeHint: 'Command deck',
       pChat: 'Chat',           pChatHint: 'New conversation',
-      pProfiles: 'Agents',   pProfilesHint: 'Models, tools, auth',
       pConfig: 'Agent Config', pConfigHint: 'Config files · SOUL · memory',
       pCron: 'Scheduled Tasks', pCronHint: 'Cron jobs',
       pTools: 'Tools',         pToolsHint: 'Capability registry',
@@ -86,7 +84,6 @@ export function CommandPalette() {
   const PAGE_ITEMS: CommandItem[] = useMemo(() => [
     { id: 'p:home',    kind: 'page', title: t.pHome,     hint: t.pHomeHint,     href: '/',         search: 'home dashboard command deck',    icon: <Home size={14} /> },
     { id: 'p:chat',    kind: 'page', title: t.pChat,     hint: t.pChatHint,     href: '/chat',     search: 'chat new conversation message',  icon: <MessageSquare size={14} /> },
-    { id: 'p:profiles',kind: 'page', title: t.pProfiles, hint: t.pProfilesHint, href: '/profiles', search: 'agent model auth provider',    icon: <Bot size={14} /> },
     { id: 'p:config',  kind: 'page', title: t.pConfig,   hint: t.pConfigHint,   href: '/config',   search: 'config soul user memory yaml files', icon: <FileCog size={14} /> },
     { id: 'p:cron',    kind: 'page', title: t.pCron,     hint: t.pCronHint,     href: '/cron',     search: 'cron scheduled tasks jobs schedule', icon: <CalendarClock size={14} /> },
     { id: 'p:tools',   kind: 'page', title: t.pTools,    hint: t.pToolsHint,    href: '/tools',    search: 'tools skills mcp capabilities',  icon: <Wrench size={14} /> },

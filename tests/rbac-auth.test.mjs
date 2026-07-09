@@ -3632,7 +3632,6 @@ test('phase 6 active profile reconciliation clears unauthorized stale selections
   const contextSource = readFileSync(resolve('src/lib/profile-context.tsx'), 'utf8');
   const emptyStateSource = readFileSync(resolve('src/components/NoAssignedAgentsState.tsx'), 'utf8');
   const dashboardSource = readFileSync(resolve('src/app/page.tsx'), 'utf8');
-  const profilesSource = readFileSync(resolve('src/app/profiles/page.tsx'), 'utf8');
   const chatSource = readFileSync(resolve('src/app/chat/page.tsx'), 'utf8');
   const profileChipSource = readFileSync(resolve('src/components/ProfileChip.tsx'), 'utf8');
   const chatHookSource = readFileSync(resolve('src/app/chat/_hooks/useChatStream.ts'), 'utf8');
@@ -3663,8 +3662,8 @@ test('phase 6 active profile reconciliation clears unauthorized stale selections
 
   assert.match(emptyStateSource, /No assigned Agents/i);
   assert.match(emptyStateSource, /contact (an )?admin/i);
+  assert.equal(existsSync(resolve('src/app/profiles/page.tsx')), false);
   assert.match(dashboardSource, /NoAssignedAgentsState/);
-  assert.match(profilesSource, /NoAssignedAgentsState/);
   assert.match(chatSource, /NoAssignedAgentsState/);
 });
 
@@ -4008,7 +4007,7 @@ test('service worker shell excludes protected routes and navigation cache fallba
   const appShellMatch = swSource.match(/const\s+APP_SHELL\s*=\s*\[([\s\S]*?)\];/);
   assert.ok(appShellMatch);
   const appShell = appShellMatch[1];
-  for (const route of ['/', '/chat', '/chat?source=pwa', '/profiles', '/cron', '/tools', '/terminal', '/config', '/lcm', '/settings']) {
+  for (const route of ['/', '/chat', '/chat?source=pwa', '/cron', '/tools', '/terminal', '/config', '/lcm', '/settings']) {
     const quoted = route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     assert.doesNotMatch(appShell, new RegExp(`['\"]${quoted}['\"]`), route);
   }

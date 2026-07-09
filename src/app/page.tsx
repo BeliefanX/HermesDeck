@@ -91,7 +91,6 @@ export default function HomePage() {
       emptyApiReady: 'API Server 正在响应',
       emptySessionReady: 'Chat 尚未产生会话',
       emptyOpenChat: '创建第一条对话',
-      emptyReviewProfiles: '检查 Agent',
       kickerSourceDist: '来源分布',
       titleSessionsBySource: '按来源分布',
       channels: (n: number) => `${n} 个渠道`,
@@ -109,7 +108,6 @@ export default function HomePage() {
       live: '实时',
       tileNewChat: '新建对话',
       tileNewChatSub: 'SSE · 多会话',
-      tileSwitchProfile: '切换 Agent',
       tileCapabilities: '能力',
       tileCapabilitiesSub: '工具 · 技能 · MCP',
       tileSafeTerminal: '终端',
@@ -193,7 +191,6 @@ export default function HomePage() {
       emptyApiReady: 'API Server is responding',
       emptySessionReady: 'Chat has not created a session yet',
       emptyOpenChat: 'Create first chat',
-      emptyReviewProfiles: 'Review Agents',
       kickerSourceDist: 'SOURCE DISTRIBUTION',
       titleSessionsBySource: 'Sessions by source',
       channels: (n: number) => `${n} channels`,
@@ -211,7 +208,6 @@ export default function HomePage() {
       live: 'live',
       tileNewChat: 'New chat',
       tileNewChatSub: 'SSE · multi-session',
-      tileSwitchProfile: 'Switch Agent',
       tileCapabilities: 'Capabilities',
       tileCapabilitiesSub: 'tools · skills · MCP',
       tileRunTimeline: 'Run timeline',
@@ -502,9 +498,6 @@ export default function HomePage() {
             <Link href="/chat" style={{ textDecoration: 'none' }}>
               <Btn variant="primary" icon={<MessageSquare size={14} />}>{t.emptyOpenChat}</Btn>
             </Link>
-            <Link href="/profiles" style={{ textDecoration: 'none' }}>
-              <Btn icon={<Bot size={14} />}>{t.emptyReviewProfiles}</Btn>
-            </Link>
           </div>
         </Card>
       )}
@@ -575,11 +568,7 @@ export default function HomePage() {
           <SectionHead
             kicker={t.kickerExecContexts}
             title={t.titleProfiles}
-            right={
-              <Link href="/profiles" style={{ textDecoration: 'none' }}>
-                <Tag>{t.contexts(profiles.length)}</Tag>
-              </Link>
-            }
+            right={<Tag>{t.contexts(profiles.length)}</Tag>}
           />
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {loading && profiles.length === 0 && Array.from({ length: 3 }).map((_, i) => (
@@ -833,7 +822,6 @@ export default function HomePage() {
           />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
             <ActionTile href="/chat" icon={<MessageSquare size={14} />} title={t.tileNewChat} sub={t.tileNewChatSub} />
-            <ActionTile href="/profiles" icon={<Bot size={14} />} title={t.tileSwitchProfile} sub={t.contexts(profiles.length)} />
             <ActionTile href="/tools" icon={<Wrench size={14} />} title={t.tileCapabilities} sub={t.tileCapabilitiesSub} />
             <ActionTile href="/terminal" icon={<Terminal size={14} />} title={t.tileSafeTerminal} sub={t.tileSafeTerminalSub} />
             <ActionTile href="/settings" icon={<Server size={14} />} title={t.tileSettings} sub={t.tileSettingsSub} />

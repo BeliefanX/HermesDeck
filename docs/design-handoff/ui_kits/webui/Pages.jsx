@@ -1,7 +1,6 @@
 /* global React, HD */
 // Page-level prototype recreations. Product behavior and bilingual copy live in src/app/*.
-// Source files: profiles/page.tsx, tools/page.tsx,
-// settings/page.tsx, offline/page.tsx.
+// Source files: tools/page.tsx, settings/page.tsx, offline/page.tsx.
 const { useState, useMemo } = React;
 
 // Shared layout primitives ─────────────────────────────────────────────
@@ -41,50 +40,6 @@ function SectionHead({ kicker, title, right }) {
       </div>
       {right && <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>{right}</div>}
     </div>
-  );
-}
-
-// ─── PROFILES ───────────────────────────────────────────────────────────
-const PROFILES = [
-  { id: 'staging',     name: 'Staging',     active: true,  model: 'claude-haiku-4-5', gateway: 'hermes-api.local:7400' },
-  { id: 'prod-readonly', name: 'Prod readonly', active: false, model: 'gpt-4o',          gateway: 'hermes-api.prod:7400' },
-  { id: 'sandbox',     name: 'Sandbox',     active: false, model: 'deepseek-v3',      gateway: 'model from Hermes API' },
-];
-
-function ProfilesPage() {
-  return (
-    <Page intro={<>An Agent is HermesDeck&rsquo;s assigned runtime target. Product routes get runtime data through the Agent API and Deck BFF, not by reading local profile state.</>}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-        {PROFILES.map(p => (
-          <HD.Card key={p.id}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div style={{
-                width: 32, height: 32, borderRadius: 10,
-                background: 'var(--surface-bg)', border: '1px solid var(--line)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'var(--accent)',
-              }}><HD.Icon name="bot" size={16}/></div>
-              {p.active && <HD.Tag variant="green">active</HD.Tag>}
-            </div>
-            <h2 style={{ margin: '12px 0 0', fontSize: 18, fontWeight: 620, letterSpacing: '-.018em', color: 'var(--strong-text)' }}>{p.name}</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                <HD.Icon name="cpu" size={12} color="var(--muted)" style={{ flexShrink: 0 }}/>
-                <span style={{ fontSize: 12, color: 'var(--text)', fontFamily: 'var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.model}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                <HD.Icon name="network" size={12} color="var(--muted)" style={{ flexShrink: 0 }}/>
-                <span style={{ fontSize: 12, color: 'var(--text)', fontFamily: 'var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.gateway}</span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--hairline)' }}>
-              <span style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '.14em', color: 'var(--muted-2)', fontWeight: 500 }}>PROFILE ID</span>
-              <Kbd>{p.id}</Kbd>
-            </div>
-          </HD.Card>
-        ))}
-      </div>
-    </Page>
   );
 }
 
@@ -441,4 +396,4 @@ function OfflinePage() {
   );
 }
 
-window.HDPages = { ProfilesPage, ModelsPage, ToolsPage, SettingsPage, OfflinePage };
+window.HDPages = { ModelsPage, ToolsPage, SettingsPage, OfflinePage };

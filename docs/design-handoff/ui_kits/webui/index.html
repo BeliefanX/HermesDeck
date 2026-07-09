@@ -36,7 +36,7 @@ const { useState, useEffect } = React;
 function App() {
   const initialFromHash = () => {
     const h = (typeof window !== 'undefined' ? window.location.hash : '').replace(/^#/, '');
-    const allowed = ['home','chat','profiles','models','tools','terminal','settings','offline'];
+    const allowed = ['home','chat','models','tools','terminal','settings','offline'];
     return allowed.includes(h) ? h : 'home';
   };
   const [active, setActive] = useState(initialFromHash);
@@ -53,7 +53,6 @@ function App() {
   if      (active === 'home')     content = <HDDashboard.Dashboard onOpenChat={() => setActive('chat')}/>;
   else if (active === 'chat')     content = <HDChat.ChatView/>;
   else if (active === 'terminal') content = <HDTerminal.Terminal/>;
-  else if (active === 'profiles') content = <HDPages.ProfilesPage/>;
   else if (active === 'models')   content = <HDPages.ModelsPage/>;
   else if (active === 'tools')    content = <HDPages.ToolsPage/>;
   else if (active === 'settings') content = <HDPages.SettingsPage theme={theme} setTheme={setTheme}/>;

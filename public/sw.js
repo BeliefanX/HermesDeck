@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'hermesdeck-pwa-v59';
+const CACHE_VERSION = 'hermesdeck-pwa-v60';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -8,7 +8,7 @@ const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const RUNTIME_CACHE_MAX = 40;
 
 // App shell — only public/offline-safe assets. Authenticated navigation routes
-// (/, /chat, /profiles, /cron, /tools, /terminal, /config, /lcm, /settings)
+// (/, /chat, /cron, /tools, /terminal, /config, /lcm, /settings)
 // must never be precached or served as stale HTML across
 // users. Failed navigations land on /offline instead.
 const APP_SHELL = ['/offline', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png', '/icons/apple-touch-icon.png'];
