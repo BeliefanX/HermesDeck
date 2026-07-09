@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import {
-  BookOpen, CalendarClock, FileCog, Globe, Home, Menu, MessageSquare, Moon, PanelLeftClose, PanelLeftOpen,
+  BookOpen, CalendarClock, Cpu, FileCog, Globe, Home, Menu, MessageSquare, Moon, PanelLeftClose, PanelLeftOpen,
   Search, Settings, Sun, Terminal, Wrench, X,
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
@@ -17,12 +17,13 @@ import { useDeckSession } from '@/lib/use-deck-session';
 const SIDEBAR_KEY = 'hermesdeck-sidebar-collapsed';
 
 type IconType = ComponentType<{ size?: number | string; className?: string }>;
-type NavKey = 'home' | 'chat' | 'config' | 'cron' | 'tools' | 'lcm' | 'terminal' | 'settings';
+type NavKey = 'home' | 'chat' | 'models' | 'config' | 'cron' | 'tools' | 'lcm' | 'terminal' | 'settings';
 type NavItem = { href: string; key: NavKey; icon: IconType };
 
 const NAV: NavItem[] = [
   { href: '/',         key: 'home',     icon: Home },
   { href: '/chat',     key: 'chat',     icon: MessageSquare },
+  { href: '/models',   key: 'models',   icon: Cpu },
   { href: '/config',   key: 'config',   icon: FileCog },
   { href: '/cron',     key: 'cron',     icon: CalendarClock },
   { href: '/tools',    key: 'tools',    icon: Wrench },
@@ -98,6 +99,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     zh: {
       navHome:     { label: '主页',     kicker: '指挥台' },
       navChat:     { label: '对话',     kicker: '会话列表' },
+      navModels:   { label: '模型配置', kicker: 'Dashboard · 只读' },
       navConfig:   { label: 'Agent 配置', kicker: 'SOUL · 记忆 · YAML' },
       navCron:     { label: '定时任务', kicker: 'Scheduled Tasks' },
       navTools:    { label: '工具',     kicker: '工具集 · MCP' },
@@ -130,6 +132,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     en: {
       navHome:     { label: 'Home',     kicker: 'COMMAND DECK' },
       navChat:     { label: 'Chat',     kicker: 'CONVERSATIONS' },
+      navModels:   { label: 'Model Config', kicker: 'DASHBOARD · READ-ONLY' },
       navConfig:   { label: 'Agent Config', kicker: 'SOUL · MEMORY · YAML' },
       navCron:     { label: 'Scheduled Tasks', kicker: 'CRON JOBS' },
       navTools:    { label: 'Tools',    kicker: 'TOOLSETS · MCP' },

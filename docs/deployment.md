@@ -107,6 +107,8 @@ server {
 - Named Agents：各 backing profile `.env` 配置独立 API base/port/key；缺少 base 时 Deck 拒绝把请求发到 default Agent。
 - Agent catalog endpoint：`/v1/profiles` 或 `/api/profiles` 至少一个可用。
 - Models：`/v1/models` 可用且返回 selectable models。
+- Models config page：Deck server 必须能访问 Hermes Dashboard，默认 loopback `http://127.0.0.1:9119`；需要不同 Deck-only base 时设置 `HERMES_DASHBOARD_BASE`。浏览器只调用 Deck `/api/deck/model-config`，不应对 Dashboard 开放 CORS 或公网端口。
+- `HERMES_DASHBOARD_SESSION_TOKEN` 仅限 loopback Dashboard；remote gated Dashboard 不受此 BFF 支持。
 - Cron：`/api/jobs?include_disabled=true&profile=<id>` 必须返回 Agent routing proof；无 proof 时这类敏感 upstream data fail closed。
 - Sessions/stats：named-Agent session/stat lists 必须先成功取得 API sessions，再合并 Deck projection；API response metadata、explicit identity、Deck server-owned 非 default 专用 Agent API base 或专用 API key 可证明 profileless rows 的 scope；shared/default base+key、无 identity `/health` 与 explicit mismatch fail closed。
 

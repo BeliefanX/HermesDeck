@@ -1,4 +1,4 @@
-import type { DeckAuthSession, DeckHealth, DeckProfile, DeckSession, DeckMessage, ToolSummary, TerminalAction, TerminalRunRequest, TerminalRunResult, DeckModelsResponse, DeckModelPreferenceResponse, DeckNotificationConfigResponse, DeckNotificationPreferences, TokenStats, DeckStats, DeckCronJob, DeckCapabilities, DeckGatewayStatus, DeckToolset, DeckSkillCatalogItem, LiveTerminalSession, LiveTerminalListResponse, LiveTerminalWindow, LiveTerminalCreateRequest, LiveTerminalTmuxRequest, SkillContent, LcmDashboard } from './types';
+import type { DeckAuthSession, DeckHealth, DeckProfile, DeckSession, DeckMessage, ToolSummary, TerminalAction, TerminalRunRequest, TerminalRunResult, DeckModelsResponse, DeckModelConfig, DeckModelPreferenceResponse, DeckNotificationConfigResponse, DeckNotificationPreferences, TokenStats, DeckStats, DeckCronJob, DeckCapabilities, DeckGatewayStatus, DeckToolset, DeckSkillCatalogItem, LiveTerminalSession, LiveTerminalListResponse, LiveTerminalWindow, LiveTerminalCreateRequest, LiveTerminalTmuxRequest, SkillContent, LcmDashboard } from './types';
 import type { MetaStore } from './session-meta';
 import type { ConfigFileKey, DeckConfigBundle, SaveConfigResult } from './config-files';
 
@@ -199,6 +199,8 @@ export const deckApi = {
     }),
   models: (profileId = 'default', signal?: AbortSignal) =>
     request<DeckModelsResponse>(`/api/deck/models?profile=${encodeURIComponent(profileId)}`, { signal }),
+  modelConfig: (profileId = 'default', signal?: AbortSignal) =>
+    request<DeckModelConfig>(`/api/deck/model-config?profile=${encodeURIComponent(profileId)}`, { signal }),
   modelPreference: (profileId = 'default', signal?: AbortSignal) =>
     request<DeckModelPreferenceResponse>(`/api/deck/model-preferences?profileId=${encodeURIComponent(profileId)}`, { signal }),
   saveModelPreference: (profileId: string, body: { modelId?: string; modelProvider?: string }) =>

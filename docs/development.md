@@ -45,6 +45,7 @@ npm run dev
 - `src/lib/server/hermes/core.ts`：Hermes API base/key/Agent env 解析、fetch helper、redaction、cache helper。
 - `src/lib/server/hermes/profiles.ts`：API-backed Agent catalog；ordinary users 无本地枚举补齐。
 - `src/lib/server/hermes/models.ts`：per-Agent `/v1/models` adapter，无本地模型清单补齐。
+- `src/lib/server/hermes/dashboard.ts`：`/models` 的 Dashboard-only 只读 adapter，默认连 loopback `http://127.0.0.1:9119`；`/api/config` 只投影 delegation 白名单，Dashboard session token 永不暴露给浏览器。
 - `src/lib/server/hermes/tools.ts`：API-first `/v1/skills` + `/v1/toolsets` discovery；local skill index 只服务 `super_admin/local-owner` 编辑器。
 - `src/lib/server/hermes/chat-stream.ts`：`/v1/runs` start + `/v1/runs/{run_id}/events` upstream SSE pump/keep-alive/text delta filtering；图片附件先归一为 attachment-annotated text prompt；chat timeout clamp 是 `[1000, 2100000]` ms。
 - `src/lib/chat-timeouts.ts`：35 分钟 chat stream default/hard cap（Hermes active subagent 30 分钟 + 5 分钟余量），前端与服务端共享。
@@ -102,7 +103,7 @@ curl -N 'http://127.0.0.1:6117/api/deck/chat/resume?sessionId=<id>&since=0' \
 ### PWA
 
 - dev 模式 `PWARegister` 会 unregister SW；如果曾访问 production，手动在 DevTools Application 面板清理旧 SW/cache。
-- 生产 SW 版本以 `public/sw.js` 的 `CACHE_VERSION` 为准，当前为 `hermesdeck-pwa-v59`。
+- 生产 SW 版本以 `public/sw.js` 的 `CACHE_VERSION` 为准，当前为 `hermesdeck-pwa-v61`。
 - 验证：`npm run verify:pwa`。
 
 ### Notifications

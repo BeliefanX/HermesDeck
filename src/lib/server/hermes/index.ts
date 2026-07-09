@@ -18,6 +18,7 @@ export { getTools } from './tools';
 export { readSkill, saveSkill, indexSkillFiles } from './skills';
 export { readProfileConfig, saveProfileConfigFile } from './config';
 export { getModels } from './models';
+export { getDashboardModelConfig } from './dashboard';
 export { getDeckStats } from './stats';
 export {
   getLcmDashboard,

@@ -253,6 +253,30 @@ export interface DeckModelsResponse {
   reasoningLevels?: string[];
 }
 
+export interface DeckModelConfig {
+  profileId: string;
+  available: boolean;
+  main: {
+    model?: string;
+    provider?: string;
+    autoContextLength?: number;
+    configContextLength?: number;
+    effectiveContextLength?: number;
+    capabilities: {
+      supportsTools?: boolean;
+      supportsVision?: boolean;
+      supportsReasoning?: boolean;
+      contextWindow?: number;
+      maxOutputTokens?: number;
+      modelFamily?: string;
+    };
+  };
+  delegation?: { model?: string; provider?: string; baseUrl?: string; reasoningEffort?: string };
+  auxiliary: Array<{ task: string; model?: string; provider?: string; baseUrl?: string }>;
+  cron: Array<{ id: string; name?: string; model?: string; provider?: string; baseUrl?: string; modelSnapshot?: string; providerSnapshot?: string }>;
+  errors: Record<string, string>;
+}
+
 export interface DeckModelPreference {
   modelId?: string;
   modelProvider?: string;

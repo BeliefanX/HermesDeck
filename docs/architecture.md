@@ -15,6 +15,7 @@ HermesDeck 是 Hermes Agent 的 Deck/BFF/UI 层。它在同一个 Next.js 进程
 - `src/app/*`：Next App Router 页面与 Route Handlers。
 - `src/lib/api.ts`：浏览器端 `deckApi`，只调用同源 `/api/deck/*`。
 - `src/lib/server/hermes/*`：BFF 到 Hermes Agent API Server 的适配层（profiles/models/chat/cron 等）。
+- `src/lib/server/hermes/dashboard.ts`：`/models` 的 Dashboard-only 只读 adapter；浏览器经 `/api/deck/model-config` 同源 BFF 访问，不能直连 Dashboard。
 - `src/lib/server/auth.ts`、`src/lib/server/mfa.ts` 与 `src/lib/server/rbac.ts`：Deck auth store、cookie session、TOTP/passkey MFA、角色能力、Agent assignment 与 fail-closed 检查。代码中的 `profile`/`profileId` 字段是 legacy/compat Agent runtime id。
 - `src/lib/server/deck-chat-projection.ts`：Deck-owned chat UX/proof projection。
 - `src/lib/server/notifications.ts` 与 `src/lib/notification-events.ts`：Deck-owned Web Push subscription/preferences store、chat notification dispatch、page-open Cron notification parsing。
@@ -28,6 +29,7 @@ Deck 运行时数据来自 Hermes Agent API Server：
 
 - Agents：`/v1/profiles`、`/api/profiles`，选择返回内容最完整的 API-backed Agent catalog。admin/super_admin 只有在两个 strict catalog endpoints 都返回 404 时，才可使用 bounded local catalog fallback：仅枚举 `default` 和 immediate local profile dirs，且每个 candidate 必须通过对应 `/health` routing/key proof。普通用户不使用本地枚举。
 - models：按 Agent 调 `/v1/models`，不从本地文件合成模型清单。
+- model config：`/api/deck/model-config` 在 Deck auth/RBAC 后并行读取 Dashboard `/api/model/info`、`/api/model/auxiliary`、`/api/config` 的 delegation 白名单和 `/api/cron/jobs`。Dashboard 默认为 loopback `http://127.0.0.1:9119`；仅 Deck server 可经 `HERMES_DASHBOARD_BASE` 覆盖。`HERMES_DASHBOARD_SESSION_TOKEN` 仅限 loopback Dashboard；remote gated Dashboard 不受此 BFF 支持。
 - chat：按 Agent 调 `/v1/runs` + `/v1/runs/{run_id}/events`，必要时传 `X-Hermes-Session-Id`。
 - run control：`/api/deck/chat/runs/{runId}` 和 `/stop` 只在 Deck projection 已绑定 `profile/session/run` 后转发 Agent `/v1/runs/{run_id}`。
 - capabilities/status：按 Agent 调 `/v1/capabilities` 与 `/health/detailed`，普通用户只得到低敏 status。
@@ -94,7 +96,7 @@ VAPID config comes from environment only: `HERMESDECK_VAPID_PUBLIC_KEY`, `HERMES
 
 ## PWA/cache strategy
 
-`public/sw.js` 是 cache version 的来源；当前为 `hermesdeck-pwa-v59`：
+`public/sw.js` 是 cache version 的来源；当前为 `hermesdeck-pwa-v61`：
 
 - shell cache 只预缓存 `/offline`、manifest、icons。
 - `/api/*` 网络直通；只有网络异常时合成 `{ ok:false, offline:true, error:'offline' }` 的 503。

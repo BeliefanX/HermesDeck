@@ -30,6 +30,8 @@ HermesDeck 配置分三层：Deck 进程环境、Deck-owned auth/data store、He
 - `HERMESDECK_VAPID_SUBJECT`：VAPID subject，例如 `mailto:ops@example.com` 或 `https://hermesdeck.beliefanx.me`。可省略；默认取 `HERMESDECK_PUBLIC_ORIGIN` 的第一个 origin。生产建议显式设置。
 - `HERMES_HOME`：Hermes root。若指向 `.../profiles/<id>`，Deck 会归一到 root。用于 config editor/Agent env discovery；不是 runtime DB source。
 - `HERMES_PROFILE`：初始 active Agent hint（legacy env name），仅当 API-backed catalog 中存在该 Agent runtime id 时生效。
+- `HERMES_DASHBOARD_BASE`：`/models` Dashboard 控制面 base，默认 `http://127.0.0.1:9119`；仅 Deck server 使用，浏览器不直连。
+- `HERMES_DASHBOARD_SESSION_TOKEN`：可选 server-only Dashboard session token，仅限 loopback Dashboard；remote gated Dashboard 不受此 BFF 支持，切勿写入客户端或仓库。
 
 ## Hermes API Server 连接
 
@@ -101,7 +103,7 @@ Phase 1/2 当前实现：
 
 ## PWA cache
 
-当前 `public/sw.js`：`CACHE_VERSION='hermesdeck-pwa-v59'`。
+当前 `public/sw.js`：`CACHE_VERSION='hermesdeck-pwa-v61'`。
 
 - shell cache：只包含 `/offline`、manifest 和 icons。
 - runtime cache：只缓存同源 static `style/script/image/font`，LRU 上限 40。
