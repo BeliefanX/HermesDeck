@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -7,6 +7,10 @@ import webpush from 'web-push';
 
 const DATA_DIR = process.env.HERMESDECK_DATA_DIR || process.env.HERMESDECK_AUTH_DIR || join(homedir(), '.hermesdeck');
 const STORE_PATH = join(DATA_DIR, 'notifications.v1.json');
+const LOCK_PATH = `${STORE_PATH}.lock`;
+const LOCK_TIMEOUT_MS = 3000;
+const LOCK_STALE_MS = 30_000;
+const LOCK_RETRY_MS = 20;
 const MAX_SUBSCRIPTIONS_PER_USER = 16;
 const MAX_ENDPOINT_LENGTH = 2048;
 const MAX_KEY_LENGTH = 512;
@@ -108,6 +112,59 @@ function writeStore(store: NotificationStore): void {
   const tmp = `${STORE_PATH}.tmp-${process.pid}-${Date.now()}`;
   writeFileSync(tmp, JSON.stringify(next, null, 2), { encoding: 'utf8', mode: 0o600 });
   renameSync(tmp, STORE_PATH);
+}
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function withStoreLock<T>(fn: () => T): T {
+  ensureDir();
+  const started = Date.now();
+  const deadline = started + LOCK_TIMEOUT_MS;
+  const owner = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  let fd: number | undefined;
+  while (fd === undefined) {
+    try {
+      fd = openSync(LOCK_PATH, 'wx', 0o600);
+      writeFileSync(fd, `${owner}\n${nowIso()}\n`);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'EEXIST') throw err;
+      try {
+        const ts = readFileSync(LOCK_PATH, 'utf8').split(/\r?\n/)[1];
+        const lockAge = ts ? Date.now() - new Date(ts).getTime() : LOCK_STALE_MS + 1;
+        if (!Number.isFinite(lockAge) || lockAge > LOCK_STALE_MS) {
+          rmSync(LOCK_PATH, { force: true });
+          continue;
+        }
+      } catch {}
+      if (Date.now() >= deadline) throw new Error('Timed out acquiring notification store lock.');
+      sleepSync(LOCK_RETRY_MS);
+    }
+  }
+  const waited = Date.now() - started;
+  if (waited > 250) console.warn(`[HermesDeck] notification store lock waited ${waited}ms`);
+  try {
+    return fn();
+  } finally {
+    if (fd !== undefined) {
+      try { closeSync(fd); } catch {}
+      try {
+        const currentOwner = readFileSync(LOCK_PATH, 'utf8').split(/\r?\n/)[0];
+        if (currentOwner === owner) rmSync(LOCK_PATH, { force: true });
+      } catch {}
+    }
+  }
+}
+
+function mutateStore<T>(fn: (store: NotificationStore) => T): T {
+  return withStoreLock(() => {
+    const store = readStore();
+    const result = fn(store);
+    writeStore(store);
+    return result;
+  });
 }
 
 function normalizedUserState(store: NotificationStore, userId: string): UserNotificationState {
@@ -218,47 +275,47 @@ export function getNotificationConfigForUser(userId: string): {
 }
 
 export function saveUserNotificationPreferences(userId: string, patch: Partial<Record<NotificationPreferenceKey, unknown>>): DeckNotificationPreferences {
-  const store = readStore();
-  const state = normalizedUserState(store, userId);
-  const preferences: DeckNotificationPreferences = {
-    ...state.preferences,
-    ...(typeof patch.chatCompleted === 'boolean' ? { chatCompleted: patch.chatCompleted } : {}),
-    ...(typeof patch.chatFailed === 'boolean' ? { chatFailed: patch.chatFailed } : {}),
-    ...(typeof patch.cronJobCompleted === 'boolean' ? { cronJobCompleted: patch.cronJobCompleted } : {}),
-    updatedAt: nowIso(),
-  };
-  store.users[userId] = { ...state, preferences };
-  writeStore(store);
-  return preferences;
+  return mutateStore((store) => {
+    const state = normalizedUserState(store, userId);
+    const preferences: DeckNotificationPreferences = {
+      ...state.preferences,
+      ...(typeof patch.chatCompleted === 'boolean' ? { chatCompleted: patch.chatCompleted } : {}),
+      ...(typeof patch.chatFailed === 'boolean' ? { chatFailed: patch.chatFailed } : {}),
+      ...(typeof patch.cronJobCompleted === 'boolean' ? { cronJobCompleted: patch.cronJobCompleted } : {}),
+      updatedAt: nowIso(),
+    };
+    store.users[userId] = { ...state, preferences };
+    return preferences;
+  });
 }
 
 export function savePushSubscription(userId: string, input: PushSubscriptionInput, userAgent?: string | null): { ok: true; subscriptionCount: number; subscription: PublicPushSubscription } | { ok: false; error: string } {
   const parsed = parseSubscription(input);
   if (!parsed.ok) return parsed;
-  const store = readStore();
-  const state = normalizedUserState(store, userId);
-  const now = nowIso();
-  const existingIndex = state.subscriptions.findIndex((sub) => sub.endpoint === parsed.subscription.endpoint);
-  const safeUserAgent = typeof userAgent === 'string' ? userAgent.slice(0, 240) : undefined;
-  let saved: StoredPushSubscription;
-  if (existingIndex >= 0) {
-    const existing = state.subscriptions[existingIndex]!;
-    saved = { ...existing, ...parsed.subscription, id: existing.id || publicSubscriptionId(parsed.subscription.endpoint), ...(safeUserAgent ? { userAgent: safeUserAgent } : {}), updatedAt: now };
-    state.subscriptions[existingIndex] = saved;
-  } else {
-    saved = {
-      id: publicSubscriptionId(parsed.subscription.endpoint),
-      ...parsed.subscription,
-      ...(safeUserAgent ? { userAgent: safeUserAgent } : {}),
-      createdAt: now,
-      updatedAt: now,
-    };
-    state.subscriptions.unshift(saved);
-  }
-  state.subscriptions = state.subscriptions.slice(0, MAX_SUBSCRIPTIONS_PER_USER);
-  store.users[userId] = state;
-  writeStore(store);
-  return { ok: true, subscriptionCount: state.subscriptions.length, subscription: publicSubscription(saved) };
+  return mutateStore((store) => {
+    const state = normalizedUserState(store, userId);
+    const now = nowIso();
+    const existingIndex = state.subscriptions.findIndex((sub) => sub.endpoint === parsed.subscription.endpoint);
+    const safeUserAgent = typeof userAgent === 'string' ? userAgent.slice(0, 240) : undefined;
+    let saved: StoredPushSubscription;
+    if (existingIndex >= 0) {
+      const existing = state.subscriptions[existingIndex]!;
+      saved = { ...existing, ...parsed.subscription, id: existing.id || publicSubscriptionId(parsed.subscription.endpoint), ...(safeUserAgent ? { userAgent: safeUserAgent } : {}), updatedAt: now };
+      state.subscriptions[existingIndex] = saved;
+    } else {
+      saved = {
+        id: publicSubscriptionId(parsed.subscription.endpoint),
+        ...parsed.subscription,
+        ...(safeUserAgent ? { userAgent: safeUserAgent } : {}),
+        createdAt: now,
+        updatedAt: now,
+      };
+      state.subscriptions.unshift(saved);
+    }
+    state.subscriptions = state.subscriptions.slice(0, MAX_SUBSCRIPTIONS_PER_USER);
+    store.users[userId] = state;
+    return { ok: true, subscriptionCount: state.subscriptions.length, subscription: publicSubscription(saved) };
+  });
 }
 
 export function upsertPushSubscription(userId: string, input: PushSubscriptionInput, userAgent?: string | null): { ok: true; subscriptionCount: number; subscription: PublicPushSubscription } | { ok: false; error: string } {
@@ -268,22 +325,20 @@ export function upsertPushSubscription(userId: string, input: PushSubscriptionIn
 export function removePushSubscription(userId: string, endpoint: unknown): { ok: true; subscriptionCount: number } | { ok: false; error: string } {
   const endpointText = typeof endpoint === 'string' ? endpoint.trim() : '';
   if (!endpointText) return { ok: false, error: 'invalid_endpoint' };
-  const store = readStore();
-  const state = normalizedUserState(store, userId);
-  state.subscriptions = state.subscriptions.filter((sub) => sub.endpoint !== endpointText);
-  store.users[userId] = state;
-  writeStore(store);
-  return { ok: true, subscriptionCount: state.subscriptions.length };
+  return mutateStore((store) => {
+    const state = normalizedUserState(store, userId);
+    state.subscriptions = state.subscriptions.filter((sub) => sub.endpoint !== endpointText);
+    store.users[userId] = state;
+    return { ok: true, subscriptionCount: state.subscriptions.length };
+  });
 }
 
 function removeExpiredSubscriptions(userId: string, endpoints: Set<string>): void {
   if (!endpoints.size) return;
-  const store = readStore();
-  const state = normalizedUserState(store, userId);
-  const next = state.subscriptions.filter((sub) => !endpoints.has(sub.endpoint));
-  if (next.length === state.subscriptions.length) return;
-  store.users[userId] = { ...state, subscriptions: next };
-  writeStore(store);
+  mutateStore((store) => {
+    const state = normalizedUserState(store, userId);
+    store.users[userId] = { ...state, subscriptions: state.subscriptions.filter((sub) => !endpoints.has(sub.endpoint)) };
+  });
 }
 
 function notificationUrl(input: NotificationDispatchInput): string {

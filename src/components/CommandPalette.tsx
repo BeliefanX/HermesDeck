@@ -17,6 +17,7 @@ type CommandItem = {
   title: string;
   hint?: string;
   href?: string;
+  profileId?: string;
   search: string;
   icon: React.ReactNode;
 };
@@ -95,7 +96,7 @@ export function CommandPalette() {
   ], [t]);
 
   const router = useRouter();
-  const { activeProfile } = useActiveProfile();
+  const { activeProfile, setActiveProfile } = useActiveProfile();
   const { capabilities } = useDeckSession();
   const canUseTerminal = capabilities.canUseTerminal;
   const [open, setOpen] = useState(false);
@@ -183,7 +184,7 @@ export function CommandPalette() {
     profiles.forEach((p) => items.push({
       id: `prof:${p.id}`, kind: 'profile', title: `${t.profilePrefix} · ${p.name}`,
       hint: `${p.active ? t.activeDot : ''}${p.sessionCount ?? 0} ${t.sessionsSuffix}${p.lastActiveAt ? ' · ' + relTime(p.lastActiveAt) : ''}`,
-      href: `/profiles`, search: `profile ${p.id} ${p.name} ${p.model || ''}`,
+      profileId: p.id, href: '/chat', search: `profile ${p.id} ${p.name} ${p.model || ''}`,
       icon: <Bot size={14} />,
     }));
     sessions.slice(0, 50).forEach((s) => items.push({
@@ -229,6 +230,7 @@ export function CommandPalette() {
 
   function activate(it: CommandItem) {
     setOpen(false);
+    if (it.kind === 'profile' && it.profileId) setActiveProfile(it.profileId);
     if (it.href) router.push(it.href);
   }
 

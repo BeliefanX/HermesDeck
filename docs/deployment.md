@@ -165,4 +165,5 @@ npm run smoke
 - 6117 不通：检查 `scripts/redirect-6117.mjs` 是否启动，或端口是否被其他进程占用。
 - 6118 不通：检查 Next child 是否退出。
 - SSE 断流：检查反代 buffering/timeout，确认响应中有 `X-Accel-Buffering: no` 与 keep-alive 注释；read timeout 应 >= 2100s（建议 2200s+）。
+- chat resume 不稳定：确认 Deck 只有单个 Next/Node 进程处理流；Stream Hub 是进程内内存 ring buffer，多进程/多实例只能回落 messages/projection polling。
 - profile/model/cron 空：先查 Hermes API Server endpoints 与 profile `.env`，不要添加本地补齐路径。

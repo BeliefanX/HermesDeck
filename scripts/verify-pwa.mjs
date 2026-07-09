@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import { join } from 'node:path';
 
 const root = process.cwd();
@@ -79,5 +80,15 @@ if (!/!res\.redirected[\s\S]*putWithTrim\(RUNTIME_CACHE/.test(sw)) {
   console.error('service worker static runtime cache must skip redirected responses');
   ok = false;
 }
+try {
+  const changed = execSync('git diff --name-only HEAD -- public/sw.js', { encoding: 'utf8' }).trim();
+  if (changed) {
+    const versionChanged = execSync('git diff HEAD -- public/sw.js', { encoding: 'utf8' });
+    if (!/[-+]const CACHE_VERSION = /.test(versionChanged)) {
+      console.error('public/sw.js changed without a CACHE_VERSION bump');
+      ok = false;
+    }
+  }
+} catch {}
 if (!ok) process.exit(1);
 console.log('PWA checks passed');

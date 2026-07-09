@@ -101,7 +101,7 @@ export default function SettingsPage() {
       confirmClear: '确认清除 HermesDeck 本地缓存？将清除草稿、会话索引和 response 链路缓存；服务器同步的置顶 / 文件夹 / 标签会保留。主题、语言与当前 Agent 会保留。此操作无法撤销。',
       notifications: '通知',
       notificationTitle: '浏览器通知',
-      notificationDesc: '聊天或定时任务完成后，HermesDeck 可通过 PWA Web Push / 页面打开时通知发送系统提醒。消息正文不会写入通知内容。',
+      notificationDesc: '聊天完成/失败使用 PWA Web Push：已订阅设备可在页面关闭后收到。定时任务完成只在 Cron 页面打开并轮询到状态变化时提示；没有后台 watcher。消息正文不会写入通知内容。',
       notificationUnavailable: '服务器未配置 VAPID，通知暂不可用。',
       notificationUnsupported: '此浏览器不支持 Service Worker Push 通知。',
       permission: '权限',
@@ -153,7 +153,7 @@ export default function SettingsPage() {
       confirmClear: 'Clear HermesDeck local cache? This removes drafts, the session index and response chain caches; server-synced pins, folders and tags are kept. Your theme, language and active Agent are kept. This cannot be undone.',
       notifications: 'NOTIFICATIONS',
       notificationTitle: 'Browser notifications',
-      notificationDesc: 'HermesDeck can send PWA Web Push / page-open system notifications when chat replies or scheduled jobs complete. Message bodies are not included in notification text.',
+      notificationDesc: 'Chat completed/failed uses PWA Web Push and can arrive after the page is closed on subscribed devices. Scheduled-job completion is page-open only from Cron polling; there is no background watcher. Message bodies are not included in notification text.',
       notificationUnavailable: 'Server VAPID keys are not configured, so notifications are unavailable.',
       notificationUnsupported: 'This browser does not support Service Worker Push notifications.',
       permission: 'Permission',
@@ -222,6 +222,17 @@ export default function SettingsPage() {
       savedRelogin: 'Password updated — please sign in again.',
       immutableUsername: 'super_admin username cannot be changed; password changes are still allowed.',
       immutableUsernamePlaceholder: 'super_admin username is immutable',
+    },
+  });
+
+  const tMfa = useT({
+    zh: {
+      kicker: 'MFA', title: '双因素认证', desc: '在密码登录后添加 TOTP 或通行密钥作为第二因素。通行密钥不用于免密码登录；需要 http://localhost 或 HTTPS 域名。',
+      currentPassword: '当前密码', code: 'TOTP 验证码', start: '开始 TOTP', confirm: '确认 TOTP', disable: '停用 TOTP', addPasskey: '添加通行密钥', enabled: '已启用', off: '关闭', secret: '密钥', uri: 'URI', qrAlt: 'TOTP 设置二维码', passkeys: '通行密钥', totp: 'TOTP', passkeyAdded: '通行密钥已添加。', mfaFailed: 'MFA 请求失败。',
+    },
+    en: {
+      kicker: 'MFA', title: 'Two-factor authentication', desc: 'Add TOTP or a passkey as a second factor after password login. Passkeys are not used for passwordless login; use http://localhost or HTTPS.',
+      currentPassword: 'Current password', code: 'TOTP code', start: 'Start TOTP', confirm: 'Confirm TOTP', disable: 'Disable TOTP', addPasskey: 'Add passkey', enabled: 'enabled', off: 'off', secret: 'Secret', uri: 'URI', qrAlt: 'TOTP setup QR code', passkeys: 'Passkeys', totp: 'TOTP', passkeyAdded: 'Passkey added.', mfaFailed: 'MFA request failed.',
     },
   });
 
@@ -361,8 +372,8 @@ export default function SettingsPage() {
       const { startRegistration } = await import('@simplewebauthn/browser');
       const response = await startRegistration({ optionsJSON: opt.options });
       await mfaPost({ action: 'passkey-register-verify', challengeId: opt.challengeId, response, name: 'Passkey' });
-      setMfaPassword(''); setMfaMessage('Passkey added.'); await refreshMfa();
-    } catch (err) { setMfaError(localizeError(err instanceof Error ? err.message : 'MFA request failed.', lang)); }
+      setMfaPassword(''); setMfaMessage(tMfa.passkeyAdded); await refreshMfa();
+    } catch (err) { setMfaError(localizeError(err instanceof Error ? err.message : tMfa.mfaFailed, lang)); }
     finally { setMfaBusy(false); }
   }
 
@@ -588,33 +599,33 @@ export default function SettingsPage() {
       </Card>
 
       <Card>
-        <SectionHead kicker="MFA" title="Two-factor authentication" />
+        <SectionHead kicker={tMfa.kicker} title={tMfa.title} />
         <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 14px', maxWidth: 620 }}>
-          Add TOTP or a passkey as a second factor after password login. Passkeys are not used for passwordless login.
+          {tMfa.desc}
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-          <Tag variant={mfaState?.totp ? 'green' : 'yellow'}>TOTP: {mfaState?.totp ? 'enabled' : 'off'}</Tag>
-          <Tag variant={(mfaState?.passkey) ? 'green' : 'yellow'}>Passkeys: {mfaState?.passkey ? 'enabled' : 'off'}</Tag>
+          <Tag variant={mfaState?.totp ? 'green' : 'yellow'}>{tMfa.totp}: {mfaState?.totp ? tMfa.enabled : tMfa.off}</Tag>
+          <Tag variant={(mfaState?.passkey) ? 'green' : 'yellow'}>{tMfa.passkeys}: {mfaState?.passkey ? tMfa.enabled : tMfa.off}</Tag>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-          <label style={fieldStyle}><span style={labelStyle}>Current password</span><input type="password" value={mfaPassword} onChange={(e) => setMfaPassword(e.target.value)} style={inputStyle} autoComplete="current-password" /></label>
-          <label style={fieldStyle}><span style={labelStyle}>TOTP code</span><input inputMode="numeric" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} style={inputStyle} autoComplete="one-time-code" /></label>
+          <label style={fieldStyle}><span style={labelStyle}>{tMfa.currentPassword}</span><input type="password" value={mfaPassword} onChange={(e) => setMfaPassword(e.target.value)} style={inputStyle} autoComplete="current-password" /></label>
+          <label style={fieldStyle}><span style={labelStyle}>{tMfa.code}</span><input inputMode="numeric" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} style={inputStyle} autoComplete="one-time-code" /></label>
         </div>
         {mfaSecret ? <div style={{ marginTop: 12, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', fontSize: 12, wordBreak: 'break-all', color: 'var(--text)' }}>
           {mfaQrDataUrl ? <>
             {/* ponytail: data-URL QR is already generated server-side; next/image adds no value here. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={mfaQrDataUrl} alt="TOTP setup QR code" width={144} height={144} style={{ background: '#fff', borderRadius: 8, padding: 6 }} />
+            <img src={mfaQrDataUrl} alt={tMfa.qrAlt} width={144} height={144} style={{ background: '#fff', borderRadius: 8, padding: 6 }} />
           </> : null}
-          <div>Secret: <Kbd>{mfaSecret}</Kbd><br />URI: {mfaOtpauth}</div>
+          <div>{tMfa.secret}: <Kbd>{mfaSecret}</Kbd><br />{tMfa.uri}: {mfaOtpauth}</div>
         </div> : null}
         {mfaError ? <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--red)' }}>{mfaError}</div> : null}
         {mfaMessage ? <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--green)' }}>{mfaMessage}</div> : null}
         <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Btn onClick={startTotpEnroll} disabled={mfaBusy || !mfaPassword}>Start TOTP</Btn>
-          <Btn onClick={confirmTotpEnroll} disabled={mfaBusy || !mfaSecret || !mfaCode}>Confirm TOTP</Btn>
-          <Btn variant="danger" onClick={disableTotp} disabled={mfaBusy || !mfaState?.totp || !mfaPassword || !mfaCode}>Disable TOTP</Btn>
-          <Btn onClick={addPasskey} disabled={mfaBusy || !mfaPassword}>Add passkey</Btn>
+          <Btn onClick={startTotpEnroll} disabled={mfaBusy || !mfaPassword}>{tMfa.start}</Btn>
+          <Btn onClick={confirmTotpEnroll} disabled={mfaBusy || !mfaSecret || !mfaCode}>{tMfa.confirm}</Btn>
+          <Btn variant="danger" onClick={disableTotp} disabled={mfaBusy || !mfaState?.totp || !mfaPassword || !mfaCode}>{tMfa.disable}</Btn>
+          <Btn onClick={addPasskey} disabled={mfaBusy || !mfaPassword}>{tMfa.addPasskey}</Btn>
         </div>
       </Card>
 

@@ -33,6 +33,8 @@ export function ChatInspector({
       available: '可用',
       mcp: 'MCP',
       server: '服务器',
+      cost: '费用',
+      unknown: '未知 / Hermes API 未提供',
       footPrefix: '置顶 / 文件夹 / 标签 / 重命名都属于',
       footBold: 'Deck 元数据',
       footSuffix: '，由 HermesDeck 同步，不会写入 Hermes 历史。',
@@ -57,6 +59,8 @@ export function ChatInspector({
       available: 'available',
       mcp: 'MCP',
       server: 'server',
+      cost: 'Cost',
+      unknown: 'unknown / not provided by Hermes API',
       footPrefix: 'Pin / folder / tags / rename are ',
       footBold: 'Deck metadata',
       footSuffix: ', synced by HermesDeck and not written into Hermes history.',
@@ -106,6 +110,8 @@ export function ChatInspector({
         <span style={{ color: 'var(--text)' }}>{enabledSkills.length} {t.available}</span>
         <span style={{ color: 'var(--muted-2)' }}>{t.mcp}</span>
         <span style={{ color: 'var(--text)' }}>{enabledMcp.length} {t.server}{enabledMcp.length === 1 ? '' : 's'}</span>
+        <span style={{ color: 'var(--muted-2)' }}>{t.cost}</span>
+        <span style={{ color: 'var(--text)' }}>{t.unknown}</span>
       </div>
       <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--hairline)', fontSize: 11, color: 'var(--muted-2)' }}>
         {t.footPrefix}<b>{t.footBold}</b>{t.footSuffix}

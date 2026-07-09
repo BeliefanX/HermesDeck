@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
+import { useT } from '@/lib/i18n';
 
 const DISMISSED_SW_VERSION_KEY = 'hermesdeck.pwa.dismissedSwVersion';
 
@@ -41,6 +42,10 @@ function getWorkerVersion(worker: ServiceWorker): Promise<string | null> {
 }
 
 export function PWARegister() {
+  const t = useT({
+    zh: { action: '新版本已就绪 · 点击更新（不会自动打断当前对话）', aria: '新版本已就绪，点击更新；不会自动打断当前对话', dismiss: '暂不更新' },
+    en: { action: 'New version ready · click to update (won’t auto-interrupt chat)', aria: 'New version ready — click to update; it will not auto-interrupt chat', dismiss: 'Dismiss for now' },
+  });
   const [updateReady, setUpdateReady] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [pendingVersion, setPendingVersion] = useState<string | null>(null);
@@ -148,10 +153,10 @@ export function PWARegister() {
         type="button"
         className="pwa-update-action"
         onClick={applyUpdate}
-        aria-label="A new version is ready — click to update"
+        aria-label={t.aria}
       >
         <span className="pwa-update-dot" aria-hidden />
-        <span>New version ready · click to update</span>
+        <span>{t.action}</span>
       </button>
       <button
         type="button"
@@ -160,8 +165,8 @@ export function PWARegister() {
           if (pendingVersion) setDismissedVersion(pendingVersion);
           setDismissed(true);
         }}
-        aria-label="Dismiss for now"
-        title="Dismiss for now"
+        aria-label={t.dismiss}
+        title={t.dismiss}
       >
         <X size={14} />
       </button>

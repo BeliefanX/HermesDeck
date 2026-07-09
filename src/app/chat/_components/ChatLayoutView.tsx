@@ -251,6 +251,7 @@ export function ChatLayoutView(p: ChatLayoutViewProps) {
             busy={p.busy}
             showToolDetails={p.showToolDetails}
             activeTitle={p.activeTitle}
+            hiddenToolCount={p.hiddenToolCount}
             responseLinked={!!p.responseIds[p.active]}
             abortRef={p.abortRef}
             onBack={p.onBack}
@@ -345,6 +346,11 @@ export function ChatLayoutView(p: ChatLayoutViewProps) {
                     {isRecoveringStream ? '正在恢复连接' : p.t.requestFailed}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>{p.error}</div>
+                  {!isRecoveringStream ? (
+                    <button type="button" onClick={() => window.location.reload()} style={{ marginTop: 8, color: 'var(--accent)', background: 'transparent', border: 0, padding: 0, cursor: 'pointer', fontSize: 12 }}>
+                      Reload chat
+                    </button>
+                  ) : null}
                 </div>
                 <button
                   onClick={() => p.setError('')}

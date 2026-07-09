@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, CalendarClock, Clock, PlayCircle, Search, Send, Wrench } from 'lucide-react';
 import { deckApi } from '@/lib/api';
@@ -34,7 +35,7 @@ function compact(value?: string, max = 160): string {
 export default function ScheduledTasksPage() {
   const t = useT({
     zh: {
-      intro: '查看 Hermes Agent API 暴露的定时任务。这里只做只读展示；创建、暂停、编辑等操作仍通过 Hermes cron 工具完成。',
+      intro: '查看 Hermes Agent API 暴露的定时任务。这里只做只读展示；创建、暂停、编辑等操作仍通过 Hermes cron 工具完成。完成提醒仅在本页打开并轮询到状态变化时显示，不是后台 Web Push。',
       title: '定时任务', all: '全部', enabled: '启用', paused: '暂停', disabled: '禁用', running: '运行中',
       search: '搜索名称、ID、schedule、prompt、技能、工具集…', loadFailed: '加载失败：',
       empty: '暂无定时任务', emptyHint: '上游 /api/jobs 返回空列表。可在对话里使用 cronjob 工具创建任务。',
@@ -44,7 +45,7 @@ export default function ScheduledTasksPage() {
       noSkills: '未指定技能', noToolsets: '默认工具集', model: '模型', workdir: '工作目录', lastStatus: '上次状态',
     },
     en: {
-      intro: 'Read-only view of scheduled tasks exposed by Hermes Agent API. Create, pause and edit still happen through Hermes cron tooling.',
+      intro: 'Read-only view of scheduled tasks exposed by Hermes Agent API. Create, pause and edit still happen through Hermes cron tooling. Completion notifications are page-open Cron polling only, not background Web Push.',
       title: 'Scheduled Tasks', all: 'All', enabled: 'Enabled', paused: 'Paused', disabled: 'Disabled', running: 'Running',
       search: 'Search name, ID, schedule, prompt, skills, toolsets…', loadFailed: 'Load failed:',
       empty: 'No scheduled tasks', emptyHint: 'Upstream /api/jobs returned an empty list. Create one with the cronjob tool in chat.',
@@ -164,6 +165,9 @@ export default function ScheduledTasksPage() {
           <CalendarClock size={22} style={{ color: 'var(--muted)' }} />
           <div style={{ fontSize: 13, marginTop: 8 }}>{jobs.length === 0 ? t.empty : t.noMatch}</div>
           <div style={{ fontSize: 11.5, color: 'var(--muted-2)', marginTop: 2 }}>{jobs.length === 0 ? t.emptyHint : t.adjust}</div>
+          {jobs.length === 0 ? (
+            <Link href="/chat?prompt=Help%20me%20create%20a%20safe%20Hermes%20cron%20job" style={{ display: 'inline-flex', marginTop: 12, fontSize: 12, color: 'var(--accent)' }}>Open Chat with starter prompt</Link>
+          ) : null}
         </Card>
       ) : (
         <Card padding={0}>{filtered.map((job, i) => <JobRow key={job.id} job={job} first={i === 0} zh={zh} labels={t} />)}</Card>

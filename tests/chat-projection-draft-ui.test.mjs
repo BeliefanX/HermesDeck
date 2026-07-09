@@ -219,6 +219,14 @@ test('run-event projection skips delta noise before touching the store', () => {
 });
 
 
+test('stream route fails closed when continuation projection proof is missing', () => {
+  const streamRoute = readFileSync(new URL('../src/app/api/deck/chat/stream/route.ts', import.meta.url), 'utf8');
+  assert.match(streamRoute, /if \(hasPreviousResponseId && !projectedSessionIsTrusted\)/);
+  assert.match(streamRoute, /'session_profile_unverified'/);
+  assert.match(streamRoute, /if \(hasPreviousResponseId && !canonicalPreviousResponseId/);
+  assert.match(streamRoute, /'response_profile_unverified'/);
+});
+
 test('server projection preserves function-call aliases and normalizes tool output arrays', () => {
   assert.match(projection, /const callId = String\(\(item\.call_id as string\) \|\| \(item\.tool_call_id as string\) \|\| ''\);/);
   assert.match(projection, /return \{ primary: callId \|\| itemId, itemId, callId \};/);

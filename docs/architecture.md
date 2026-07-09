@@ -65,7 +65,7 @@ Fail-closed 规则：
 4. BFF 调 Hermes API Server `/v1/runs` 创建 run，再连接 `/v1/runs/{run_id}/events` 解析 upstream SSE events；图片附件当前作为 attachment-annotated text prompt 发送，避免把 `/v1/responses` 的 multimodal content-parts 形状传给 `/v1/runs`。
 5. BFF 仍原样转发 raw `run-event`；浏览器把 `tool.started`/`tool.completed` 的 `payload.tool` 名称（如 `lcm_grep`、`hindsight_recall`）通用投影到聊天窗口主体里的工具卡片，不再显示右侧运行事件小窗。`onRunEvent` projection hook 在 tool/function call/result 语义边界物化为 `tool-call`/`tool-result` message rows；其它带 `run_id` 的非 delta Agent API events 物化为隐藏 run-event rows，打开工具详情时按“具体事件名 → Run event”显示；tool output arrays 会归一化为文本；后台 `delegate_task` 派发 ack 与异步完成回填复用 subagent tool-result 卡片。
 6. 只有文本 delta 写入 assistant bubble；tool/function argument delta 不混入普通助手正文，也不触发 durable projection write，持久参数来自 `arguments.done`/done item。
-7. 浏览器断线/刷新只 detach 当前 subscriber；hub 继续 pump，`GET /api/deck/chat/resume?sessionId=<id>&since=<seq>` 可回放，sessions/messages polling 也能读到 projection 中的 draft assistant/tool rows。
+7. 浏览器断线/刷新只 detach 当前 subscriber；hub 继续 pump，`GET /api/deck/chat/resume?sessionId=<id>&since=<seq>` 可回放，sessions/messages polling 也能读到 projection 中的 draft assistant/tool rows。Stream Hub 是单 Node/Next 进程内存 ring buffer；可靠 resume 需要保持单个 Next 进程/单实例，不能在多个独立 Next worker 间负载均衡同一会话。
 
 SSE keep-alive：服务端每 15 秒发送 `: keep-alive <ts>` 注释，响应头含 `Cache-Control: no-cache, no-transform`、`Connection: keep-alive`、`X-Accel-Buffering: no`，用于代理和客户端 watchdog 的 liveness。聊天 stream timeout 默认/硬上限是 2,100,000ms（35 分钟）：Hermes active subagent 30 分钟 + 5 分钟收尾余量；客户端发送该常量，服务端将请求值夹在 1000ms 到 2,100,000ms。
 

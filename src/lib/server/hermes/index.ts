@@ -28,7 +28,7 @@ export {
 } from './lcm';
 export { CronProfileRoutingError, getCronJobs } from './cron';
 export { getTokenStats } from './tokens';
-export { listTerminalActions, runTerminalAction } from './terminal';
+export { listTerminalActions, runTerminalAction, isLocalOnlyTerminalAction } from './terminal';
 export { createChatStream, resumeChatStream, type ChatStreamBody, type ChatStreamProjectionHooks } from './chat-stream';
 export { ActiveStreamAuthorizationError, getActiveStream } from './stream-hub';
 export function newId(prefix = 'local'): string {

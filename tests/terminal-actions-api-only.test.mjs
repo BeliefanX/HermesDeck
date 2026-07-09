@@ -48,3 +48,10 @@ test('runTerminalAction rejects disabled local CLI actions before execFileAsync 
   assert.match(runBlock, /availableTerminalActions\(\)\.find/);
   assert.doesNotMatch(runBlock.slice(0, execCall), /localDiagnosticsEnabled\(\)\s*\|\|\s*true/);
 });
+
+test('terminal run route requires super_admin for local-only diagnostics', () => {
+  const route = readFileSync(resolve('src/app/api/deck/terminal/run/route.ts'), 'utf8');
+  assert.match(terminalSource, /export function isLocalOnlyTerminalAction/);
+  assert.match(route, /isLocalOnlyTerminalAction\(parsed\.value\.actionId\) \? requireSuperAdmin\(req\) : requireAdmin\(req\)/);
+  assert.match(route, /readLimitedJson<TerminalRunRequest>/);
+});

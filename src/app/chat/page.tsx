@@ -121,6 +121,18 @@ function ChatPageInner() {
   // contents are too large and the user is unlikely to want a 20MB PDF
   // sticking around in their browser storage).
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onBeforeProfileSwitch = (event: Event) => {
+      const dirty = input.trim() || attachments.some((a) => a.status === 'ready') || busyRef.current;
+      if (!dirty) return;
+      const ok = window.confirm('Switch Agent? This will discard the current draft/ready attachments and may abort an in-flight reply.');
+      if (!ok) event.preventDefault();
+    };
+    window.addEventListener('hermesdeck:before-profile-switch', onBeforeProfileSwitch);
+    return () => window.removeEventListener('hermesdeck:before-profile-switch', onBeforeProfileSwitch);
+  }, [input, attachments]);
   // Full-screen image preview overlay.
   const [previewImage, setPreviewImage] = useState<{ src: string; name?: string } | null>(null);
   const onPreviewImage = useCallback((src: string, name?: string) => setPreviewImage({ src, name }), []);
@@ -362,6 +374,11 @@ function ChatPageInner() {
   }, []);
 
   const explicitSessionParam = searchParams.get('session');
+  const starterPrompt = searchParams.get('prompt');
+
+  useEffect(() => {
+    if (starterPrompt && !input.trim()) setInput(starterPrompt);
+  }, [starterPrompt, input]);
 
   useEffect(() => {
     // A plain /chat visit is the mobile level-1 entry point. Do not let a

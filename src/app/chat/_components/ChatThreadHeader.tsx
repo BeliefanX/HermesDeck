@@ -5,13 +5,14 @@ import type { ChatT } from '../_lib/i18n';
 import { iconBtnStyle } from './InlineParts';
 
 export function ChatThreadHeader({
-  t, busy, showToolDetails, activeTitle,
+  t, busy, showToolDetails, activeTitle, hiddenToolCount,
   responseLinked, abortRef, onBack, setShowToolDetails, newChat,
 }: {
   t: ChatT;
   busy: boolean;
   showToolDetails: boolean;
   activeTitle: string;
+  hiddenToolCount: number;
   responseLinked: boolean;
   abortRef: React.RefObject<AbortController | null>;
   onBack: () => void;
@@ -65,8 +66,8 @@ export function ChatThreadHeader({
         <button
           type="button"
           onClick={() => setShowToolDetails((v) => !v)}
-          aria-label={showToolDetails ? t.hideToolCalls : t.showToolCalls}
-          title={showToolDetails ? t.hideToolCallsTitle : t.showToolCallsTitle}
+          aria-label={`${showToolDetails ? t.hideToolCalls : t.showToolCalls}${hiddenToolCount ? ` (${hiddenToolCount})` : ''}`}
+          title={hiddenToolCount ? `${t.showToolCallsTitle} · ${hiddenToolCount} hidden` : (showToolDetails ? t.hideToolCallsTitle : t.showToolCallsTitle)}
           aria-pressed={showToolDetails}
           style={{
             ...iconBtnStyle,
@@ -76,6 +77,7 @@ export function ChatThreadHeader({
           }}
         >
           <Wrench size={13} />
+          {hiddenToolCount > 0 && !showToolDetails ? <span style={{ fontSize: 10, marginLeft: 2 }}>{hiddenToolCount}</span> : null}
         </button>
         <button
           type="button"

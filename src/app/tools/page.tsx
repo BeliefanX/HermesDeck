@@ -475,6 +475,14 @@ function ToolRow({
             {tool.description}
           </div>
         )}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 5, fontSize: 10.5, color: 'var(--muted-2)', fontFamily: 'var(--font-mono)' }}>
+          <span>kind={tool.kind}</span>
+          <span>source={tool.source || '—'}</span>
+          <span>task={tool.taskGroup || 'unknown'}</span>
+          <span>trust={tool.trust || '—'}</span>
+          <span>authFailed={tool.authFailed ? 'yes' : 'no'}</span>
+          <span>enabled={enabled ? 'yes' : 'no'}</span>
+        </div>
       </div>
       <Tag variant={enabled ? 'green' : 'default'}>{enabled ? enabledLabel : disabledLabel}</Tag>
       {isSkill && canOpen && (

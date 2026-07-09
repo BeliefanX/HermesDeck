@@ -94,6 +94,7 @@ export function ChatComposer({
                 flex: 1,
                 minWidth: 0,
               }}>{goal.text}</span>
+              <Tag variant="default">Deck local</Tag>
               {!goalActive && <Tag variant="default">{t.goalPaused}</Tag>}
               <button
                 type="button"
@@ -189,7 +190,7 @@ export function ChatComposer({
                 textTransform: 'uppercase',
                 letterSpacing: '.1em',
                 marginRight: 4,
-              }}>{t.queueHint(queue.length)}</span>
+              }}>{t.queueHint(queue.length)} · Deck local · refresh clears queue</span>
               {queue.map((q, idx) => (
                 <span
                   key={q.id}

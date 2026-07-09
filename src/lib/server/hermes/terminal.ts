@@ -52,6 +52,11 @@ export function listTerminalActions(): TerminalAction[] {
   return availableTerminalActions().map(({ build: _build, localOnly: _localOnly, ...action }) => action);
 }
 
+export function isLocalOnlyTerminalAction(actionId: unknown): boolean {
+  const id = String(actionId || '');
+  return availableTerminalActions().some((a) => a.id === id && a.localOnly === true);
+}
+
 export async function runTerminalAction(body: TerminalRunRequest): Promise<TerminalRunResult> {
   const actionId = String(body?.actionId || '');
   const spec = availableTerminalActions().find((a) => a.id === actionId);

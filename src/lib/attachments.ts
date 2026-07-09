@@ -58,10 +58,6 @@ function clipText(text: string): string {
   return text.slice(0, MAX_TEXT_CHARS) + `\n\n[…truncated at ${MAX_TEXT_CHARS} chars]`;
 }
 
-async function readAsText(file: File): Promise<string> {
-  return clipText(await file.text());
-}
-
 function readAsDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -192,6 +188,7 @@ async function parseOnServer(file: File): Promise<{ text: string }> {
 export interface AttachmentItem extends DeckAttachment {
   status: 'loading' | 'ready' | 'error';
   error?: string;
+  provenance?: string;
 }
 
 let counter = 0;
@@ -244,6 +241,7 @@ export async function ingestFile(file: File): Promise<AttachmentItem> {
         kind: 'image',
         status: 'ready',
         dataUrl: compressed.dataUrl,
+        provenance: compressed.bytes < file.size ? 'compressed' : undefined,
       };
     } catch (e) {
       return { ...base, kind: 'image', status: 'error', error: e instanceof Error ? e.message : 'Read failed' };
@@ -252,8 +250,9 @@ export async function ingestFile(file: File): Promise<AttachmentItem> {
 
   if (cls === 'text') {
     try {
-      const text = await readAsText(file);
-      return { ...base, kind: 'text', status: 'ready', text };
+      const raw = await file.text();
+      const text = clipText(raw);
+      return { ...base, kind: 'text', status: 'ready', text, provenance: text.length < raw.length ? 'clipped' : undefined };
     } catch (e) {
       return { ...base, kind: 'text', status: 'error', error: e instanceof Error ? e.message : 'Read failed' };
     }
@@ -262,7 +261,7 @@ export async function ingestFile(file: File): Promise<AttachmentItem> {
   if (cls === 'pdf' || cls === 'docx') {
     try {
       const r = await parseOnServer(file);
-      return { ...base, kind: 'text', status: 'ready', text: r.text };
+      return { ...base, kind: 'text', status: 'ready', text: r.text, provenance: cls };
     } catch (e) {
       return { ...base, kind: 'text', status: 'error', error: e instanceof Error ? e.message : 'Parse failed' };
     }
@@ -283,6 +282,7 @@ export function ingestPastedText(rawText: string, label = 'Pasted'): AttachmentI
     kind: 'text',
     status: 'ready',
     text,
+    provenance: text.length < rawText.length ? 'clipped' : 'pasted',
   };
 }
 

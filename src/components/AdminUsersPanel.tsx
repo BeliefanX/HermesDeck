@@ -77,6 +77,8 @@ export function AdminUsersPanel() {
       reject: '拒绝',
       promote: '提升为管理员',
       demote: '降级为普通用户',
+      resetMfa: '重置 MFA',
+      confirmDanger: (action: string, u: string) => `确认要对 @${u} 执行“${action}”吗？`,
       assignAgents: '分配 Agent',
       immutableAssignments: '不可变 super_admin 禁用 Agent 分配。',
       noProfiles: 'Hermes Agent 未返回任何可分配 Agent。',
@@ -108,6 +110,8 @@ export function AdminUsersPanel() {
       reject: 'Reject',
       promote: 'Promote to admin',
       demote: 'Demote to user',
+      resetMfa: 'Reset MFA',
+      confirmDanger: (action: string, u: string) => `Confirm ${action} for @${u}?`,
       assignAgents: 'Assign Agents',
       immutableAssignments: 'Assignments are disabled for immutable super_admin.',
       noProfiles: 'No assignable Agents were returned by Hermes Agent.',
@@ -194,6 +198,11 @@ export function AdminUsersPanel() {
     } finally {
       setSavingUserId(null);
     }
+  }
+
+  function patchDanger(user: AdminUser, patch: Record<string, unknown>, action: string, label: string) {
+    if (!window.confirm(t.confirmDanger(action, user.username))) return;
+    void patchUser(user, patch, label);
   }
 
   async function saveAssignments(user: AdminUser, assignedProfileIds: string[]) {
@@ -287,19 +296,19 @@ export function AdminUsersPanel() {
                     <Btn size="sm" variant="primary" icon={<CheckCircle2 size={12} />} disabled={disabled} onClick={() => patchUser(user, { status: 'active' }, t.approved(user.username))}>{t.approve}</Btn>
                   ) : null}
                   {user.status === 'active' ? (
-                    <Btn size="sm" variant="danger" icon={<UserX size={12} />} disabled={disabled} onClick={() => patchUser(user, { status: 'disabled' }, t.disabled(user.username))}>{t.disableButton}</Btn>
+                    <Btn size="sm" variant="danger" icon={<UserX size={12} />} disabled={disabled} onClick={() => patchDanger(user, { status: 'disabled' }, t.disableButton, t.disabled(user.username))}>{t.disableButton}</Btn>
                   ) : null}
                   {user.status === 'pending' ? (
-                    <Btn size="sm" variant="danger" disabled={disabled} onClick={() => patchUser(user, { status: 'rejected' }, t.rejected(user.username))}>{t.reject}</Btn>
+                    <Btn size="sm" variant="danger" disabled={disabled} onClick={() => patchDanger(user, { status: 'rejected' }, t.reject, t.rejected(user.username))}>{t.reject}</Btn>
                   ) : null}
                   {canChangeRole && user.role === 'user' ? (
-                    <Btn size="sm" icon={<UserCog size={12} />} disabled={disabled} onClick={() => patchUser(user, { role: 'admin' }, t.promoted(user.username))}>{t.promote}</Btn>
+                    <Btn size="sm" icon={<UserCog size={12} />} disabled={disabled} onClick={() => patchDanger(user, { role: 'admin' }, t.promote, t.promoted(user.username))}>{t.promote}</Btn>
                   ) : null}
                   {canChangeRole && user.role === 'admin' ? (
-                    <Btn size="sm" icon={<UserCog size={12} />} disabled={disabled} onClick={() => patchUser(user, { role: 'user' }, t.demoted(user.username))}>{t.demote}</Btn>
+                    <Btn size="sm" icon={<UserCog size={12} />} disabled={disabled} onClick={() => patchDanger(user, { role: 'user' }, t.demote, t.demoted(user.username))}>{t.demote}</Btn>
                   ) : null}
                   {(user.mfa?.totpEnabled || (user.mfa?.passkeyCount || 0) > 0) ? (
-                    <Btn size="sm" variant="danger" disabled={disabled} onClick={() => patchUser(user, { mfaReset: true }, `Reset MFA for ${user.username}.`)}>Reset MFA</Btn>
+                    <Btn size="sm" variant="danger" disabled={disabled} onClick={() => patchDanger(user, { mfaReset: true }, t.resetMfa, `${t.resetMfa}: ${user.username}.`)}>{t.resetMfa}</Btn>
                   ) : null}
                 </div>
               </div>

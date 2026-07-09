@@ -7,6 +7,11 @@ const STORAGE_KEY = 'hermesdeck.active-profile.v1';
 const NO_PROFILE = '';
 const PROFILE_ID_RE = /^[\w.-]{1,64}$/;
 
+function profileSwitchAllowed(id: string): boolean {
+  if (typeof window === 'undefined') return true;
+  return window.dispatchEvent(new CustomEvent('hermesdeck:before-profile-switch', { cancelable: true, detail: { profileId: id } }));
+}
+
 interface ProfileContextValue {
   /** Currently active, authorized profile id. Empty when the user has no assigned/available Agent. */
   activeProfile: string;
@@ -112,7 +117,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   // cross-tab sync rides the native `storage` event below. No custom event
   // bus is needed.
   const setActiveProfile = useCallback((id: string) => {
-    if (!id) return;
+    if (!id || !profileSwitchAllowed(id)) return;
     setActiveProfileState((prev) => {
       if (!profilesLoaded) {
         pendingStoredProfileRef.current = id;

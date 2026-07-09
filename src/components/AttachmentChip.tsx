@@ -37,7 +37,7 @@ export function AttachmentChip({ item, onRemove, onPreview, readOnly }: Props) {
   });
   const isImage = item.kind === 'image';
   const isFile = item.kind === 'file';
-  const title = item.error ? `${item.name} — ${item.error}` : item.name;
+  const title = item.error ? `${item.name} — ${item.error}` : [item.name, item.provenance].filter(Boolean).join(' — ');
   // Download href: prefer dataUrl (works offline), fall back to sanitized remote url.
   const downloadHref = safeAttachmentDownloadUrl(item.dataUrl) || safeAttachmentDownloadUrl(item.url) || '';
   const showDownload = readOnly && item.status === 'ready' && !!downloadHref;
@@ -66,7 +66,7 @@ export function AttachmentChip({ item, onRemove, onPreview, readOnly }: Props) {
           )}
           {item.status === 'ready' && (
             <span>
-              {kindLabel}{item.size ? ` · ${formatBytes(item.size)}` : ''}
+              {kindLabel}{item.size ? ` · ${formatBytes(item.size)}` : ''}{item.provenance ? ` · ${item.provenance}` : ''}
             </span>
           )}
           {item.status === 'error' && (

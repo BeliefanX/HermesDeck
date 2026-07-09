@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -75,4 +76,46 @@ test('saving push subscriptions rejects arbitrary HTTPS endpoints and returns no
   assert.equal(cfg.subscriptions[0].id.includes('really-secret-endpoint-token'), false);
   assert.equal(cfg.subscriptions[0].endpoint, undefined);
   assert.equal(cfg.subscriptions[0].keys, undefined);
+});
+
+test('notification store mutations use a lock and atomic rename', () => {
+  const source = readFileSync(resolve('src/lib/server/notifications.ts'), 'utf8');
+  assert.match(source, /const LOCK_PATH = `\$\{STORE_PATH\}\.lock`/);
+  assert.match(source, /function mutateStore/);
+  assert.match(source, /openSync\(LOCK_PATH, 'wx'/);
+  assert.match(source, /renameSync\(tmp, STORE_PATH\)/);
+  assert.match(source, /notification store lock waited/);
+});
+
+test('notification store lock preserves concurrent child-process mutations', async () => {
+  const notifications = await loadNotifications();
+  const authDir = process.env.HERMESDECK_AUTH_DIR;
+  assert.ok(authDir);
+
+  const child = (idx) => new Promise((resolveChild, rejectChild) => {
+    const endpoint = `https://fcm.googleapis.com/fcm/send/concurrent-${idx}`;
+    const code = `
+      import { savePushSubscription, saveUserNotificationPreferences } from './src/lib/server/notifications.ts';
+      savePushSubscription('user_1', { endpoint: ${JSON.stringify(endpoint)}, keys: { p256dh: 'B'.repeat(88), auth: 'A'.repeat(22) } }, 'child-${idx}');
+      saveUserNotificationPreferences('user_1', { chatFailed: ${idx % 2 === 0 ? 'false' : 'true'} });
+    `;
+    const proc = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', code], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HERMESDECK_AUTH_DIR: authDir,
+        HOME: process.env.HOME || '',
+        USERPROFILE: process.env.USERPROFILE || '',
+      },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let stderr = '';
+    proc.stderr.on('data', (chunk) => { stderr += chunk; });
+    proc.on('error', rejectChild);
+    proc.on('close', (code) => (code === 0 ? resolveChild() : rejectChild(new Error(stderr || `child exited ${code}`))));
+  });
+
+  await Promise.all([0, 1, 2, 3].map(child));
+  const cfg = notifications.getNotificationConfigForUser('user_1');
+  assert.equal(cfg.subscriptionCount, 4);
 });
