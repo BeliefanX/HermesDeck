@@ -56,6 +56,7 @@ function renderSessionItem({
   const folder = sm.folderId ? metaStore.folders.find((f) => f.id === sm.folderId) : null;
   const isMenuOpen = openMenu === s.id;
   const showPinIcon = !!sm.pinned;
+  const statusTone = s.chatStatus === 'running' ? 'amber' : s.chatStatus === 'completed' ? 'green' : 'pink';
   return (
     <div
       key={s.id}
@@ -78,6 +79,11 @@ function renderSessionItem({
     >
       <div className="row" style={{ alignItems: 'center', gap: 8 }}>
         <span className={`tag ${meta.tone}`} title={meta.label}>{meta.short}</span>
+        {s.chatStatus && (
+          <span className={`tag ${statusTone}`} title={t.sessionStatus(s.chatStatus)} aria-label={t.sessionStatus(s.chatStatus)}>
+            {t.sessionStatus(s.chatStatus)}
+          </span>
+        )}
         {s.parentSessionId && (
           <span className="tag gray subagent-tag" title={t.subagentTagTitle(s.parentSessionId)}>{t.subagentTagShort}</span>
         )}

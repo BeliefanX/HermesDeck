@@ -442,6 +442,7 @@ function sessionSummary(session: ProjectedSession): DeckSession {
     profileId: session.profileId,
     title: session.title,
     source: session.source || 'hermesdeck',
+    chatStatus: session.status,
     model: session.model,
     reasoningEffort: session.reasoningEffort,
     createdAt: session.createdAt,

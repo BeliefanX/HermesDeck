@@ -42,6 +42,12 @@ Projection session 包含：
 - `responseId/previousResponseId/aliases/lastError`
 - normalized messages，含 draft/final assistant message、tool-call rows、tool-result/tool rows、attachment metadata、projection metadata 等；attachment bodies/pasted text/base64 data URLs/raw URLs 不写入 projection。
 
+## Session status
+
+- 会话列表仅显示 Deck projection 已提供的 `running`、`completed` 或 `failed` 状态；Agent-only/unknown session 不伪造状态。
+- 对 Deck 显示的会话状态，durable truth source 是 Deck chat projection，而不是从 Agent session list 推断。新发送写入 `running`；stream `done`/server terminal error 分别 durable 收敛为 `completed`/`failed`。
+- 浏览器收到 terminal SSE error，或 transport drop 的有限恢复未取得 terminal projection 时，也先将当前列表项收敛为 `failed`。只要仍有 `running` 会话，前端每 3 秒刷新一次 session list，以 projection 的 durable 状态纠正本地视图；没有 `running` 会话时不轮询。
+
 ## Chat hooks
 
 `POST /api/deck/chat/stream` 构造 `ChatStreamProjectionHooks`：

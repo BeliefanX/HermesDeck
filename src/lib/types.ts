@@ -126,6 +126,8 @@ export interface DeckSession {
   profileId: string;
   title: string;
   source: string;
+  /** Durable Deck projection status; absent when the source cannot provide one. */
+  chatStatus?: 'running' | 'completed' | 'failed';
   model?: string;
   /** Effective reasoning effort if exposed by Hermes or observed by Deck. */
   reasoningEffort?: string;

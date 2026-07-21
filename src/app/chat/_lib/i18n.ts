@@ -54,6 +54,7 @@ export function useChatT() {
       truncatedHint: (n: number) => `另有 ${n} 个会话未显示，可用搜索定位`,
       // Session item
       pinnedAria: '已置顶',
+      sessionStatus: (status: 'running' | 'completed' | 'failed') => ({ running: '运行中', completed: '已完成', failed: '失败' })[status],
       subagentTagShort: 'sub',
       subagentTagTitle: (parentId: string) => `子智能体 · 父会话 ${parentId}`,
       sessionActions: '会话操作',
@@ -238,7 +239,9 @@ export function useChatT() {
       noMatchingSessions: 'No matching sessions',
       noSessionsYetSidebar: 'No sessions yet',
       truncatedHint: (n: number) => `${n} more hidden — use search to find them`,
+      // Session item
       pinnedAria: 'Pinned',
+      sessionStatus: (status: 'running' | 'completed' | 'failed') => ({ running: 'Running', completed: 'Completed', failed: 'Failed' })[status],
       subagentTagShort: 'sub',
       subagentTagTitle: (parentId: string) => `Subagent · parent ${parentId}`,
       sessionActions: 'Session actions',

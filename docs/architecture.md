@@ -27,6 +27,8 @@ Deck 的可见 Web 入口是 `6117`；Hermes Agent API fallback default 是 `htt
 
 Deck 运行时数据来自 Hermes Agent API Server：
 
+当前 Deck BFF 与 Hermes Agent v0.19.0（tag `v2026.7.20`）已核验兼容：聊天使用 `/v1/runs` + run SSE，sessions/messages、models/tools 与 auth 继续沿用现有 API 契约；无需新增 Agent 端状态系统。
+
 - Agents：`/v1/profiles`、`/api/profiles`，选择返回内容最完整的 API-backed Agent catalog。admin/super_admin 只有在两个 strict catalog endpoints 都返回 404 时，才可使用 bounded local catalog fallback：仅枚举 `default` 和 immediate local profile dirs，且每个 candidate 必须通过对应 `/health` routing/key proof。普通用户不使用本地枚举。
 - models：按 Agent 调 `/v1/models`，不从本地文件合成模型清单。
 - model config：`/api/deck/model-config` 在 Deck auth/RBAC 后并行读取 Dashboard `/api/model/info`、`/api/model/auxiliary`、`/api/config` 的 delegation 白名单和 `/api/cron/jobs`。Dashboard 默认为 loopback `http://127.0.0.1:9119`；仅 Deck server 可经 `HERMES_DASHBOARD_BASE` 覆盖。`HERMES_DASHBOARD_SESSION_TOKEN` 仅限 loopback Dashboard；remote gated Dashboard 不受此 BFF 支持。

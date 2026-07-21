@@ -1227,6 +1227,13 @@ test('Deck chat projection is profile scoped and rejects cross-profile message r
       content: 'sensgift answer',
       responseId: 'resp_sensgift_1',
     });
+    projection.startProjectedTurn({
+      sessionId: 'sensgift-running', profileId: 'sensgift', ownerUserId: 'kevinchen', ownerRole: 'user', message: 'still working',
+    });
+    projection.startProjectedTurn({
+      sessionId: 'sensgift-failed', profileId: 'sensgift', ownerUserId: 'kevinchen', ownerRole: 'user', message: 'will fail',
+    });
+    projection.recordProjectedTurnError({ sessionId: 'sensgift-failed', profileId: 'sensgift', error: 'expected failure' });
 
     assert.equal(projection.hasProjectedSession('sensgift-local-1', 'sensgift'), true);
     assert.equal(projection.projectedResponseIdMatches('sensgift-local-1', 'sensgift', 'resp_sensgift_1'), true);
@@ -1234,6 +1241,9 @@ test('Deck chat projection is profile scoped and rejects cross-profile message r
     assert.equal(projection.hasProjectedSession('sensgift-local-1', 'default'), false);
     assert.deepEqual(projection.listProjectedSessions('default'), []);
     assert.equal(projection.listProjectedSessions('sensgift')[0].profileId, 'sensgift');
+    assert.deepEqual(Object.fromEntries(projection.listProjectedSessions('sensgift').map((row) => [row.id, row.chatStatus])), {
+      'sensgift-local-1': 'completed', 'sensgift-running': 'running', 'sensgift-failed': 'failed',
+    });
     assert.deepEqual(
       projection.getProjectedMessages('sensgift-local-1', 'sensgift').map((message) => message.role),
       ['user', 'assistant'],

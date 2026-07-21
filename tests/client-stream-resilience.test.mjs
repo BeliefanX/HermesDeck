@@ -63,6 +63,13 @@ test('recoverable send path resumes with immutable original hub key after sessio
   assert.match(useChatStream, /recoverTransportDrop\(\{\s*hubKey: recoveryHubKey,/s);
 });
 
+test('terminal transport failures converge only the current stream row from running to failed', () => {
+  assert.match(useChatStream, /const failCurrentStream = useCallback\([\s\S]*!inf \|\| inf\.sessionId !== sid[\s\S]*shouldApplyStreamRecoveryUpdate\([\s\S]*x\.id === sid && x\.profileId === owner\.profile[\s\S]*chatStatus: 'failed'/);
+  assert.match(useChatStream, /const recovered = await recoverTransportDrop\([\s\S]*if \(!recovered && !ac\.signal\.aborted && !isAbortedRef\.current\) \{[\s\S]*failCurrentStream\(\{ streamId, profile \}, sid\);/);
+  assert.match(useChatStream, /else if \(!ac\.signal\.aborted\) \{[\s\S]*failCurrentStream\(\{ streamId, profile \}, sid\);/);
+  assert.match(useChatStream, /if \(!fetchedTerminalProjection\) failCurrentStream\(\{ streamId, profile \}, liveSid\);/);
+});
+
 test('recovering transport drops do not render as terminal red Request failed / Load failed card', () => {
   assert.match(chatLayoutView, /p\.error === STREAM_RECONNECTING_MESSAGE/);
   assert.match(chatLayoutView, /isRecoveringStream \? '正在恢复连接' : p\.t\.requestFailed/);

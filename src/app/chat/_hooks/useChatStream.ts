@@ -662,6 +662,20 @@ export function useChatStream(params: UseChatStreamParams) {
     }));
   }, [setMessages]);
 
+  const failCurrentStream = useCallback((owner: { streamId: number; profile: string }, sid: string) => {
+    const inf = inflightRef.current;
+    if (!inf || inf.sessionId !== sid || !shouldApplyStreamRecoveryUpdate(
+      { streamId: inf.streamId, profile: profileRef.current },
+      owner,
+      false,
+    )) return false;
+    setSessions((list) => list.map((x) => x.id === sid && x.profileId === owner.profile
+      ? { ...x, chatStatus: 'failed' }
+      : x));
+    clearInflight();
+    return true;
+  }, [setSessions]);
+
   const openSession = useCallback(async (s: LocalSession) => {
     const requestProfile = profile;
     openSessionAbortRef.current?.abort();
@@ -826,13 +840,12 @@ export function useChatStream(params: UseChatStreamParams) {
         const observedReasoning = typeof obj.reasoningEffort === 'string' && obj.reasoningEffort.trim()
           ? obj.reasoningEffort.trim().toLowerCase()
           : '';
-        if (observedModel || observedReasoning) {
-          setSessions((list) => list.map((x) => x.id === sid ? {
-            ...x,
-            ...(observedModel ? { model: observedModel } : {}),
-            ...(observedReasoning ? { reasoningEffort: observedReasoning } : {}),
-          } : x));
-        }
+        setSessions((list) => list.map((x) => x.id === sid ? {
+          ...x,
+          chatStatus: 'completed',
+          ...(observedModel ? { model: observedModel } : {}),
+          ...(observedReasoning ? { reasoningEffort: observedReasoning } : {}),
+        } : x));
         if (finalAtts && finalAtts.length) {
           const inf = inflightRef.current;
           const targetId = (inf && inf.streamId === init.streamId)
@@ -865,6 +878,7 @@ export function useChatStream(params: UseChatStreamParams) {
             ? { ...x, content: x.content + (x.content ? '\n\n' : '') + `${t.errorPrefix} ${message}` }
             : x),
         }));
+        setSessions((list) => list.map((x) => x.id === sid ? { ...x, chatStatus: 'failed' } : x));
         clearInflight();
       },
     };
@@ -929,7 +943,7 @@ export function useChatStream(params: UseChatStreamParams) {
       }
     }
 
-    let fetchedAnyProjection = false;
+    let fetchedTerminalProjection = false;
     for (let attempt = 0; attempt < 8; attempt += 1) {
       if (!isCurrent()) return false;
       try {
@@ -937,11 +951,13 @@ export function useChatStream(params: UseChatStreamParams) {
         const r = await deckApi.messages(sid, init.profile, init.signal);
         if (!isCurrent()) return false;
         if (r.messages.length) {
-          fetchedAnyProjection = true;
           setMessages((m) => ({ ...m, [sid]: r.messages }));
-          // If the server projection is still a draft, keep polling briefly so
-          // final tool results can land after a mobile-WebKit stream drop.
-          if (!hasProjectedDraft(r.messages)) break;
+          // A draft projection is not recovery: the lost transport is no longer
+          // delivering events, so bounded polling must reach a terminal row.
+          if (!hasProjectedDraft(r.messages)) {
+            fetchedTerminalProjection = true;
+            break;
+          }
         }
       } catch {
         // Projection fetch can be briefly unavailable while the stream route is
@@ -950,7 +966,7 @@ export function useChatStream(params: UseChatStreamParams) {
       await sleep(attempt < 2 ? 1000 : 3000);
     }
     if (!isCurrent()) return false;
-    if (fetchedAnyProjection) {
+    if (fetchedTerminalProjection) {
       setError('');
       return true;
     }
@@ -982,7 +998,7 @@ export function useChatStream(params: UseChatStreamParams) {
       const title = text.split('\n')[0].slice(0, 64) || liveAtts[0]?.name || t.newChat;
       const created: LocalSession = {
         id: sid, profileId: profile, title, source: 'hermesdeck', model: selectedModel || undefined, reasoningEffort: reasoningEffort || undefined,
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), messageCount: 0,
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), messageCount: 0, chatStatus: 'running',
       };
       setSessions((s) => [created, ...s.filter((x) => x.id !== sid)]);
       setMessages((m) => ({ ...m, [sid]: [] }));
@@ -1011,6 +1027,7 @@ export function useChatStream(params: UseChatStreamParams) {
       ...x,
       model: selectedModel || x.model,
       reasoningEffort: reasoningEffort || x.reasoningEffort,
+      chatStatus: 'running',
       updatedAt: new Date().toISOString(),
       messageCount: (x.messageCount || 0) + newMessages.length,
     } : x));
@@ -1110,7 +1127,7 @@ export function useChatStream(params: UseChatStreamParams) {
       if (!ac.signal.aborted && recoverableDrop) {
         const inf = inflightRef.current;
         const recoveryHubKey = inf && inf.streamId === streamId ? inf.hubKey : originalHubKey;
-        await recoverTransportDrop({
+        const recovered = await recoverTransportDrop({
           hubKey: recoveryHubKey,
           getSessionId: () => sid,
           initialAssistantId: assistantId,
@@ -1121,9 +1138,13 @@ export function useChatStream(params: UseChatStreamParams) {
           isAbortedRef,
           onSidReconcile: reconcileSid,
         });
+        if (!recovered && !ac.signal.aborted && !isAbortedRef.current) {
+          failCurrentStream({ streamId, profile }, sid);
+        }
       } else if (!ac.signal.aborted) {
         const msg = streamErrorMessage(e, { explicitAbort: false });
         setError(msg);
+        failCurrentStream({ streamId, profile }, sid);
         // Restore the composer attachments so the user can retry without
         // re-uploading. Aborts (user pressed Stop) are intentional and we
         // leave the cleared composer alone in that case.
@@ -1152,7 +1173,7 @@ export function useChatStream(params: UseChatStreamParams) {
     }
   }, [
     abortRef, active, attachments, buildCallbacks, busy, defaultReasoning, input,
-    profile, reasoningEffort, recoverTransportDrop, responseIds, selectedModel, stickToBottomRef, t,
+    profile, reasoningEffort, recoverTransportDrop, responseIds, selectedModel, stickToBottomRef, t, failCurrentStream,
     setActive, setAttachments, setBusy, setError, setInput, setMessages, setResponseIds, setSessions,
   ]);
 
@@ -1267,26 +1288,30 @@ export function useChatStream(params: UseChatStreamParams) {
         if (!isAbortedRef.current) {
           if (isRecoverableStreamTransportError(e, ac.signal.aborted || isAbortedRef.current)) {
             setError(STREAM_RECONNECTING_MESSAGE);
-            let fetchedAnyProjection = false;
+            let fetchedTerminalProjection = false;
             for (let attempt = 0; attempt < 8; attempt += 1) {
               if (isAbortedRef.current || ac.signal.aborted) break;
               try {
                 const r = await deckApi.messages(liveSid, profile, ac.signal);
                 if (isAbortedRef.current || ac.signal.aborted) break;
                 if (r.messages.length) {
-                  fetchedAnyProjection = true;
                   setMessages((m) => ({ ...m, [liveSid]: r.messages }));
-                  if (!hasProjectedDraft(r.messages)) break;
+                  if (!hasProjectedDraft(r.messages)) {
+                    fetchedTerminalProjection = true;
+                    break;
+                  }
                 }
               } catch {}
               await sleep(attempt < 2 ? 1000 : 3000);
             }
             if (!isAbortedRef.current && !ac.signal.aborted) {
-              setError(fetchedAnyProjection ? '' : STREAM_RECOVERY_FAILED_MESSAGE);
+              setError(fetchedTerminalProjection ? '' : STREAM_RECOVERY_FAILED_MESSAGE);
+              if (!fetchedTerminalProjection) failCurrentStream({ streamId, profile }, liveSid);
             }
           } else {
             const msg = streamErrorMessage(e, { explicitAbort: false });
             setError(msg);
+            failCurrentStream({ streamId, profile }, liveSid);
           }
         }
         // Do NOT clearInflight here for the same reason as `send`'s catch:

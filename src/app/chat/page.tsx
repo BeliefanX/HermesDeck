@@ -260,6 +260,29 @@ function ChatPageInner() {
     return () => { alive = false; };
   }, [profile, hydrated, setMetaStoreRaw, clearStaleActiveSession]);
 
+  const hasRunningSession = sessions.some((session) => session.chatStatus === 'running');
+
+  useEffect(() => {
+    if (!hydrated || !profile || !hasRunningSession) return;
+    let alive = true;
+    let inFlight = false;
+    const poll = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const result = await deckApi.sessions(profile);
+        if (alive) setSessions((current) => mergeSessions(current, result.sessions, profile));
+      } catch {
+        // Keep the durable status visible; the next interval may succeed.
+      } finally {
+        inFlight = false;
+      }
+    };
+    void poll();
+    const id = window.setInterval(poll, 3000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, [hasRunningSession, hydrated, profile]);
+
   const activeMessages = messages[active] || [];
   const hasActiveServerDraft = activeMessages.some((m) => (
     m.role === 'assistant' && m.metadata?.projectionStatus === 'draft'
